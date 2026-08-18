@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Thin wrapper that delegates to the cross-platform Python launcher.
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *)  SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+cd "$ROOT"
+
+exec .venv/bin/python basicagent.py "$@"

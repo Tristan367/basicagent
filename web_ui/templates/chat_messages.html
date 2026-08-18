@@ -1,0 +1,26 @@
+{% for m in messages %}
+  {% if m.kind == 'summary' %}
+    <div class="message summary" id="msg-summary-{{ m.id }}">
+        <details class="summary-note">
+            <summary>Earlier conversation was summarized</summary>
+            <div class="summary-text" data-markdown>{{ m.summary_text }}</div>
+        </details>
+    </div>
+  {% elif m.role == 'tool' %}
+    {% if m.open_session %}
+    <div class="message action" id="msg-{{ m.id }}">
+        <a class="open-project-btn" href="/sessions/{{ m.open_session }}">Open this project &rarr;</a>
+    </div>
+    {% endif %}
+  {% elif m.role == 'user' %}
+    <div class="message user" id="msg-{{ m.id }}">
+        <div class="bubble"><div class="content" data-markdown>{{ m.content }}</div></div>
+    </div>
+  {% elif m.role == 'assistant' %}
+    {% if (m.content or '') | trim %}
+    <div class="message assistant" id="msg-{{ m.id }}">
+        <div class="bubble"><div class="content" data-markdown>{{ m.content }}</div></div>
+    </div>
+    {% endif %}
+  {% endif %}
+{% endfor %}

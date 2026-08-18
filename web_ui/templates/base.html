@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ theme | default('dark') }}"
+      {% if accent %}style="--accent: {{ accent }}; --accent-btn: {{ accent }}; --user-bubble: {{ accent }}; --user-bubble-text: {{ accent_text }}; --focus: {{ accent }}; --accent-dim: color-mix(in srgb, {{ accent }} 18%, transparent);"{% endif %}>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Assistant{% endblock %}</title>
+    <link rel="stylesheet" href="/static/vendor/highlight/github-dark.min.css?v={{ version }}">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ version }}">
+    <script src="/static/vendor/highlight/highlight.min.js?v={{ version }}"></script>
+    <script src="/static/js/markdown.js?v={{ version }}"></script>
+</head>
+<body>
+    <a class="skip-link" id="skip-link" href="{% if is_settings %}#main-content{% elif stt.available %}#mic-btn{% else %}#chat-textarea{% endif %}">
+        {% if is_settings %}Skip to content{% elif stt.available %}Skip to Talk{% else %}Skip to chat{% endif %}
+    </a>
+    <header class="app-bar">
+        <div class="app-bar-side">
+            <button type="button" class="app-bar-btn nav-btn" id="back-btn" title="Back" aria-label="Back">&#8592;</button>
+            <button type="button" class="app-bar-btn nav-btn" id="forward-btn" title="Forward" aria-label="Forward">&#8594;</button>
+            {% if not is_home %}
+            <a href="/" class="app-bar-btn">Project Manager</a>
+            {% endif %}
+            {% if not is_settings %}
+            <a href="/settings" class="app-bar-btn">Settings</a>
+            {% endif %}
+            <div class="sessions-wrap">
+                <button type="button" class="app-bar-btn" id="sessions-btn" aria-haspopup="true" aria-expanded="false">Projects <span class="chevron">&#9660;</span></button>
+                <div id="sessions-menu" class="sessions-menu" hidden>
+                    {% for s in nav_sessions %}
+                    <a href="/sessions/{{ s.id }}" data-session-id="{{ s.id }}">
+                        <span class="session-dot" aria-hidden="true" hidden></span>
+                        <span class="session-label">{{ s.name }}</span>
+                        <span class="sr-only session-status"></span>
+                    </a>
+                    {% else %}
+                    <span class="sessions-empty">No projects yet</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <span class="app-bar-title">{% block app_title %}Assistant{% endblock %}</span>
+        <div class="app-bar-side app-bar-right">
+            <button type="button" class="app-bar-btn quit-x" id="quit-btn" title="Quit" aria-label="Quit">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                    <path d="M5 5 L19 19 M19 5 L5 19" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+    <main id="main-content" tabindex="-1">
+        {% block content %}{% endblock %}
+    </main>
+
+    <div class="modal-backdrop" id="quit-modal" role="dialog" aria-modal="true" aria-label="Quit" hidden>
+        <div class="welcome-card quit-card">
+            <h2>Quit?</h2>
+            <p>This will close the app. You can start it again any time.</p>
+            <div class="quit-actions">
+                <button type="button" class="btn-primary" id="quit-confirm">Quit</button>
+                <button type="button" class="btn-stop" id="quit-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-area" class="toast-area" aria-live="polite"></div>
+
+    <script src="/static/js/app.js?v={{ version }}"></script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+"""FastAPI application entry point."""
+
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+
+from agent_server import agent
+from agent_server import database as db
+from agent_server.config import DATA_DIR, DB_PATH
+from agent_server.database import close as close_db
+from agent_server.database import init_db
+from agent_server.providers import load_custom_endpoint_providers
+from agent_server.routes import chat, pages, sessions, settings, tts
+from agent_server.system_prompt import ensure_home_session
+from agent_server.templating import STATIC_DIR
+
+log = logging.getLogger(__name__)
+
+WELCOME = (
+    "Hi! I'm your coding assistant. You can just talk to me in plain English — "
+    "tell me what you'd like to build, and I'll start a project for it and get to work. "
+    "You don't need to know anything technical. If you're not sure where to begin, "
+    "just ask me a question or describe an idea and we'll figure it out together."
+)
+
+CHILD_WELCOME = (
+    "Hi there! I'm your coding buddy. Tell me what you'd like to make — a game, a "
+    "website, or a story — and we'll build it together and I'll teach you how it works "
+    "along the way. I can also help with your homework. What are you excited to create?"
+)
+
+
+async def _reap_browsers():
+    from agent_server import browser
+
+    while True:
+        await asyncio.sleep(120)
+        try:
+            await browser.reap_idle()
+        except Exception:
+            log.warning("reaping idle browsers failed", exc_info=True)
+
+
+async def _discover_deepseek_models():
+    from agent_server import config
+    from agent_server.providers import get_provider
+
+    try:
+        provider = get_provider("deepseek")
+        if not provider.has_credentials():
+            return
+        ids = await provider.fetch_model_ids()
+        config.register_dynamic_deepseek_models(ids)
+    except Exception:
+        log.warning("deepseek model discovery failed", exc_info=True)
+
+
+async def _warm_whisper():
+    from agent_server import whisper_streaming
+
+    if not whisper_streaming.whisper_streaming_available():
+        return
+    try:
+        await whisper_streaming.get_server()
+        log.info("whisper-server ready for streaming dictation")
+    except Exception:
+        log.warning("whisper-server warm-up failed", exc_info=True)
+
+
+async def _warm_tts():
+    from agent_server import tts as tts_service
+
+    try:
+        await tts_service.warmup()
+        if tts_service.availability()["available"]:
+            log.info("text-to-speech model ready")
+    except Exception:
+        log.warning("text-to-speech warm-up failed", exc_info=True)
+
+
+async def _seed_home():
+    """Create the home sessions, greet the user, and flag missing pieces once."""
+    home = await ensure_home_session()
+    if not await db.get_messages(home["id"]):
+        await db.add_message(home["id"], "assistant", WELCOME)
+
+        from agent_server import setup
+
+        missing = setup.missing()
+        if missing:
+            lines = [
+                "A quick setup note: I checked this computer, and a few optional extras "
+                "aren't installed yet:",
+            ]
+            for component in missing:
+                lines.append(f"- {component['name']} ({component['hint']})")
+            lines.append(
+                "Everything else works. These are only needed for voice input, read-aloud, "
+                "and previewing websites. I can install them for you whenever you like — "
+                "just ask."
+            )
+            await db.add_message(home["id"], "assistant", "\n".join(lines))
+
+    from agent_server.config import CHILD_HOME_SESSION_ID
+
+    child = await db.get_session(CHILD_HOME_SESSION_ID)
+    if child and not await db.get_messages(child["id"]):
+        await db.add_message(child["id"], "assistant", CHILD_WELCOME)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from agent_server.logging_setup import configure
+
+    configure()
+    log.info("assistant starting: data=%s db=%s", DATA_DIR, DB_PATH.name)
+    await init_db()
+    from agent_server.providers import credentials
+
+    credentials.prime(await db.get_all_settings())
+    await load_custom_endpoint_providers()
+    await _discover_deepseek_models()
+    await _seed_home()
+
+    reaper = asyncio.create_task(_reap_browsers())
+    whisper_warmup = asyncio.create_task(_warm_whisper())
+    tts_warmup = asyncio.create_task(_warm_tts())
+
+    yield
+
+    reaper.cancel()
+    whisper_warmup.cancel()
+    tts_warmup.cancel()
+    from agent_server import whisper_streaming
+    from agent_server.tools import browser
+
+    await agent.shutdown()
+    await whisper_streaming.shutdown()
+    await browser.close_browser()
+    await close_db()
+
+
+app = FastAPI(title="Assistant", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.include_router(pages.router)
+app.include_router(chat.router)
+app.include_router(sessions.router)
+app.include_router(tts.router)
+app.include_router(settings.router)

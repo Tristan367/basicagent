@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Project Manager' if is_home else session.name }}{% endblock %}
+{% block app_title %}{{ 'Project Manager' if is_home else session.name }}{% endblock %}
+{% block content %}
+<div id="chat-view"
+     data-session-id="{{ session.id }}"
+     data-is-home="{{ '1' if is_home else '' }}"
+     data-has-key="{{ '1' if has_key else '' }}"
+     data-stt-enabled="{{ '1' if stt_enabled else '' }}"
+     data-stt-available="{{ '1' if stt.available else '' }}"
+     data-stt-streaming="{{ '1' if stt_streaming else '' }}"
+     data-tts-available="{{ '1' if tts.available else '' }}"
+     data-tts-auto="{{ '1' if tts_auto else '' }}"
+     data-tts-voice="{{ tts_voice }}"
+      data-tts-speed="{{ tts_speed }}"
+      data-tts-volume="{{ tts_volume }}"
+      data-child-mode="{{ '1' if child_mode else '' }}">
+
+    <div id="drop-overlay" role="presentation" hidden>
+        <span class="drop-overlay-msg">
+            <svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                      d="M21.4 11.6l-8.9 8.9a6 6 0 0 1-8.5-8.5l8.9-8.9a4 4 0 0 1 5.7 5.7l-8.9 8.9a2 2 0 0 1-2.8-2.8l8.5-8.5"/>
+            </svg>
+            Drop files here to attach them
+        </span>
+    </div>
+
+
+    {% if is_home and show_welcome %}
+    <div class="modal-backdrop" id="welcome-modal" role="dialog" aria-modal="true" aria-label="Welcome">
+        <div class="welcome-card">
+            <h1>Welcome</h1>
+            <p>This is your coding assistant. You can just talk to me in plain English —
+            tell me what you'd like to build, and I'll make it for you. You don't need to
+            know anything technical.</p>
+            <p><strong>Three quick things to get started:</strong></p>
+            <div class="welcome-step">
+                <span class="welcome-num">1</span>
+                <p>Connect an AI. This app doesn't come with one built in — it plugs into
+                an AI you already pay for, which is cheaper and gives you choices. It takes
+                about two minutes, one time only.</p>
+            </div>
+            {% if not has_key %}<a class="btn-primary welcome-cta" href="/settings">Set up your AI key</a>{% endif %}
+            <div class="welcome-step">
+                <span class="welcome-num">2</span>
+                <p>Pick your microphone, so I can hear you. You can change this later.</p>
+            </div>
+            <select id="welcome-mic" class="welcome-mic" data-mic-chooser>
+                <option value="">Default microphone</option>
+            </select>
+            <div class="welcome-step">
+                <span class="welcome-num">3</span>
+                <p>Pick how you'd like it to look.</p>
+            </div>
+            <div class="theme-choice">
+                <button type="button" class="theme-opt {% if theme == 'light' %}active{% endif %}" data-theme="light"
+                        aria-pressed="{{ 'true' if theme == 'light' else 'false' }}">Light mode</button>
+                <button type="button" class="theme-opt {% if theme == 'dark' %}active{% endif %}" data-theme="dark"
+                        aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}">Dark mode</button>
+            </div>
+            <div class="welcome-step">
+                <span class="welcome-num">4</span>
+                <p>Make it the right size for your eyes.</p>
+            </div>
+            <div class="zoom-row">
+                <button type="button" class="btn-neutral" id="welcome-zoom-out" aria-label="Zoom out">&minus;</button>
+                <span class="zoom-value" id="zoom-value" aria-live="polite">100%</span>
+                <button type="button" class="btn-neutral" id="welcome-zoom-in" aria-label="Zoom in">+</button>
+            </div>
+            <label class="checkbox-label welcome-noshow">
+                <input type="checkbox" id="welcome-dont-show"> Don't show this again
+            </label>
+            <button type="button" class="btn-primary" id="welcome-go">Get started</button>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="chat-scroll">
+        <div class="chat-scroll-inner">
+            {% if is_home and not has_key %}
+            <div class="setup-banner" role="alert">
+                <p><strong>Before we can start, I need to be connected to an AI.</strong></p>
+                <p>This app plugs into an AI you already pay for — it takes about two minutes,
+                one time only, and it's cheaper than a subscription.</p>
+                <a class="btn-primary" href="/settings">Set up your AI key</a>
+            </div>
+            {% endif %}
+
+            <div class="messages" id="messages" role="log" aria-live="polite" aria-relevant="additions">
+                {% include "chat_messages.html" %}
+            </div>
+
+            {% if is_home and recent_projects %}
+            <div class="recent-projects" id="recent-projects">
+                <h2>Jump back in</h2>
+                <p class="hint">Your most recent projects. Ask me to open one, or tap it.</p>
+                {% for p in recent_projects %}
+                <a class="project-card" href="/sessions/{{ p.id }}" aria-label="Open project {{ p.name }}">
+                    <span class="project-name">{{ p.name }}</span>
+                    {% if p.description %}<span class="project-desc">{{ p.description }}</span>{% endif %}
+                    <span class="project-when">{{ p.last_active_at | humantime }}</span>
+                </a>
+                {% endfor %}
+                <p class="hint recent-note">You can open any past project at the bottom of the Settings page.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <button type="button" class="scroll-bottom-btn" id="scroll-bottom-btn" hidden
+            aria-label="Jump to the newest message" title="Jump to the newest message">
+        <svg viewBox="0 0 24 24" width="44" height="44" aria-hidden="true">
+            <path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+                  d="M12 6v12m0 0l-5-5m5 5l5-5"/>
+        </svg>
+    </button>
+
+    <div class="composer-wrap">
+        <form id="chat-form" autocomplete="off">
+            <div class="composer">
+                <div id="attachments" class="attachments" hidden></div>
+                <div class="textarea-wrap">
+                    <textarea id="chat-textarea" name="message" rows="2"
+                              aria-label="Message"
+                              placeholder="Type or speak your message"></textarea>
+                </div>
+                <div class="composer-actions">
+                    <div class="composer-tools">
+                        {% if stt.available %}
+                        <button type="button" id="mic-btn" class="mic-btn" aria-pressed="true"
+                                title="Dictation — tap to talk, tap again to stop">
+                            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                                <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"/>
+                                <path fill="currentColor" d="M17 11a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21a1 1 0 1 1-2 0v-3.07A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0z"/>
+                            </svg>
+                            <span class="mic-label">Talk</span>
+                        </button>
+                        {% endif %}
+                        {% if tts.available %}
+                        <button type="button" id="read-draft-btn" class="icon-btn" title="Read my message aloud"
+                                aria-label="Read my message aloud">
+                            <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+                                <path fill="currentColor" d="M8 5v14l11-7z"/>
+                            </svg>
+                        </button>
+                        {% endif %}
+                        <button type="button" id="attach-btn" class="icon-btn" aria-label="Attach a file" title="Attach a file">
+                            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+                                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                      d="M21.4 11.6l-8.9 8.9a6 6 0 0 1-8.5-8.5l8.9-8.9a4 4 0 0 1 5.7 5.7l-8.9 8.9a2 2 0 0 1-2.8-2.8l8.5-8.5"/>
+                            </svg>
+                        </button>
+                        <input type="file" id="file-input" multiple hidden>
+                        {% if tts.available %}
+                        <div class="tts-wrap">
+                            <button type="button" id="tts-btn" class="icon-btn" aria-pressed="false"
+                                    aria-label="Read replies aloud"
+                                    title="Read replies aloud — tap to turn on or off">
+                                <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+                                    <path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4z"/>
+                                    <path fill="currentColor" d="M16 8a5 5 0 0 1 0 8" stroke="currentColor" stroke-width="2" fill="none"/>
+                                    <path fill="currentColor" d="M18 5a9 9 0 0 1 0 14" stroke="currentColor" stroke-width="2" fill="none"/>
+                                </svg>
+                            </button>
+                            <div class="tts-volume-menu" id="tts-volume-menu" hidden>
+                                <input type="range" id="tts-volume" class="tts-volume" min="0" max="1" step="0.05"
+                                       aria-label="Read aloud volume" title="Read aloud volume">
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div class="model-wrap">
+                            <button type="button" id="model-btn" class="model-btn" title="Change AI model"
+                                    aria-haspopup="true" aria-expanded="false">
+                                <span class="model-label">{{ model_display }}</span>
+                                <span class="chevron">&#9650;</span>
+                            </button>
+                            <div id="model-menu" class="model-menu" hidden></div>
+                        </div>
+                    </div>
+                    <div class="status-bar" id="status-bar" role="status" aria-live="polite" hidden></div>
+                    <button type="submit" id="send-btn" class="btn-primary send">Send</button>
+                    <button type="button" id="stop-btn" class="btn-stop send" hidden>Stop</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop" id="model-warning" role="dialog" aria-modal="true" aria-label="Switch model" hidden>
+        <div class="welcome-card quit-card">
+            <h2>Switch model?</h2>
+            <p id="model-warning-text">Switching models will re-process your conversation.</p>
+            <div class="quit-actions">
+                <button type="button" class="btn-primary" id="model-switch-confirm">Switch</button>
+                <button type="button" class="btn-stop" id="model-switch-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop" id="chat-password-modal" role="dialog" aria-modal="true" aria-label="Parent password" hidden>
+        <div class="welcome-card quit-card">
+            <h2>Parent password</h2>
+            <p>Enter the parent password to change this.</p>
+            <input type="password" id="chat-password-input" class="modal-input" autocomplete="new-password" aria-label="Parent password">
+            <p class="hint" id="chat-password-error" hidden style="color: var(--danger)"></p>
+            <div class="quit-actions">
+                <button type="button" class="btn-primary" id="chat-password-confirm">Continue</button>
+                <button type="button" class="btn-stop" id="chat-password-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

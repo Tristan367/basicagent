@@ -1,0 +1,65 @@
+[project]
+name = "basicagent"
+version = "0.1.0"
+description = "An accessibility-first coding agent for people who are not technical."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+# A test that hits the real API costs money, so it is opt-in:
+#   pytest -m live tests/test_live_agent.py
+addopts = "-m 'not live'"
+markers = ["live: hits a real provider API and bills a real account"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [".venv", "data", "web_ui"]
+
+[tool.ruff.lint]
+select = [
+    "F",      # pyflakes -- undefined names, unused imports
+    "E", "W", # pycodestyle
+    "I",      # import sorting
+    "UP",     # pyupgrade
+    "B",      # bugbear
+    "SIM",    # simplify
+    "RUF",    # ruff-specific
+    "DTZ",    # naive datetimes
+    "PIE",
+    "PERF",
+    "TRY004",
+    "S102",   # exec
+    "S103",   # chmod 0o777
+    "S108",   # hardcoded /tmp
+    "S307",   # eval
+    "S602", "S604", "S605",  # shell=True on untrusted input
+]
+ignore = [
+    "E501",    # line length is formatter territory, not a lint error
+    "B008",    # FastAPI's Depends()/File() idiom is a call in a default
+    "SIM105",  # contextlib.suppress is not clearer than try/except/pass here
+    "RUF001",  # the prose in this codebase uses real typographic characters
+    "RUF002",
+    "RUF003",
+    "RUF005",  # `a + [b]` reads better than `[*a, b]` for appending one item
+    "PERF401", # a named loop that appends is often clearer than a comprehension
+    "DTZ005",  # local time is correct for a timestamp shown to a local user
+]
+
+# BLE001 (blind except) and S110 (try/except/pass) are deliberately not enabled
+# yet. There are ~35 of them and most are load-bearing -- the vision rig may
+# genuinely be switched off -- but they currently swallow real faults silently
+# because the backend has no logging at all. They go on once logging lands, so
+# that "caught and logged" is distinguishable from "caught and lost".
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",  # asserts are the point
+    "S108",  # a literal /tmp path in a fixture is a fixture, not a vulnerability
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent_server", "web_ui"]
