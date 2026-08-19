@@ -96,6 +96,10 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("sessions", "kind", "TEXT NOT NULL DEFAULT 'project'"),
     ("sessions", "description", "TEXT"),
     ("sessions", "profile", "TEXT NOT NULL DEFAULT 'parent'"),
+    # How this project runs, so the Play button still works tomorrow -- and
+    # after the app has been restarted, when nothing is in memory any more.
+    ("sessions", "preview_command", "TEXT"),
+    ("sessions", "preview_url", "TEXT"),
     ("messages", "reasoning_content", "TEXT"),
     ("messages", "tool_name", "TEXT"),
     ("messages", "is_error", "INTEGER DEFAULT 0"),
@@ -184,6 +188,7 @@ async def _execute(sql: str, params: tuple = ()) -> int:
 SESSION_FIELDS = {
     "name", "description", "project_dir", "provider", "model", "thinking_effort",
     "kind", "system_prompt", "compact_threshold", "is_archived",
+    "preview_command", "preview_url",
 }
 
 

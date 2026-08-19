@@ -36,8 +36,11 @@ from agent_server.config import DATA_DIR
 
 log = logging.getLogger(__name__)
 
-PREVIEW_PROFILE_DIR = DATA_DIR / "preview_profile"
+PREVIEW_PROFILES = DATA_DIR / "preview_profiles"
 PREVIEW_LOG_DIR = DATA_DIR / "preview_logs"
+
+# Addresses that count as "this machine" when a child's preview is confined.
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]", ""}
 
 # How long a `stop` waits for a polite shutdown before it stops asking.
 GRACE_SECONDS = 4.0
@@ -78,11 +81,10 @@ class Slot:
 _slots: dict[str, Slot] = {}
 _lock = asyncio.Lock()
 
-# One browser for every preview, one page per project. A page that is navigated
-# is a page that does not become a thirty-first tab.
+# One browser window per project, each with its own kept profile. A window that
+# is navigated is a window that does not become a thirty-first tab.
 _playwright = None
-_browser_context = None
-_pages: dict[str, object] = {}
+_contexts: dict[str, object] = {}
 
 
 # ── the process ─────────────────────────────────────────────────────────────
@@ -148,61 +150,166 @@ def _signal_group(process, sig):
 # ── the window ──────────────────────────────────────────────────────────────
 
 
-async def _context():
-    global _playwright, _browser_context
-    if _browser_context is not None:
-        return _browser_context
-    try:
-        from playwright.async_api import async_playwright
+def _profile_dir(session_id: str) -> Path:
+    """One browser profile per project, kept between runs.
 
+    Per project rather than shared, because a login for one has no business in
+    another -- and kept rather than thrown away, because an app with a sign-in
+    that makes you sign in again on every single launch is exhausting to build.
+    Cookies, saved passwords and bookmarks all survive.
+    """
+    return PREVIEW_PROFILES / _safe(session_id)
+
+
+def _is_local(url: str) -> bool:
+    """Whether an address belongs to this machine."""
+    from urllib.parse import urlparse
+
+    if not url or url.startswith(("about:", "data:", "blob:", "chrome-error:")):
+        return True
+    parsed = urlparse(url)
+    if parsed.scheme in ("file", ""):
+        return True
+    host = (parsed.hostname or "").lower()
+    return host in LOCAL_HOSTS or host.endswith(".localhost")
+
+
+async def _launch(session_id: str, url: str, confine: bool):
+    """A window showing one address, with no way to type another into it.
+
+    `--app` is the whole point: Chromium opens a frame with no address bar, no
+    tab strip and no bookmarks, so what the user gets is their project rather
+    than a web browser that happens to have their project in it. Before this
+    the preview window had a URL bar, which in child mode is a hole straight
+    out of the app.
+    """
+    from playwright.async_api import async_playwright
+
+    global _playwright
+    if _playwright is None:
         _playwright = await async_playwright().start()
-        PREVIEW_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-        _browser_context = await _playwright.chromium.launch_persistent_context(
-            str(PREVIEW_PROFILE_DIR), headless=False, no_viewport=True,
-            args=["--disable-features=Translate"],
-        )
-    except Exception as e:
-        _browser_context = None
-        raise PreviewError(
-            "the project is running, but a window could not be opened to show it "
-            f"({_brief(e)}). Tell the user the address to visit."
-        ) from e
-    return _browser_context
+
+    directory = _profile_dir(session_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    context = await _playwright.chromium.launch_persistent_context(
+        str(directory),
+        headless=False,
+        no_viewport=True,
+        args=[f"--app={url}", "--disable-features=Translate"],
+    )
+    _contexts[session_id] = context
+
+    if confine:
+        await _confine(context)
+    return context
 
 
-async def _show(session_id: str, url: str):
+async def _confine(context):
+    """Refuse to load a page from anywhere but this machine.
+
+    Only in child mode, and only for documents -- a page may still fetch a font
+    or a script from wherever it likes, because blocking those breaks ordinary
+    development for no safety anyone gains. What it stops is the window itself
+    becoming a way onto the open web, which is the thing a parent is trusting
+    this app not to be.
+
+    Not applied outside child mode: signing in to something is a normal part of
+    building it, and those flows leave the origin by design.
+    """
+
+    async def guard(route, request):
+        if request.resource_type == "document" and not _is_local(request.url):
+            log.info("preview blocked a page from %s", request.url)
+            await route.abort()
+            return
+        await route.continue_()
+
+    await context.route("**/*", guard)
+
+    # A popup opens as an ordinary window, address bar and all, which would
+    # undo everything above.
+    def on_page(page):
+        async def close():
+            with contextlib.suppress(Exception):
+                await page.close()
+
+        asyncio.get_running_loop().create_task(close())
+
+    context.on("page", on_page)
+
+
+async def _show(session_id: str, url: str, confine: bool = False):
     """Point this project's window at `url`, opening one only if there isn't one.
 
-    Navigating an existing page rather than opening another is the entire
-    reason this is the app's job. `bring_to_front` because the user asked to
-    see it, and a window that reloaded behind the one they are reading is a
-    window they will not notice.
+    Navigating the window that is already there, rather than opening another,
+    is the entire reason this is the app's job rather than the agent's.
     """
-    context = await _context()
-    page = _pages.get(session_id)
-    if page is not None and not page.is_closed():
+    context = _contexts.get(session_id)
+    page = _live_page(context)
+
+    if page is not None:
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             await page.bring_to_front()
             return
         except Exception as e:
-            # The user closed it, or it crashed. Fall through and open a fresh
-            # one rather than reporting a failure they have already fixed.
-            log.info("preview page for %s was unusable (%s), reopening", session_id, _brief(e))
-            _pages.pop(session_id, None)
+            # Closed by the user, or crashed. Open a fresh one rather than
+            # reporting a failure they have already dealt with.
+            log.info("preview window for %s was unusable (%s)", session_id, _brief(e))
+            await _close_window(session_id)
 
-    page = await context.new_page()
-    _pages[session_id] = page
-    with contextlib.suppress(Exception):
-        await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        await page.bring_to_front()
+    try:
+        context = await _launch(session_id, url, confine)
+    except Exception as e:
+        _contexts.pop(session_id, None)
+        raise PreviewError(
+            "the project is running, but a window could not be opened to show it "
+            f"({_brief(e)}). Tell the user the address to visit."
+        ) from e
+
+    page = _live_page(context)
+    if page is not None:
+        with contextlib.suppress(Exception):
+            # `--app` already navigated here; this only matters if it was still
+            # loading when the window appeared.
+            if page.url.rstrip("/") != url.rstrip("/"):
+                await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            await page.bring_to_front()
+
+
+def _live_page(context):
+    if context is None:
+        return None
+    for page in context.pages:
+        if not page.is_closed():
+            return page
+    return None
 
 
 async def _close_window(session_id: str):
-    page = _pages.pop(session_id, None)
-    if page is not None and not page.is_closed():
+    context = _contexts.pop(session_id, None)
+    if context is not None:
         with contextlib.suppress(Exception):
-            await page.close()
+            await context.close()
+
+
+async def reload_window(session_id: str) -> bool:
+    """Show the current files without restarting the process.
+
+    What "make it show the new version" almost always means: a dev server has
+    already picked the change up, and a static one serves whatever is on disk.
+    Cheaper than a restart and it does not throw away whatever the page was in
+    the middle of.
+    """
+    page = _live_page(_contexts.get(session_id))
+    if page is None:
+        return False
+    try:
+        await page.reload(wait_until="domcontentloaded", timeout=30_000)
+        return True
+    except Exception as e:
+        log.info("could not reload the preview for %s: %s", session_id, _brief(e))
+        return False
 
 
 # ── waiting for it to come up ───────────────────────────────────────────────
@@ -232,7 +339,7 @@ async def _wait_for(url: str, slot: Slot, timeout_ms: int) -> bool:
 
 
 async def start(session_id: str, command: str, url: str = "", cwd: str = "",
-                wait_ms: int = 20_000) -> str:
+                wait_ms: int = 20_000, confine: bool = False) -> str:
     """Run the project, replacing whatever this project was running before."""
     async with _lock:
         # The window deliberately stays open across a restart. Closing it and
@@ -277,7 +384,7 @@ async def start(session_id: str, command: str, url: str = "", cwd: str = "",
             )
 
         try:
-            await _show(session_id, url)
+            await _show(session_id, url, confine)
         except PreviewError as e:
             # The project is up. Failing the call because a window would not
             # open would have the assistant report a broken build and go
@@ -327,16 +434,13 @@ async def close_all():
     async with _lock:
         for session_id in list(_slots):
             await _stop_locked(session_id, close_window=True)
-    global _playwright, _browser_context
-    if _browser_context is not None:
-        with contextlib.suppress(Exception):
-            await _browser_context.close()
-        _browser_context = None
+        for session_id in list(_contexts):
+            await _close_window(session_id)
+    global _playwright
     if _playwright is not None:
         with contextlib.suppress(Exception):
             await _playwright.stop()
         _playwright = None
-    _pages.clear()
 
 
 def _safe(name: str) -> str:

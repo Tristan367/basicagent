@@ -54,11 +54,12 @@ def running_servers() -> int:
 def project(tmp_path, monkeypatch):
     (tmp_path / "preview_server.py").write_text(SERVER)
 
-    async def no_window(session_id, url):
+    async def no_window(session_id, url, confine=False):
         pass
 
     monkeypatch.setattr(preview, "_show", no_window)
     monkeypatch.setattr(preview, "PREVIEW_LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(preview, "PREVIEW_PROFILES", tmp_path / "profiles")
     return str(tmp_path)
 
 

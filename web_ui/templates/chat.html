@@ -209,6 +209,25 @@
                                 <circle cx="12" cy="13" r="4.1" fill="none" stroke="currentColor" stroke-width="1.9"/>
                             </svg>
                         </button>
+                        {# Hidden until the assistant has run this project once,
+                           because a Play button for a project with nothing to
+                           play is a promise the app cannot keep. After that it
+                           stays: the command is remembered on the project, so
+                           coming back tomorrow and pressing Play works. #}
+                        <button type="button" id="play-btn" class="icon-btn" hidden
+                                aria-label="Play your project"
+                                title="Play — open your project so you can use it">
+                            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+                                <path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.54.84l10-6.5a1 1 0 0 0 0-1.68l-10-6.5A1 1 0 0 0 8 5.5z"/>
+                            </svg>
+                        </button>
+                        <button type="button" id="play-stop-btn" class="icon-btn" hidden
+                                aria-label="Stop your project"
+                                title="Stop — close your project and shut it down">
+                            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+                                <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
+                            </svg>
+                        </button>
                         {% if tts.available %}
                         <div class="tts-wrap">
                             <button type="button" id="tts-btn" class="icon-btn" aria-pressed="false"

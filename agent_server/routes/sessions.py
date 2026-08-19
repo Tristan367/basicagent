@@ -177,3 +177,58 @@ async def delete_session(session_id: str):
     await db.delete_session(session_id)
     agent.forget_session(session_id)
     return {"ok": True}
+
+
+# ── Play and stop ───────────────────────────────────────────────────────────
+#
+# The agent is meant to keep the project running, and mostly does. But it will
+# forget, and the user is then looking at a chat that says the game is ready
+# with no game anywhere -- and no terminal to start one from. So the same
+# machinery gets a button.
+
+
+@router.get("/{session_id}/preview")
+async def preview_state(session_id: str):
+    """What the Play button should show: is there anything to play, and is it on."""
+    from agent_server import preview
+
+    session = await _require(session_id)
+    return {
+        "command": session.get("preview_command") or "",
+        "url": session.get("preview_url") or "",
+        "running": preview.is_running(session_id),
+        "busy": agent.is_running(session_id),
+    }
+
+
+@router.post("/{session_id}/preview/start")
+async def preview_start(session_id: str):
+    """Run what the assistant last ran, from the user's own hand.
+
+    Deliberately not "run whatever you send me": the command comes from the
+    session row, so this endpoint cannot be talked into running something the
+    assistant never chose.
+    """
+    from agent_server import preview
+
+    session = await _require(session_id)
+    command = (session.get("preview_command") or "").strip()
+    if not command:
+        raise HTTPException(409, "Nothing has been set up to run for this project yet.")
+    try:
+        await preview.start(
+            session_id, command, (session.get("preview_url") or "").strip(),
+            session["project_dir"], confine=await parental.child_mode_enabled(),
+        )
+    except preview.PreviewError as e:
+        raise HTTPException(500, str(e).splitlines()[0]) from e
+    return {"ok": True, "running": preview.is_running(session_id)}
+
+
+@router.post("/{session_id}/preview/stop")
+async def preview_stop(session_id: str):
+    from agent_server import preview
+
+    await _require(session_id)
+    await preview.stop(session_id)
+    return {"ok": True, "running": False}

@@ -1473,12 +1473,14 @@
     stopBtn.hidden = true;
     clearStatus();
     refreshTheme();
+    refreshPlay();
   }
 
   function beginTurn() {
     running = true;
     sendBtn.hidden = true;
     stopBtn.hidden = false;
+    refreshPlay();
     turnStartedAt = Date.now();
     startTicks();
     setStatus('Working\u2026');
@@ -1514,6 +1516,74 @@
       revertFailedTurn();
       endTurn();
     }
+  }
+
+  // ── Play and stop ─────────────────────────────────────────────────────────
+  //
+  // The assistant is supposed to keep the project running, and mostly does.
+  // But when it forgets, the user is reading that their game is ready with no
+  // game anywhere and no terminal to start one from. So the same machinery
+  // gets a button.
+
+  const playBtn = document.getElementById('play-btn');
+  const playStopBtn = document.getElementById('play-stop-btn');
+  let playState = { command: '', running: false };
+  let playBusy = false;
+
+  function renderPlay() {
+    if (!playBtn || !playStopBtn) return;
+    const has = !!playState.command;
+    playBtn.hidden = !has;
+    playStopBtn.hidden = !has || !playState.running;
+    // Disabled rather than hidden while the assistant works: a button that
+    // vanishes and comes back is harder to find again than one that greys out,
+    // and someone navigating by keyboard loses their place entirely.
+    // `running` is this page's own view of the turn; `playState.busy` is the
+    // server's, which is what a page opened in the middle of one has to go on.
+    const wait = playBusy || running || playState.busy;
+    playBtn.disabled = wait;
+    playStopBtn.disabled = wait;
+    playBtn.setAttribute('aria-label',
+      playState.running ? 'Show your project again' : 'Play your project');
+    playBtn.title = playState.running
+      ? 'Show your project again — starts it fresh'
+      : 'Play — open your project so you can use it';
+  }
+
+  async function refreshPlay() {
+    if (!playBtn) return;
+    try {
+      const resp = await fetch('/api/sessions/' + sessionId + '/preview');
+      if (!resp.ok) return;
+      playState = await resp.json();
+    } catch (e) { return; }
+    renderPlay();
+  }
+
+  async function callPlay(path, saying) {
+    playBusy = true;
+    renderPlay();
+    try {
+      const resp = await fetch('/api/sessions/' + sessionId + '/preview/' + path,
+                               { method: 'POST' });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        showError((data && data.detail) || 'That would not start. Ask the assistant to look at it.');
+      } else {
+        announce(saying);
+      }
+    } catch (e) {
+      showError('That would not start. Ask the assistant to look at it.');
+    } finally {
+      playBusy = false;
+      await refreshPlay();
+    }
+  }
+
+  if (playBtn) {
+    playBtn.addEventListener('click', () => callPlay('start', 'Your project is open.'));
+    playStopBtn.addEventListener('click', () => callPlay('stop', 'Your project has been closed.'));
+    refreshPlay();
   }
 
   // ── Composer ──────────────────────────────────────────────────────────────

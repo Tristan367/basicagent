@@ -38,12 +38,27 @@ async def preview(
             "preview",
         )
 
+    # In child mode the window is confined to this machine. Outside it, signing
+    # in to a third party is a normal part of building something, and those
+    # flows leave the origin by design.
+    from agent_server.parental import child_mode_enabled
+
     try:
         output = await runner.start(
-            ctx.session_id, command.strip(), url.strip(), ctx.project_dir, wait_ms
+            ctx.session_id, command.strip(), url.strip(), ctx.project_dir, wait_ms,
+            confine=await child_mode_enabled(),
         )
     except runner.PreviewError as e:
         return ToolResult.error(str(e), "preview")
+
+    # Remembered on the project, not just in memory, so the Play button still
+    # works tomorrow -- and after the app has been closed and reopened, when
+    # the user comes back to a game they made and simply wants to play it.
+    from agent_server import database as db
+
+    await db.update_session(
+        ctx.session_id, preview_command=command.strip(), preview_url=url.strip()
+    )
     return ToolResult(output=output, title=_title(command, url))
 
 

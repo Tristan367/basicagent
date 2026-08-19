@@ -10,6 +10,7 @@ below, both of which refuse and explain rather than ask.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -330,6 +331,7 @@ async def _run_turn(session_id: str, session: dict, provider, abort: asyncio.Eve
         abort=abort,
     )
     tools_count = 0
+    touched_files = False
     log.info("turn start session=%s model=%s", session_id, session["model"])
     try:
         async for event in _loop(session, provider, ctx, abort):
@@ -338,6 +340,7 @@ async def _run_turn(session_id: str, session: dict, provider, abort: asyncio.Eve
                 await db.revert_last_user_message(session_id)
             elif event["type"] == "tool_end":
                 tools_count += 1
+                touched_files = touched_files or event.get("name") in WRITING_TOOLS
             yield event
     except asyncio.CancelledError:
         raise
@@ -346,6 +349,34 @@ async def _run_turn(session_id: str, session: dict, provider, abort: asyncio.Eve
         yield {"type": "error", "message": f"Agent error: {type(e).__name__}: {e}"}
     finally:
         log.info("turn end session=%s tools=%d", session_id, tools_count)
+        if touched_files:
+            await _refresh_preview(session_id)
+
+
+# Tools after which what the user is looking at may be out of date. `bash` is
+# in here because a build writes files too.
+WRITING_TOOLS = {"write", "edit", "bash"}
+
+
+async def _refresh_preview(session_id: str):
+    """Show the user the new version without being asked.
+
+    The assistant is told to call `preview` again after a change, and mostly
+    will. But "mostly" leaves the user reading that their game is fixed while
+    looking at the old one, with no way to tell the difference and no terminal
+    to fix it from -- so the app reloads the window itself.
+
+    A reload, not a restart: a dev server has already picked the change up, a
+    static one serves whatever is on disk, and restarting would throw away
+    whatever the page was in the middle of. Something that genuinely needs its
+    process restarted is still the assistant's job, and it has been told so.
+    """
+    from agent_server import preview
+
+    if not preview.is_running(session_id):
+        return
+    with contextlib.suppress(Exception):
+        await preview.reload_window(session_id)
 
 
 async def _loop(
