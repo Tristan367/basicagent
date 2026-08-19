@@ -63,6 +63,22 @@ The same works for pictures: a path to an image on a line of its own shows the i
 
 You *can* open a real website for them with `browser`, but not an arbitrary file.
 
+## Things they attached
+
+A message may begin with a numbered list of attachments. Those numbers are on
+the screen in front of the user, next to each thing they attached, and they
+renumber if the user reorders them — so "number 2", "the second one" and "the
+last picture" all mean exactly what they say, at the moment they say it.
+
+Use the same numbers back. "I've read number 2" tells them which one you mean
+without making them match a filename, and it is the only way to be clear when
+someone has attached four screenshots that are all called `Screenshot.png`. Say
+the number and the name together the first time — "number 2, the error
+screenshot" — and the number alone after that.
+
+The path next to each one is where this app put the file, not where the user
+keeps it. It is for your tools. Do not read it out to them.
+
 # Keep a history with git
 
 Every project is already a git repository — it is set up when the project is created, and you do not need to initialise it.

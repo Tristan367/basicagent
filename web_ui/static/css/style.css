@@ -722,6 +722,25 @@ html[data-theme="dark"] .setup-banner {
 }
 .attachment-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .attachment-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 230px; }
+/* The number the user says out loud. Set at full body size and in the accent
+   colour: it is a label to be read across a room and repeated, not a badge. */
+.attachment-num {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
 .attachment-chip .rm {
     background: transparent;
     border: none;

@@ -1667,7 +1667,6 @@
     attachments.forEach((a, i) => {
       const chip = document.createElement('span');
       chip.className = 'attachment-chip';
-      const position = ' (' + (i + 1) + ' of ' + attachments.length + ')';
 
       // Dragging is the quick way for anyone with a mouse; the arrow buttons
       // below do the same job for everyone else. Neither replaces the other.
@@ -1706,6 +1705,18 @@
         });
       }
 
+      // The number the user can say out loud. One sequence for everything, in
+      // the order they are shown, renumbered when they are reordered -- which
+      // is the whole point of it: "swap the last two, then use number 2".
+      // Numbering images and files separately would break that the moment the
+      // two kinds are interleaved, and "delete one" would stop being an
+      // answer to anything.
+      const badge = document.createElement('span');
+      badge.className = 'attachment-num';
+      badge.textContent = String(i + 1);
+      badge.setAttribute('aria-hidden', 'true');
+      chip.appendChild(badge);
+
       const thumb = document.createElement('span');
       thumb.className = 'attachment-thumb';
       if (a.thumb) {
@@ -1717,6 +1728,11 @@
         thumb.innerHTML = a.isDir ? FOLDER_ICON_SVG : FILE_ICON_SVG;
       }
 
+      // Spoken, the kind matters and the icon does not carry it. Sighted users
+      // read it off the thumbnail, so it costs them no space.
+      const kind = a.isDir ? 'folder' : (a.thumb ? 'image' : 'file');
+      const said = 'Number ' + (i + 1) + ' of ' + attachments.length + ', ' + kind + ', ' + a.name;
+
       // The picture and its name open a preview; only images have one to show.
       const face = document.createElement('button');
       face.type = 'button';
@@ -1726,13 +1742,14 @@
       label.className = 'attachment-name';
       label.textContent = a.name;
       face.appendChild(label);
-      // The chip truncates the name, so the whole one lives in the tooltip.
-      face.title = a.name;
+      // The chip truncates the name, so the whole one -- and where it came
+      // from -- lives in the tooltip.
+      face.title = a.name + '\n' + a.path;
       if (a.thumb) {
-        face.setAttribute('aria-label', 'Preview ' + a.name + position);
+        face.setAttribute('aria-label', 'Preview ' + said);
         face.addEventListener('click', () => openImagePreview(a));
       } else {
-        face.setAttribute('aria-label', a.name + position);
+        face.setAttribute('aria-label', said);
         face.disabled = true;
       }
       chip.appendChild(face);
@@ -1745,7 +1762,7 @@
         left.className = 'move move-left';
         left.innerHTML = '&#8249;';
         left.title = 'Move earlier';
-        left.setAttribute('aria-label', 'Move ' + a.name + ' earlier');
+        left.setAttribute('aria-label', 'Move ' + said + ' earlier');
         left.disabled = i === 0;
         left.addEventListener('click', () => moveAttachment(i, i - 1));
         chip.appendChild(left);
@@ -1755,7 +1772,7 @@
         right.className = 'move move-right';
         right.innerHTML = '&#8250;';
         right.title = 'Move later';
-        right.setAttribute('aria-label', 'Move ' + a.name + ' later');
+        right.setAttribute('aria-label', 'Move ' + said + ' later');
         right.disabled = i === attachments.length - 1;
         right.addEventListener('click', () => moveAttachment(i, i + 1));
         chip.appendChild(right);
@@ -1765,7 +1782,7 @@
       rm.type = 'button';
       rm.className = 'rm';
       rm.title = 'Remove ' + a.name;
-      rm.setAttribute('aria-label', 'Remove ' + a.name);
+      rm.setAttribute('aria-label', 'Remove ' + said);
       rm.textContent = '\u00d7';
       rm.addEventListener('click', () => removeAttachment(i));
       chip.appendChild(rm);
@@ -1800,8 +1817,17 @@
 
   function messageWithAttachments(base) {
     if (!attachments.length) return base;
-    const lines = attachments.map((a) => '- ' + a.path).join('\n');
-    const header = 'Attached:\n' + lines;
+    // Numbered, and with the name the user is looking at. The model used to
+    // get bare paths, so "delete number 2" and "the second picture" had
+    // nothing to land on but the order of a list nobody had told it was
+    // ordered -- and the path it holds is a name this app invented, which the
+    // user has never seen and would not recognise if they had.
+    const lines = attachments.map((a, i) => {
+      const kind = a.isDir ? 'folder' : (a.thumb ? 'image' : 'file');
+      return (i + 1) + '. ' + a.name + ' (' + kind + ') - ' + a.path;
+    }).join('\n');
+    const header =
+      'Attached (the user sees these numbers and may refer to them by number):\n' + lines;
     const text = (base || '').trim();
     return text ? header + '\n\n---\n\n' + text : header;
   }
