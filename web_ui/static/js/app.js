@@ -1605,9 +1605,16 @@
   // Not a nicety. A photo of a homework page, a screenshot of an error, a
   // phone picture of a wiring diagram -- the whole reason to attach one is to
   // look at it, and "fits on the screen" is not the same as "readable".
-  const PREVIEW_MIN = 1;
-  const PREVIEW_MAX = 8;
+  // Bounds around "fits the screen". Out as well as in, but not so far in
+  // either direction that the picture becomes a stamp or a single blurred
+  // pixel and the way back is not obvious.
+  const PREVIEW_MIN = 0.4;
+  const PREVIEW_MAX = 6;
   const PREVIEW_STEP = 1.35;
+  // Room around the picture at Fit, so it is not jammed against the edges of
+  // the screen, and clear of the bar along the bottom.
+  const PREVIEW_INSET = 44;
+  const PREVIEW_BAR = 104;
   let pvScale = 1;
 
   // The width the picture fits the screen at. Everything else is a multiple
@@ -1619,8 +1626,9 @@
     const stage = document.getElementById('preview-stage');
     const img = stage && stage.querySelector('img');
     if (!img || !img.naturalWidth) return;
-    pvFitW = Math.min(stage.clientWidth / img.naturalWidth,
-                      stage.clientHeight / img.naturalHeight) * img.naturalWidth;
+    const room = Math.max(120, stage.clientWidth - PREVIEW_INSET * 2);
+    const tall = Math.max(120, stage.clientHeight - PREVIEW_INSET - PREVIEW_BAR);
+    pvFitW = Math.min(room / img.naturalWidth, tall / img.naturalHeight) * img.naturalWidth;
   }
 
   function pvApply(announceIt) {
@@ -1634,6 +1642,7 @@
     img.style.width = Math.round(pvFitW * pvScale) + 'px';
     img.style.height = 'auto';
     stage.classList.toggle('zoomed', pvScale > 1);
+    if (pvScale <= 1) { stage.scrollLeft = 0; stage.scrollTop = 0; }
     const label = Math.round(pvScale * 100) + '%';
     const out = document.getElementById('preview-zoom-value');
     if (out) out.textContent = label;

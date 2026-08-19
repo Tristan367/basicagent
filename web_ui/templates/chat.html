@@ -268,10 +268,13 @@
         <div class="preview-scroll" id="preview-stage">
             <img alt="" draggable="false">
         </div>
-        <p class="preview-name"></p>
         <p class="sr-only">Use plus and minus to zoom, 0 to fit the screen,
         and the arrow keys to move around a picture bigger than the screen.</p>
+        {# The name lives in the bar with the controls. Floating it over the top
+           of the picture meant a strip of the picture behind it, and a wash of
+           black to keep it readable. #}
         <div class="preview-bar">
+            <span class="preview-name"></span>
             <button type="button" class="btn-neutral" id="preview-zoom-out"
                     aria-label="Zoom out">&minus;</button>
             <span class="zoom-value" id="preview-zoom-value" aria-live="polite">100%</span>

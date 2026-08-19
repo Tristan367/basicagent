@@ -56,6 +56,45 @@ Two constraints that should survive whatever design wins:
   frustrated by long instructions" — yes. "Struggles with maths" — no. That
   kind of line calcifies into a label a child never escapes.
 
+## Media in a reply: video, audio, and pictures from the web
+
+Deferred, and worth doing.
+
+A picture already appears in the chat when the assistant writes a path on a
+line of its own. Three things extend the same idea, in rising order of how much
+they change:
+
+1. **Picture links.** The same treatment for an `https://` image URL, not only
+   a path on this computer. Almost free: `imageBlock` already builds the
+   element, the only difference is where `src` points. The one real question is
+   whether an image the model chose should be fetched from wherever it says --
+   it is a request to a third party the user did not make, and on a school
+   network that is worth thinking about before it ships.
+
+2. **Audio.** A `<audio controls>` for a sound file, local or linked. Small,
+   and obviously right for a child making a game with sound effects.
+
+3. **Video, and YouTube.** A `<video controls>` for a file. A YouTube link is
+   the interesting one, and the reason to bother: a child who is bored of
+   reading can be shown the thing instead. It needs an iframe embed
+   (`youtube-nocookie.com/embed/ID`), which is a third-party frame inside the
+   app -- so it wants a decision about whether that frame may run at all, and
+   in child mode probably a stricter one.
+
+Whatever ships has to be told to the model, or it will never use it: the agent
+prompt has a section on showing a picture, and this is another paragraph in it.
+Keep that paragraph in the same voice -- *what it does for the user*, not what
+the syntax is.
+
+Two things that make this harder than it looks:
+
+- **Read-aloud has to skip them.** `to_prose` strips fenced code and turns a
+  bare URL into "a link"; a player is another thing that must not be read out,
+  and its title probably should be.
+- **Child mode.** An arbitrary YouTube link from a model is exactly the kind of
+  thing parental controls exist for. It may need an allowlist, or to be off by
+  default, or to ask.
+
 ## Built since this file was written
 
 - **Confirmation before switching into a new project** — creating a project no

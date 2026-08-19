@@ -1646,25 +1646,19 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 .preview-scroll.zoomed { cursor: grab; }
 .preview-scroll.zoomed:active { cursor: grabbing; }
 
-/* The name and the controls float over the picture rather than taking room
-   away from it, and they sit above the scrolling layer. */
-.preview-name, .preview-bar { position: absolute; z-index: 2; }
+/* One floating thing, not two: the name sits in the bar with the controls.
+   Over the top of the picture it needed a wash of black behind it to stay
+   readable, which is pixels of the picture covered up to make room for the
+   picture's name. */
+.preview-bar { position: absolute; z-index: 2; }
 .preview-name {
-    top: 0;
-    left: 0;
-    right: 0;
-    margin: 0;
-    padding: 10px 16px;
-    text-align: center;
-    font-size: 0.92rem;
-    color: var(--text-dim);
+    margin: 0 4px 0 0;
+    max-width: 34vw;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    /* Fading rather than a bar, so it does not cut a line across the picture
-       it is naming. */
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.72), transparent);
-    pointer-events: none;
+    font-size: 0.92rem;
+    color: var(--text-dim);
 }
 .preview-bar {
     bottom: 18px;
