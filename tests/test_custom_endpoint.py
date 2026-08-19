@@ -205,3 +205,80 @@ async def test_the_check_reports_what_happened_not_a_verdict(
     endpoint_http.response = _Response(status, payload)
     result, _ = await _check_endpoint("http://box:8888/v1", "k")
     assert result == expected
+
+
+# ── a box running more than one model ──────────────────────────────────────
+
+
+async def _offered(db, models):
+    from agent_server.model_catalog import offerable_models
+    from agent_server.providers import load_custom_endpoint_providers
+
+    await db.save_custom_endpoint(
+        "llm1", "http://192.168.0.9:8888/v1", "k", models[0] if models else "", models
+    )
+    await load_custom_endpoint_providers()
+    return [m for m in offerable_models() if m["provider"].startswith("custom:")]
+
+
+async def test_one_model_is_listed_under_the_endpoint_name(db):
+    """The user named the box; to them the box is the model."""
+    offered = await _offered(db, ["Qwen3-Coder-Next-UD-Q3_K_XL"])
+    assert [(m["id"], m["name"]) for m in offered] == [("custom:llm1", "llm1")]
+
+
+async def test_several_models_are_each_listed(db):
+    """A rig running llama-swap loads on demand and reports everything it can
+    serve. Picking between a coder and an image model matters, and guessing the
+    first one off the list would have quietly chosen for the user."""
+    served = ["Qwen3-Coder-Next-UD-Q3_K_XL", "flux2-dev-Q4_K_S", "Qwen3.5-4B-UD-Q4_K_XL"]
+    offered = await _offered(db, served)
+    assert [m["name"] for m in offered] == served
+    assert [m["id"] for m in offered] == [f"custom:llm1/{m}" for m in served]
+    assert all(m["provider"] == "custom:llm1" for m in offered)
+    assert all("llm1" in m["provider_label"] for m in offered)
+
+
+async def test_an_endpoint_that_never_answered_is_still_offered(db):
+    """Saving with the rig switched off must not remove it from the picker."""
+    offered = await _offered(db, [])
+    assert [m["id"] for m in offered] == ["custom:llm1"]
+
+
+def test_the_picker_value_splits_into_endpoint_and_model():
+    from agent_server.config import resolve_model_choice, split_custom_choice
+
+    assert split_custom_choice("custom:llm1") == ("custom:llm1", "")
+    assert split_custom_choice("custom:llm1/Qwen3-Coder") == ("custom:llm1", "Qwen3-Coder")
+    # Model ids carry their own slashes; only the first one separates.
+    assert split_custom_choice("custom:llm1/org/model-v2") == ("custom:llm1", "org/model-v2")
+
+    assert resolve_model_choice("custom:llm1") == ("custom:llm1", "custom:llm1")
+    assert resolve_model_choice("custom:llm1/Qwen3-Coder") == ("custom:llm1", "Qwen3-Coder")
+
+
+async def test_a_chosen_model_is_sent_as_itself(db, endpoint_http):
+    """The provider substitutes an id only when the session picked the endpoint
+    as a whole. A session that picked one model must send exactly that."""
+    import agent_server.providers.openai_compat as compat
+    from agent_server.providers.custom_openai import CustomOpenAIProvider
+
+    provider = CustomOpenAIProvider(
+        "llm1", "http://box:8888/v1", "k", "first-model", ["first-model", "other-model"]
+    )
+    sent = {}
+
+    async def fake_chat(self, messages, tools, model, thinking_effort=None):
+        sent["model"] = model
+        return
+        yield  # pragma: no cover -- makes this an async generator
+
+    original = compat.OpenAICompatibleProvider.chat_completion
+    compat.OpenAICompatibleProvider.chat_completion = fake_chat
+    try:
+        async for _ in provider.chat_completion([], [], "other-model"):
+            pass
+    finally:
+        compat.OpenAICompatibleProvider.chat_completion = original
+
+    assert sent["model"] == "other-model"

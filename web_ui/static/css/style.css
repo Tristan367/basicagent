@@ -1414,7 +1414,10 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 }
 .lock-banner p { flex: 1; margin: 0; }
 #locked-area { display: flex; flex-direction: column; gap: 20px; }
-#locked-area.locked { opacity: 0.55; pointer-events: none; }
+/* Locked settings stay editable and legible: the password is asked for when a
+   change is saved, not before it may be typed. Dimming a whole panel to 0.55
+   and killing pointer events also made it unreadable and untabbable, which is
+   a poor way to learn that something is locked. */
 
 /* ── Scroll helpers: back-to-top (settings) and jump-to-bottom (chat) ─────── */
 .to-top-btn { align-self: flex-end; }

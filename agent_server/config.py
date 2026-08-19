@@ -298,13 +298,28 @@ def provider_for_model(model_id: str) -> str:
     return DYNAMIC_MODELS.get(model_id, DEFAULT_PROVIDER)
 
 
+def split_custom_choice(choice: str) -> tuple[str, str]:
+    """Split a custom-endpoint picker value into (endpoint key, model id).
+
+    The picker offers `custom:llm1/Qwen3-Coder` when an endpoint reports
+    several models, and plain `custom:llm1` when it reports one or is not
+    answering. Endpoint names cannot contain a slash, so the first one splits
+    it; anything after that belongs to the model id, which often has its own.
+    """
+    body = choice.removeprefix("custom:")
+    name, _, model_id = body.partition("/")
+    return f"custom:{name}", model_id
+
+
 def resolve_model_choice(choice: str) -> tuple[str, str]:
     """Turn the model picker's value into a (provider, model) pair."""
     choice = (choice or "").strip()
     if choice.startswith("custom:"):
-        # A custom endpoint serves one model and names itself. The provider
-        # asks the endpoint for the id it wants when the request goes out.
-        return choice, choice
+        # Nothing here is typed by the user. Either the endpoint named the
+        # model in its own list, or it serves one and the provider asks which
+        # when the request goes out.
+        endpoint, model_id = split_custom_choice(choice)
+        return endpoint, model_id or endpoint
     if not is_known_model(choice):
         raise ValueError(f"Unknown model: {choice}")
     return provider_for_model(choice), choice

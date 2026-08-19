@@ -111,6 +111,7 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("messages", "open_session", "TEXT"),
     # Discovered by asking the endpoint, never typed. See save_custom_endpoint.
     ("custom_endpoints", "model_id", "TEXT NOT NULL DEFAULT ''"),
+    ("custom_endpoints", "models", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 
@@ -276,30 +277,39 @@ async def get_custom_endpoint(name: str) -> dict | None:
 
 
 async def save_custom_endpoint(name: str, base_url: str, api_key: str = "",
-                               model_id: str = ""):
+                               model_id: str = "", models: list[str] | None = None):
     """Save an endpoint.
 
-    `model_id` is what the server calls the model it is serving. Nobody types
-    it: the endpoint is asked at save time, and asked again on first use if it
-    was not running then. One endpoint serves one model, so the name the user
-    gave the endpoint is the only name they should ever need.
+    Nobody types a model name. The endpoint is asked at save time, and asked
+    again on first use if it was not running then. `model_id` is what to send
+    when nothing more specific is chosen; `models` is everything it listed, so
+    a box running several can offer them all in the picker.
     """
     await _execute(
         "INSERT INTO custom_endpoints"
-        " (name, base_url, api_key, model_id, created_at, updated_at)"
-        " VALUES (?,?,?,?,?,?)"
+        " (name, base_url, api_key, model_id, models, created_at, updated_at)"
+        " VALUES (?,?,?,?,?,?,?)"
         " ON CONFLICT(name) DO UPDATE SET base_url = excluded.base_url,"
         " api_key = excluded.api_key, model_id = excluded.model_id,"
-        " updated_at = excluded.updated_at",
-        (name, base_url, api_key, model_id, _now(), _now()),
+        " models = excluded.models, updated_at = excluded.updated_at",
+        (name, base_url, api_key, model_id, json.dumps(models or []), _now(), _now()),
     )
 
 
-async def set_custom_endpoint_model(name: str, model_id: str):
-    """Record a model id discovered later, when the endpoint first answers."""
+async def set_custom_endpoint_models(name: str, models: list[str]):
+    """Record what an endpoint served, discovered when it first answered."""
     await _execute(
-        "UPDATE custom_endpoints SET model_id = ? WHERE name = ?", (model_id, name)
+        "UPDATE custom_endpoints SET model_id = ?, models = ? WHERE name = ?",
+        (models[0] if models else "", json.dumps(models), name),
     )
+
+
+def endpoint_models(row: dict) -> list[str]:
+    """The model ids an endpoint reported, or [] if it has not been asked."""
+    try:
+        return [str(m) for m in json.loads(row.get("models") or "[]")]
+    except (TypeError, ValueError):
+        return []
 
 
 async def delete_custom_endpoint(name: str):

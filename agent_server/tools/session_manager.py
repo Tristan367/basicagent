@@ -10,7 +10,7 @@ import re
 
 from agent_server import database as db
 from agent_server import parental
-from agent_server.config import PROJECTS_DIR, provider_for_model
+from agent_server.config import PROJECTS_DIR, provider_for_model, split_custom_choice
 from agent_server.model_catalog import effective_default_model
 from agent_server.tools.base import ToolContext, ToolResult
 
@@ -39,9 +39,9 @@ async def _default_model() -> tuple[str, str]:
     """
     model = effective_default_model(await db.get_all_settings())
     if model.startswith("custom:"):
-        # A custom endpoint is its own model; the provider resolves the id the
-        # server wants when the request goes out.
-        return model, model
+        # The endpoint, or one model on it. The provider resolves the rest.
+        endpoint, model_id = split_custom_choice(model)
+        return endpoint, model_id or endpoint
     return provider_for_model(model), model
 
 

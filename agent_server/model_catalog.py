@@ -66,17 +66,30 @@ def offerable_models() -> list[dict]:
                 "recommended": model["id"] in RECOMMENDED_MODELS,
             })
 
+    # Custom endpoints. A box running one model is listed under the name its
+    # owner gave it -- to them, the endpoint *is* the model. A box running
+    # several (llama-swap and friends load on demand) lists each one, because
+    # picking between a coder and an image model matters and nothing about it
+    # should have to be typed.
     for key, provider in _providers.items():
-        if key.startswith("custom:") and provider.has_credentials():
-            offered.append({
-                "id": key,
-                "name": provider.name,
-                "provider_label": "your own computer",
-                "provider": key,
-                "price_out": 0.0,
-                "price_label": "your own",
-                "recommended": False,
-            })
+        if not key.startswith("custom:") or not provider.has_credentials():
+            continue
+        served = provider.served_models()
+        entry = {
+            "provider_label": "your own computer",
+            "provider": key,
+            "price_out": 0.0,
+            "price_label": "your own",
+            "recommended": False,
+        }
+        if len(served) > 1:
+            offered += [
+                {**entry, "id": f"{key}/{m}", "name": m,
+                 "provider_label": f"your own computer · {provider.name}"}
+                for m in served
+            ]
+        else:
+            offered.append({**entry, "id": key, "name": provider.name})
 
     # Free first, then by price. Someone looking for the cheapest option should
     # find it at the top rather than having to read down the middle of the list

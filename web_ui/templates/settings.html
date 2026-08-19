@@ -62,8 +62,8 @@
 
     {% if child_mode %}
     <div class="lock-banner">
-        <p>Changing your AI, API keys, or model is locked while child mode is on.</p>
-        <button type="button" class="btn-neutral" id="unlock-settings">Unlock with parent password</button>
+        <p>Changing your AI, API keys, or model is locked while child mode is on.
+        You will be asked for the parent password each time you save one of them.</p>
     </div>
     {% endif %}
     <div id="locked-area" {% if child_mode %}data-locked="1"{% endif %}>
@@ -493,8 +493,20 @@ function flashSaved() {
     });
 })();
 
+// Most settings save themselves the moment you change them -- there is no Save
+// button to hunt for and nothing to forget to press.
+//
+// A locked form cannot do that. It used to try anyway: in child mode the
+// background save came back "locked", nothing on the page said so, and the
+// change quietly did not happen. Locked forms hand off to the parent-password
+// gate instead, which asks, submits properly, and reloads into a locked page.
 document.querySelectorAll('form[data-autosave]').forEach((form) => {
+    const locked = () => form.closest('#locked-area[data-locked]');
     const save = async () => {
+        if (locked()) {
+            if (window.__parentGate) window.__parentGate(form);
+            return;
+        }
         try {
             const resp = await fetch(form.action, { method: 'POST', body: new FormData(form) });
             if (resp.ok) flashSaved();
@@ -727,23 +739,48 @@ document.querySelectorAll('.theme-choice .theme-opt[data-theme]').forEach((btn) 
         });
     });
 
-    // Locked settings: unlock with the password, then allow editing.
+    // Locked settings: the password is asked for once per change, and buys
+    // exactly that change.
+    //
+    // It used to unlock the whole area for as long as the page stayed open. A
+    // parent who changed one thing and walked away left every locked setting
+    // open behind them, which is the one moment the lock is actually for: a
+    // child can otherwise put it straight back the way it was. So the fields
+    // stay editable -- being asked before you are allowed to type is a worse
+    // way to find out something is locked -- and the password is asked for on
+    // submit, added to that one form, and never held anywhere. Saving reloads
+    // the page, so the next change asks again.
     const lockedArea = document.getElementById('locked-area');
-    const unlockBtn = document.getElementById('unlock-settings');
-    if (lockedArea && lockedArea.dataset.locked && unlockBtn) {
-        lockedArea.classList.add('locked');
-        unlockBtn.addEventListener('click', () => {
-            openPrompt('Unlock settings', 'Enter the parent password to change your AI, API keys, or model.', false, async (password) => {
+
+    // Ask for the password, then send this one form. Shared with the autosave
+    // handler above, which is the other way a locked setting gets changed.
+    window.__parentGate = function (form) {
+        openPrompt('Parent password',
+            'Enter the parent password to make this one change. It will be asked for again next time.',
+            false, async (password) => {
                 const r = await post('/api/child/verify', { password });
                 if (!r.ok) return { ok: false, reason: 'password' };
-                lockedArea.classList.remove('locked');
-                unlockBtn.hidden = true;
-                lockedArea.querySelectorAll('form').forEach((f) => {
-                    let h = f.querySelector('input[name="parent_password"]');
-                    if (!h) { h = document.createElement('input'); h.type = 'hidden'; h.name = 'parent_password'; f.appendChild(h); }
-                    h.value = password;
-                });
+                let h = form.querySelector('input[name="parent_password"]');
+                if (!h) {
+                    h = document.createElement('input');
+                    h.type = 'hidden';
+                    h.name = 'parent_password';
+                    form.appendChild(h);
+                }
+                h.value = password;
+                // A real submit, not fetch: the page reloads and comes back
+                // locked, so the password exists for one request and then the
+                // DOM holding it is gone.
+                form.submit();
                 return { ok: true };
+            });
+    };
+
+    if (lockedArea && lockedArea.dataset.locked) {
+        lockedArea.querySelectorAll('form').forEach((form) => {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                window.__parentGate(form);
             });
         });
     }

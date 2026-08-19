@@ -19,12 +19,13 @@ class CustomOpenAIProvider(OpenAICompatibleProvider):
     """A named custom endpoint. name='my-vllm', base_url='http://box:8000/v1'."""
 
     def __init__(self, name: str = "", base_url: str = "", api_key: str = "",
-                 model_id: str = ""):
+                 model_id: str = "", models: list[str] | None = None):
         super().__init__()
         self._name = name
         self.base_url = base_url
         self._api_key = api_key or ""
         self._model_id = model_id or ""
+        self._models = list(models or [])
 
     @property
     def name(self) -> str:
@@ -62,13 +63,16 @@ class CustomOpenAIProvider(OpenAICompatibleProvider):
         return []
 
     # ── which model ────────────────────────────────────────────────────────
-    async def _discover_model(self) -> str:
-        """Ask the endpoint what it is serving, and remember the answer.
+    def served_models(self) -> list[str]:
+        """What this endpoint said it serves, as last asked."""
+        return list(self._models)
 
-        One endpoint serves one model. There is no menu to pick from and no way
-        to switch without restarting the server behind it, so asking the user
-        to type a model id was asking them for something only the endpoint
-        knows -- and getting it slightly wrong failed every request.
+    async def _discover_model(self) -> str:
+        """Ask the endpoint what it serves, and remember the answer.
+
+        Asking the user to type a model id was asking them for something only
+        the endpoint knows -- and getting it slightly wrong failed every
+        request with nothing on screen to explain why.
         """
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
         try:
@@ -79,15 +83,16 @@ class CustomOpenAIProvider(OpenAICompatibleProvider):
             response.raise_for_status()
             rows = response.json().get("data", [])
         except Exception as e:
-            log.info("endpoint %s could not be asked for its model: %s", self._name, e)
+            log.info("endpoint %s could not be asked for its models: %s", self._name, e)
             return ""
-        model_id = str(rows[0].get("id", "")) if rows else ""
-        if model_id:
+        models = [str(r["id"]) for r in rows if r.get("id")]
+        if models:
             from agent_server import database as db
 
-            self._model_id = model_id
-            await db.set_custom_endpoint_model(self._name, model_id)
-        return model_id
+            self._models = models
+            self._model_id = models[0]
+            await db.set_custom_endpoint_models(self._name, models)
+        return self._model_id
 
     async def chat_completion(
         self,
@@ -96,12 +101,16 @@ class CustomOpenAIProvider(OpenAICompatibleProvider):
         model: str,
         thinking_effort: str | None = None,
     ) -> AsyncIterator[StreamEvent]:
-        # The session stores the endpoint (`custom:my-vllm`) as its model,
-        # because to the user the endpoint *is* the model. Substitute the id
-        # the server itself uses, discovering it now if it was not running when
-        # the endpoint was saved. The name is a last resort: most local servers
-        # ignore this field, and one that does not will say so plainly.
-        model_id = self._model_id or await self._discover_model() or self._name
+        # A session that picked a specific model off this endpoint already
+        # carries its real id and is passed straight through. One that only
+        # picked the endpoint gets whatever it serves, discovered now if it was
+        # switched off when the endpoint was saved. The endpoint name is a last
+        # resort: most local servers ignore this field, and one that does not
+        # will say so plainly.
+        if not model.startswith("custom:"):
+            model_id = model
+        else:
+            model_id = self._model_id or await self._discover_model() or self._name
         async for event in super().chat_completion(
             messages, tools, model_id, thinking_effort
         ):

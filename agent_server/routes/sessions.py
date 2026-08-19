@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from agent_server import agent, parental
 from agent_server import database as db
-from agent_server.config import model_info, provider_for_model
+from agent_server.config import model_info, provider_for_model, split_custom_choice
 from agent_server.model_catalog import offerable_models
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -130,11 +130,12 @@ async def switch_model(session_id: str, request: Request, payload: dict):
         yield agent.sse({"type": "switch_status", "phase": "switching", "name": display_name})
 
         if model.startswith("custom:"):
-            # An endpoint is its own model: it serves exactly one, and you
-            # cannot switch without restarting the server behind it. Both
-            # columns hold the endpoint key, and the provider substitutes the
-            # id the server uses at request time.
-            await db.update_session(session_id, provider=model, model=model)
+            # `custom:llm1` is the endpoint as a whole; `custom:llm1/some-model`
+            # is one model on it. Either way the provider column holds the
+            # endpoint, and nothing here was typed by the user.
+            endpoint, model_id = split_custom_choice(model)
+            await db.update_session(session_id, provider=endpoint,
+                                    model=model_id or endpoint)
         else:
             await db.update_session(session_id, provider=provider_for_model(model), model=model)
         log.info("switch model done session=%s model=%s", session_id, model)

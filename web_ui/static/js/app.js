@@ -2565,16 +2565,19 @@
     function hideMenu() {
       modelMenu.hidden = true;
       modelBtn.setAttribute('aria-expanded', 'false');
+      // Closing the menu without switching spends the password too. Otherwise
+      // an unlock left lying open is an unlock the parent has forgotten about.
+      if (!pendingModel) parentPassword = null;
     }
     modelBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!modelMenu.hidden) { hideMenu(); return; }
-      if (childMode && parentPassword === null) {
-        // The password is remembered for this page, so unlocking one locked
-        // thing does not mean unlocking child mode itself, and does not have
-        // to be typed again to change the model twice.
-        // The server checks the password again on the switch itself, so a
-        // build with no password modal is not a way past it.
+      if (childMode) {
+        // Asked every time, and the answer buys exactly one switch. Holding it
+        // for the page meant a parent who changed the model and walked away
+        // left it changeable, and putting it straight back is the one thing
+        // the lock exists to stop. The server checks it again on the switch
+        // itself, so a build with no password modal is not a way past it.
         promptParentPassword((password) => { parentPassword = password; showMenu(); });
         return;
       }
@@ -2594,6 +2597,7 @@
     const confirm = document.getElementById('model-switch-confirm');
     if (cancel) cancel.addEventListener('click', () => {
       pendingModel = null;
+      parentPassword = null;
       window.__closeModal();
     });
     if (confirm) confirm.addEventListener('click', async () => {
@@ -2602,11 +2606,15 @@
       pendingModel = null;
       window.__closeModal();
       setStatus('Switching to ' + m.name + '…');
+      // Spent on this one switch, whether or not it works. The next one asks
+      // again, so a child cannot follow a parent's change with their own.
+      const password = parentPassword;
+      parentPassword = null;
       try {
         const resp = await fetch('/api/sessions/' + sessionId + '/model', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: m.id, parent_password: parentPassword || '' }),
+          body: JSON.stringify({ model: m.id, parent_password: password || '' }),
         });
         if (!resp.ok) {
           let msg = 'Could not switch model.';

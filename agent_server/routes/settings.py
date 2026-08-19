@@ -102,17 +102,19 @@ async def save_custom_endpoint(
     # what was typed. Asking the endpoint is both certain and more useful: it
     # catches a wrong key, a wrong address, and a server that is not running.
     # The same answer carries the model id, so nobody has to type that either.
-    status, model_id = await _check_endpoint(base_url, api_key)
-    await db.save_custom_endpoint(name, base_url, api_key, model_id)
+    status, models = await _check_endpoint(base_url, api_key)
+    await db.save_custom_endpoint(name, base_url, api_key,
+                                  models[0] if models else "", models)
     await load_custom_endpoint_providers()
     return RedirectResponse(f"/settings?checked={status}", status_code=303)
 
 
-async def _check_endpoint(base_url: str, api_key: str) -> tuple[str, str]:
+async def _check_endpoint(base_url: str, api_key: str) -> tuple[str, list[str]]:
     """Ask an endpoint for its model list.
 
-    Returns a short status word and the id of the first model it reports, which
-    is the name it wants in requests.
+    Returns a short status word and every model id it reports. A box serving
+    one is named by the endpoint; a box serving several offers them all in the
+    picker. Either way nothing is typed.
     """
     import httpx
 
@@ -121,20 +123,20 @@ async def _check_endpoint(base_url: str, api_key: str) -> tuple[str, str]:
         async with httpx.AsyncClient(timeout=8) as client:
             response = await client.get(f"{base_url.rstrip('/')}/models", headers=headers)
     except httpx.HTTPError:
-        return "unreachable", ""
+        return "unreachable", []
     # The real status, not a verdict. A 401 usually means the key, but some
     # servers answer that way to any path they do not recognise, so saying
     # "the key is wrong" outright sends people hunting for the wrong problem.
     if response.status_code in (401, 403):
-        return f"auth{response.status_code}", ""
+        return f"auth{response.status_code}", []
     if response.status_code >= 400:
-        return f"http{response.status_code}", ""
+        return f"http{response.status_code}", []
     try:
         rows = response.json().get("data", [])
     except ValueError:
-        return "error", ""
-    first = str(rows[0].get("id", "")) if rows else ""
-    return f"ok{len(rows)}", first
+        return "error", []
+    models = [str(r["id"]) for r in rows if r.get("id")]
+    return f"ok{len(models)}", models
 
 
 @router.post("/_settings/custom_endpoint/delete")
