@@ -5,11 +5,15 @@ from agent_server.providers.deepseek import DeepSeekProvider
 from agent_server.providers.gemini import GeminiProvider
 from agent_server.providers.openrouter import OpenRouterProvider
 
-# Insertion order is the order the Settings page lists them in, so it runs
-# cheapest-and-easiest first: DeepSeek is the cheapest, Gemini has a free tier.
+# Insertion order is the order the Settings page lists them in, and the first
+# one is what most people will take. Gemini leads because it is the only one
+# you can start using without entering a payment method at all -- and because
+# for the teachers this app keeps finding its way to, a Google account is
+# something they already have. DeepSeek is second: cheapest to run, and better
+# at code, but it needs a card.
 _providers: dict[str, Provider] = {
-    "deepseek": DeepSeekProvider(),
     "gemini": GeminiProvider(),
+    "deepseek": DeepSeekProvider(),
     "openrouter": OpenRouterProvider(),
     "anthropic": AnthropicProvider(),
 }

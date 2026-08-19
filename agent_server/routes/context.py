@@ -21,25 +21,32 @@ from agent_server.stt import availability as stt_availability
 
 # Plain-language blurbs for the providers a non-technical user has to choose
 # between. The point is to let them pick without knowing what any of these are.
+#
+# `key_hint` is what that provider's keys actually start with. Every box used
+# to say "sk-..." regardless, so someone pasting a Gemini key (which begins
+# AIza) had good reason to think they had fetched the wrong thing.
 PROVIDER_INFO = {
-    "deepseek": {
-        "description": (
-            "The cheapest option, and still really good at coding and hard tasks. "
-            "This app was actually built using DeepSeek. You can work for hours and "
-            "still spend less than a dollar. The best choice for most people."
-        ),
-        "get_key_url": "https://platform.deepseek.com",
-        "get_key_label": "get a key",
-    },
     "gemini": {
         "description": (
-            "Google's AI. The best place to start if you would rather not put a "
-            "card in at all: the everyday Gemini models have a free allowance, so "
-            "you can use this app for nothing until you outgrow it. Friendly, "
-            "creative, and very good with pictures."
+            "Google's AI, and the easiest place to start: the everyday Gemini "
+            "models come with a free allowance, so you can use this app properly "
+            "without entering a card anywhere. If you already have a Google "
+            "account you are most of the way there. Friendly, creative, and very "
+            "good with pictures."
         ),
+        "key_hint": "AIza\u2026",
         "get_key_url": "https://aistudio.google.com/apikey",
         "get_key_label": "get a free key",
+    },
+    "deepseek": {
+        "description": (
+            "The cheapest paid option, and the best of these at writing code — "
+            "this app was built with it. You can work for hours and still spend "
+            "less than a dollar, but it does need a card on file."
+        ),
+        "key_hint": "sk-\u2026",
+        "get_key_url": "https://platform.deepseek.com",
+        "get_key_label": "get a key",
     },
     "openrouter": {
         "description": (
@@ -47,6 +54,7 @@ PROVIDER_INFO = {
             "companies, all in one place. Handy if you want to try lots of models, "
             "but you pay a little extra for the convenience."
         ),
+        "key_hint": "sk-or-\u2026",
         "get_key_url": "https://openrouter.ai",
         "get_key_label": "get a key",
     },
@@ -57,6 +65,7 @@ PROVIDER_INFO = {
             "DeepSeek could cost many dollars here. Worth it if you want the very "
             "best and don't mind the price."
         ),
+        "key_hint": "sk-ant-\u2026",
         "get_key_url": "https://platform.claude.com",
         "get_key_label": "get a key",
     },

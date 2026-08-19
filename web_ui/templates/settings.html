@@ -91,7 +91,8 @@
         <form method="POST" action="/_settings" class="inline-form" data-autosave>
             {% for f in ps.fields %}
             {% if f.kind == 'password' %}
-            <input type="password" name="{{ f.key }}" placeholder="Paste your key here (sk-...)"
+            <input type="password" name="{{ f.key }}"
+                   placeholder="Paste your key here{% if ps.info.key_hint %} ({{ ps.info.key_hint }}){% endif %}"
                    aria-label="{{ ps.name }} {{ f.label }}"
                    autocomplete="off" spellcheck="false"
                    value="{% if f.has_value %}&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;{% endif %}">
