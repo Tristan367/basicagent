@@ -1613,3 +1613,26 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 }
 .bubble tbody tr:last-child td { border-bottom: none; }
 .bubble table code { white-space: nowrap; }
+
+/* ── Softening abrupt brightness changes ─────────────────────────────────── */
+
+/* Switching light/dark repaints the entire screen. Instantly, that is the
+   largest luminance jump the app can produce -- larger than anything else here.
+   The transition is applied only while the switch happens, so it never slows
+   ordinary interaction or animates during the first paint of a page. */
+.theme-shifting, .theme-shifting * {
+    transition: background-color 260ms ease, color 260ms ease,
+                border-color 260ms ease !important;
+}
+
+/* A dialog drops a near-opaque cover over the page. Easing it in is gentler
+   than a hard cut to black, for the same reason the camera fades up. */
+.modal-backdrop { opacity: 0; transition: opacity 180ms ease; }
+.modal-backdrop.shown { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+    /* These are luminance ramps, not movement, so they stay -- removing them
+       would put the abrupt change back. Shortened, not disabled. */
+    .theme-shifting, .theme-shifting * { transition-duration: 120ms !important; }
+    .modal-backdrop { transition-duration: 90ms; }
+}

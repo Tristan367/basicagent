@@ -496,7 +496,7 @@ if (accentPicker) {
 document.querySelectorAll('.theme-choice .theme-opt[data-theme]').forEach((btn) => {
     btn.addEventListener('click', () => {
         const theme = btn.dataset.theme;
-        document.documentElement.dataset.theme = theme;
+        window.__shiftTheme(theme);
         document.querySelectorAll('.theme-choice .theme-opt').forEach((b) => {
             b.classList.toggle('active', b === btn);
             b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');

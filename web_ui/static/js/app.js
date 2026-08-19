@@ -6,10 +6,24 @@
 (function () {
   // ── Theme (the server is the source of truth) ─────────────────────────────
 
+  /* Repaint the page for a new theme, easing the colours across rather than
+   * flipping the screen's brightness in a single frame -- the largest
+   * luminance change this app can produce. The transition class is added only
+   * for the length of the switch, so nothing else is ever slowed by it, and
+   * only when the theme actually changed. Shared by the settings buttons, the
+   * welcome dialog, and the assistant's own `set_theme`. */
+  window.__shiftTheme = function (theme) {
+    const root = document.documentElement;
+    if (!theme || root.dataset.theme === theme) return;
+    root.classList.add('theme-shifting');
+    root.dataset.theme = theme;
+    setTimeout(() => root.classList.remove('theme-shifting'), 320);
+  };
+
   async function refreshTheme() {
     try {
       const data = await fetch('/api/theme').then((r) => r.json());
-      if (data.theme) document.documentElement.dataset.theme = data.theme;
+      window.__shiftTheme(data.theme);
     } catch (e) {}
   }
 
@@ -116,6 +130,9 @@
     window.__modalEl = el;
     window.__modalReturn = document.activeElement;
     el.hidden = false;
+    // Next frame, so the browser has painted the hidden->visible change and the
+    // opacity transition actually runs instead of being collapsed into it.
+    requestAnimationFrame(() => el.classList.add('shown'));
     setBackgroundInert(el, true);
     const target = focusEl || focusableIn(el)[0];
     if (target) target.focus();
@@ -127,6 +144,7 @@
     window.__modalEl = null;
     window.__modalReturn = null;
     setBackgroundInert(el, false);
+    el.classList.remove('shown');
     el.hidden = true;
     if (ret && ret.focus) ret.focus();
     // So a dialog can clean up after itself however it was dismissed. The
@@ -2529,7 +2547,7 @@
     welcomeModal.querySelectorAll('.theme-opt[data-theme]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const theme = btn.dataset.theme;
-        document.documentElement.dataset.theme = theme;
+        window.__shiftTheme(theme);
         welcomeModal.querySelectorAll('.theme-opt').forEach((b) => {
           b.classList.toggle('active', b === btn);
           b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
