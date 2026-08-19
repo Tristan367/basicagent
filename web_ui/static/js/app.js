@@ -1610,14 +1610,26 @@
   const PREVIEW_STEP = 1.35;
   let pvScale = 1, pvX = 0, pvY = 0;
 
+  // The size `object-fit: contain` actually paints the picture at.
+  function pvDrawnSize(stage, img) {
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    if (!nw || !nh) return { w: stage.clientWidth, h: stage.clientHeight };
+    const fit = Math.min(stage.clientWidth / nw, stage.clientHeight / nh);
+    return { w: nw * fit, h: nh * fit };
+  }
+
   function pvApply(announceIt) {
     const stage = document.getElementById('preview-stage');
     const img = stage && stage.querySelector('img');
     if (!img) return;
     // Panning is bounded by however much of the picture is off-screen, so it
-    // can never be dragged out of the window and lost.
-    const slackX = Math.max(0, (img.clientWidth * pvScale - stage.clientWidth) / 2);
-    const slackY = Math.max(0, (img.clientHeight * pvScale - stage.clientHeight) / 2);
+    // can never be dragged out of the window and lost. Measured from what is
+    // actually drawn, not from the element: the element now fills the window
+    // and the picture is letterboxed inside it, so the element's size would
+    // allow panning into the empty bars at the sides.
+    const drawn = pvDrawnSize(stage, img);
+    const slackX = Math.max(0, (drawn.w * pvScale - stage.clientWidth) / 2);
+    const slackY = Math.max(0, (drawn.h * pvScale - stage.clientHeight) / 2);
     pvX = Math.min(slackX, Math.max(-slackX, pvX));
     pvY = Math.min(slackY, Math.max(-slackY, pvY));
     img.style.transform =

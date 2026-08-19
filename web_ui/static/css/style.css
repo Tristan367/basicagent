@@ -1556,12 +1556,13 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     gap: 12px;
     align-items: center;
 }
-/* The window the picture is zoomed inside. The picture may be larger than
-   this; anything past the edge is clipped rather than pushing the dialog
-   around, and panning brings it back. */
+/* The window the picture is shown in, at a fixed size rather than shrunk to
+   whatever was attached. Sizing it to the image gave a small picture a small
+   window, so there was nowhere for it to get bigger *into*: zooming magnified
+   a crop inside the same little square instead of filling the screen. */
 .preview-stage {
-    max-width: min(1000px, 88vw);
-    max-height: 74vh;
+    width: min(1000px, 88vw);
+    height: min(70vh, 720px);
     overflow: hidden;
     border-radius: 8px;
     background: #000;
@@ -1572,9 +1573,13 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 }
 .preview-stage.zoomed { cursor: grab; }
 .preview-stage.zoomed:active { cursor: grabbing; }
+/* `width`/`height` rather than the max- pair: those only ever shrink, so a
+   photo smaller than the window stayed its own tiny size in the middle of it.
+   With `contain` this fills the window in whichever direction runs out first,
+   and enlarges a small picture to get there. */
 .preview-card img {
-    max-width: min(1000px, 88vw);
-    max-height: 74vh;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     transform-origin: center center;
     will-change: transform;
@@ -1677,12 +1682,13 @@ img { -webkit-user-drag: none; user-select: none; }
     gap: 12px;
     align-items: center;
 }
-/* The window the picture is zoomed inside. The picture may be larger than
-   this; anything past the edge is clipped rather than pushing the dialog
-   around, and panning brings it back. */
+/* The window the picture is shown in, at a fixed size rather than shrunk to
+   whatever was attached. Sizing it to the image gave a small picture a small
+   window, so there was nowhere for it to get bigger *into*: zooming magnified
+   a crop inside the same little square instead of filling the screen. */
 .preview-stage {
-    max-width: min(1000px, 88vw);
-    max-height: 74vh;
+    width: min(1000px, 88vw);
+    height: min(70vh, 720px);
     overflow: hidden;
     border-radius: 8px;
     background: #000;
@@ -1693,9 +1699,13 @@ img { -webkit-user-drag: none; user-select: none; }
 }
 .preview-stage.zoomed { cursor: grab; }
 .preview-stage.zoomed:active { cursor: grabbing; }
+/* `width`/`height` rather than the max- pair: those only ever shrink, so a
+   photo smaller than the window stayed its own tiny size in the middle of it.
+   With `contain` this fills the window in whichever direction runs out first,
+   and enlarges a small picture to get there. */
 .preview-card img {
-    max-width: min(1000px, 88vw);
-    max-height: 74vh;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     transform-origin: center center;
     will-change: transform;
