@@ -86,14 +86,114 @@ prompt has a section on showing a picture, and this is another paragraph in it.
 Keep that paragraph in the same voice -- *what it does for the user*, not what
 the syntax is.
 
-Two things that make this harder than it looks:
+Read-aloud has to skip them. `to_prose` strips fenced code and turns a bare URL
+into "a link"; a player is another thing that must not be read out, and its
+title probably should be.
 
-- **Read-aloud has to skip them.** `to_prose` strips fenced code and turns a
-  bare URL into "a link"; a player is another thing that must not be read out,
-  and its title probably should be.
-- **Child mode.** An arbitrary YouTube link from a model is exactly the kind of
-  thing parental controls exist for. It may need an allowlist, or to be off by
-  default, or to ask.
+### The line to draw, and why
+
+The worry that stalled this was "what if the AI shows a child something
+inappropriate". That is the right worry but the wrong mechanism, and naming the
+real one settles the design:
+
+- **A model does not choose a bad video. It guesses a video ID.** Eleven
+  characters, invented, and the ones that are not a 404 are a stranger's
+  upload with no relation to the lesson. That is the actual exposure, it is not
+  fixed by a better-behaved model, and it applies to any URL the model made up.
+- **An embed is a doorway, not a video.** Even `youtube-nocookie.com/embed`
+  ends on recommendations and a "Watch on YouTube" link. Embedding one video
+  puts all of YouTube inside a homeschooling app. That is precisely what the
+  parents this is for are avoiding, and they are right.
+- **A remote image is a request to a third party the user did not make** --
+  their address given to whatever host the model named. Smaller, but the same
+  shape.
+
+So the rule is about **provenance, not media type**:
+
+> A player is for a file on this computer, or for something a *person* chose.
+> Never for a URL the model invented.
+
+Which gives, in order of what to build:
+
+1. **Audio and video for local files.** `<audio controls>` / `<video controls>`
+   for a path, exactly like a picture path today. No provenance problem at all
+   -- the agent made or fetched the file deliberately. Obviously right for a
+   child making a game with sound. Build this first; it is the cheap half.
+2. **Remote images, proxied.** Fetch server-side and re-serve from our own
+   origin rather than putting a foreign URL in `src`. Kills the address leak,
+   gives one place to enforce a child-mode rule, and makes local and remote a
+   single code path.
+3. **YouTube: a link card, not an embed.** Title, channel, thumbnail, opens in
+   the real browser. The family's own controls then apply, and we have not
+   built a video portal. An actual embed, if ever, is a parent-password
+   setting that is off by default.
+
+The exception worth building toward: **a video a parent put in a lesson is
+fine to embed**, because a human chose it. That inverts the whole problem, and
+it is an argument for the lesson-plan idea below rather than against players.
+
+### "Limit the internet in child mode"
+
+Tempting, and mostly not possible. The agent has `bash`, `webfetch` and
+`websearch`, and it needs them -- to install a package, to read current
+documentation, to find a picture of a shark a child asked for. Cutting them off
+leaves an agent that cannot do the job.
+
+The line that *is* enforceable: **the agent may read the internet; the child is
+never handed a doorway into it.** Reading a page and telling a child what it
+says is supervised by the model. A live, navigable third-party surface inside
+the app is not supervised by anything. That distinction is defensible to a
+parent and it is the one to hold.
+
+## Lessons a parent writes and a child opens
+
+**Status: designed here, not built. The strongest idea in this file.**
+
+Two things a child does in this app, and they are not the same thing:
+
+1. **Making games.** This is what a child will actually want, and it is the
+   best teaching vehicle there is -- the feedback loop is immediate, the
+   artifact is theirs, and "make the ball bounce faster" is a change they can
+   ask for in their own words and see happen. It is also the one kind of
+   software a non-technical person can judge for themselves.
+2. **What the parent wants taught.** Objectives, a subject for the day,
+   questions the child should be able to answer afterwards *without* asking the
+   AI.
+
+The instinct is to build these as two separate features. They should be one
+object: **a lesson is attached to a project, not a project of its own.** The
+parent says "I want her to make a bouncing-ball game, and to come out of it
+understanding loops and coordinates." That produces a child project that is a
+game project, with objectives the agent knows about. The child opens it and
+makes a game; the teaching rides along inside the thing they wanted to do
+anyway. Two competing lists collapse into one.
+
+The authoring flow is the good part of the original idea and should survive
+intact: the parent *talks* to the home assistant about what they want their
+child to learn, it drafts the objectives and the questions, the parent adjusts
+them in conversation. A parent cannot author a lesson plan in a text box. They
+can absolutely describe one out loud.
+
+Four things that have to be solved:
+
+- **The child's agent must not be able to edit the lesson.** Today a project's
+  agent has `write` and `edit` over the whole folder, so "can you make it
+  easier" would have it cheerfully rewrite the objectives. And the lesson is
+  partly *instructions to the agent* -- "do not give her these four answers" --
+  which only works if it is trusted, which only holds if the child cannot
+  change it. Read for the child, write for the parent. `file_ops` already
+  resolves every path, so one denied path is a small change.
+- **Handing it over.** Child projects live under their own directory and the
+  child has a separate home session. A parent-authored lesson has to be
+  published into the child's list -- probably a flag on the project rather than
+  moving files.
+- **The child has to be told it is there.** Otherwise it is a folder nobody
+  opens. The child's home assistant should say so on arrival, in its own words:
+  "your mum left you something to do today."
+- **It makes the parent review real.** The deferred review feature above has
+  nothing to compare against right now. Objectives give it one, and turn "was
+  she engaged" into "did she get there". These two features are one feature and
+  should be designed together.
 
 ## Built since this file was written
 

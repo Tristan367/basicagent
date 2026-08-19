@@ -22,8 +22,10 @@ from agent_server.tools.base import ToolContext, ToolResult
 MAX_STEPS = 24
 MAX_ANALYSES = 4
 
-# Actions that name a target element.
-_TARGETED = {"click", "fill", "press", "hover", "select", "check", "uncheck", "upload"}
+# Actions that name a target element. `press` is deliberately not here: without
+# `at` it goes to the page's keyboard, which is the only way to send Escape or
+# Tab to whatever has focus -- and requiring `at` made that branch unreachable.
+_TARGETED = {"click", "fill", "hover", "select", "check", "uncheck", "upload"}
 
 
 async def browser(
@@ -210,7 +212,13 @@ async def _perform(ctx, session, action: str, step: dict):
         elif to == "bottom":
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         else:
-            await page.evaluate(f"window.scrollBy(0, {int(to)})")
+            try:
+                pixels = int(to)
+            except (TypeError, ValueError):
+                raise engine.BrowserError(
+                    f"`scroll` takes to: top, bottom, or a number of pixels -- not {to!r}"
+                ) from None
+            await page.evaluate(f"window.scrollBy(0, {pixels})")
         return ""
 
     if action == "wait":
@@ -364,6 +372,8 @@ async def _expect(session, step: dict, at: str, timeout: int):
         return {"text": f"url is {page.url}"}
 
     if "count" in step:
+        if not at:
+            raise engine.BrowserError("`expect count` needs `at` -- how many of what?")
         wanted = int(step["count"])
         found = await _locate(page, at).count()
         if found != wanted:

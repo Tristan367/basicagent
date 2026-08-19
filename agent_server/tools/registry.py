@@ -279,7 +279,8 @@ register(Tool(
         "uncheck, upload, scroll, wait, back, forward, reload, resize, snapshot, eval, "
         "network, shoot, record, expect. `expect` is an assertion and fails the call "
         "if it does not hold. `shoot` saves a screenshot; add `ask` to have it "
-        "described."
+        "described. `press` without `at` sends the key to whatever has focus, which "
+        "is how you test Escape, Tab and keyboard navigation."
     ),
     parameters={
         "type": "object",
@@ -303,20 +304,50 @@ register(Tool(
                         "url": {"type": "string", "description": "For goto, or expect url"},
                         "text": {"type": "string", "description": "For fill, or expect text"},
                         "key": {"type": "string", "description": "For press, e.g. Enter"},
-                        "value": {"type": "string", "description": "For select"},
+                        "value": {
+                            "type": ["string", "array"],
+                            "items": {"type": "string"},
+                            "description": "For select: one option, or several for a multi-select",
+                        },
                         "js": {"type": "string", "description": "For eval"},
                         "ask": {"type": "string", "description": "On shoot/record: question to answer"},
+                        "compare": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "On shoot/record with `ask`: image files to put alongside the "
+                                "new frame, so one question spans both (a mockup, or an "
+                                "earlier frame). Up to 4."
+                            ),
+                        },
                         "visible": {"type": "string", "description": "expect: must be visible"},
                         "hidden": {"type": "string", "description": "expect: must be gone"},
-                        "count": {"type": "integer", "description": "expect/record/network count"},
+                        "count": {
+                            "type": "integer",
+                            "description": (
+                                "expect: how many must match `at`. record: frames. "
+                                "network: requests shown. click: 2 for a double-click."
+                            ),
+                        },
                         "filter": {"type": "string", "description": "On network: URL substring or /regex/"},
                         "console_clean": {"type": "boolean", "description": "expect: no console errors"},
                         "full_page": {"type": "boolean", "description": "shoot: whole scrollable page"},
                         "paths": {"type": "array", "items": {"type": "string"}, "description": "For upload"},
+                        "path": {"type": "string", "description": "For upload: a single file"},
                         "ms": {"type": "integer", "description": "For wait"},
                         "interval_ms": {"type": "integer", "description": "For record"},
                         "to": {"type": "string", "description": "For scroll: top, bottom, or pixels"},
                         "until": {"type": "string", "description": "For wait and goto: load|domcontentloaded|networkidle"},
+                        "state": {
+                            "type": "string",
+                            "enum": ["visible", "hidden", "attached", "detached"],
+                            "description": "For wait with `at`: what to wait for. Default visible.",
+                        },
+                        "button": {
+                            "type": "string",
+                            "enum": ["left", "right", "middle"],
+                            "description": "For click. Default left.",
+                        },
                         "width": {"type": "integer"},
                         "height": {"type": "integer"},
                         "timeout_ms": {"type": "integer"},

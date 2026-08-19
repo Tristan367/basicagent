@@ -80,3 +80,53 @@ async def test_reset_does_not_run_when_the_call_is_invalid(ctx, monkeypatch):
     result = await browser(ctx, steps=[], reset=True)
     assert result.is_error
     assert called is False
+
+
+# ── the schema has to describe what the code actually reads ─────────────────
+
+
+def _step_schema() -> dict:
+    from agent_server.tools.registry import TOOLS
+
+    return TOOLS["browser"].parameters["properties"]["steps"]["items"]["properties"]
+
+
+def test_every_key_the_tool_reads_is_in_its_schema():
+    """A model can only use what the schema tells it about.
+
+    `goto` read a `wait` key that was never declared, so the documented way to
+    wait for the network to settle silently did nothing; `shoot` read `compare`,
+    which is the whole before-and-after workflow, and no model could find it.
+    Both were invisible because nothing compared the two halves.
+    """
+    import re
+    from pathlib import Path
+
+    source = Path("agent_server/tools/browser.py").read_text()
+    read = set(re.findall(r"""step(?:\.get\(|\[)["']([a-z_]+)["']""", source))
+    # `wait` is accepted on goto as a spelling of `until`, because a model that
+    # has read the action list guesses it. Tolerated, deliberately not offered.
+    declared = set(_step_schema()) | {"action", "wait"}
+    assert not (read - declared), f"read but never declared: {sorted(read - declared)}"
+
+
+def test_every_key_in_the_schema_is_read_somewhere():
+    """The other direction: a declared key nothing acts on is a promise the
+    tool does not keep, and the model spends a call finding that out."""
+    import re
+    from pathlib import Path
+
+    source = Path("agent_server/tools/browser.py").read_text()
+    read = set(re.findall(r"""step(?:\.get\(|\[)["']([a-z_]+)["']""", source))
+    # `action` is dispatched on, not read as data.
+    unused = set(_step_schema()) - read - {"action"}
+    assert not unused, f"declared but never read: {sorted(unused)}"
+
+
+def test_a_key_press_does_not_need_a_target():
+    """Escape, Tab and arrow keys go to whatever has focus -- there is no
+    element to name, and keyboard navigation is the thing this app most needs
+    to be able to test. Listing `press` as targeted made that branch dead."""
+    from agent_server.tools.browser import _TARGETED
+
+    assert "press" not in _TARGETED
