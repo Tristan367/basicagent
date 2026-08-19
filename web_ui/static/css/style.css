@@ -503,6 +503,13 @@ html[data-theme="dark"] .setup-banner {
     cursor: pointer;
     text-align: left;
     min-height: 24px;
+    /* A path has no spaces to break at, so a long one ran straight off the
+       side of the message -- and this is a button, so the part that left the
+       screen was a part of it that could not be clicked. Breaking mid-path is
+       ugly; being unable to reach the end of one is worse. */
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 .file-ref:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -1583,136 +1590,6 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     background: color-mix(in srgb, var(--accent) 45%, var(--surface));
     border-color: var(--accent);
 }
-
-/* A disabled button must look disabled, not merely refuse to work. Without
-   this the camera's shutter stayed fully lit while the camera was still
-   starting, so the only way to discover it was inert was to press it. */
-.btn-primary:disabled, .btn-neutral:disabled, .btn-stop:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-.btn-primary:disabled:hover, .btn-neutral:disabled:hover, .btn-stop:disabled:hover {
-    background: transparent;
-}
-
-/* An image the assistant referenced, shown in the conversation. */
-.file-image { margin: 0.85em 0; }
-.file-image img {
-    display: block;
-    max-width: 100%;
-    max-height: 60vh;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    cursor: zoom-in;
-    background: var(--code-bg);
-}
-.file-image figcaption {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 6px;
-    font-size: 0.9rem;
-    color: var(--text-dim);
-}
-.file-image.image-missing figcaption { color: var(--danger); }
-
-/* ── Tables ──────────────────────────────────────────────────────────────── */
-
-/* The renderer emits a plain <table>, which browsers draw with no padding and
-   no rules at all -- columns run into each other and it reads as a jumble.
-   A table is one of the few things here whose meaning is carried by its
-   layout, so it has to be legible. */
-.bubble .table-wrap, .file-peek .table-wrap {
-    /* The wrapper scrolls; the table inside stays a normal table so its rows
-       fill the full width and the header tint reaches the right edge. */
-    overflow-x: auto;
-    margin: 0.9em 0;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-}
-.bubble table, .file-peek table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 0;
-    font-size: 0.97rem;
-}
-.bubble th, .bubble td {
-    padding: 9px 14px;
-    text-align: left;
-    vertical-align: top;
-    border-bottom: 1px solid var(--border);
-}
-.bubble th {
-    font-weight: 600;
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    white-space: nowrap;
-}
-/* Zebra striping, so the eye can follow a row across a wide table. Kept very
-   faint: it is a reading aid, not decoration. */
-.bubble tbody tr:nth-child(even) {
-    background: color-mix(in srgb, var(--text) 4%, transparent);
-}
-.bubble tbody tr:last-child td { border-bottom: none; }
-.bubble table code { white-space: nowrap; }
-
-/* ── Softening abrupt brightness changes ─────────────────────────────────── */
-
-/* Switching light/dark repaints the entire screen. Instantly, that is the
-   largest luminance jump the app can produce -- larger than anything else here.
-   The transition is applied only while the switch happens, so it never slows
-   ordinary interaction or animates during the first paint of a page. */
-.theme-shifting, .theme-shifting * {
-    transition: background-color 1000ms ease, color 1000ms ease,
-                border-color 1000ms ease !important;
-}
-
-/* A dialog drops a near-opaque cover over the page. Easing it in is gentler
-   than a hard cut to black, for the same reason the camera fades up. */
-.modal-backdrop { opacity: 0; transition: opacity 180ms ease; }
-.modal-backdrop.shown { opacity: 1; }
-
-@media (prefers-reduced-motion: reduce) {
-    /* These are luminance ramps, not movement, so they stay -- removing them
-       would put the abrupt change back. Shortened, not disabled. */
-    .theme-shifting, .theme-shifting * { transition-duration: 400ms !important; }
-    .modal-backdrop { transition-duration: 90ms; }
-}
-
-/* Internal navigation is <button>, so these need the font and reset that an
-   <a> got for free. Appearance is unchanged; only the element differs. */
-.app-bar-btn, .project-card, .session-name, .open-project-btn,
-.sessions-menu button, .welcome-cta {
-    font-family: var(--font);
-}
-.sessions-menu button {
-    width: 100%;
-    background: transparent;
-    border: none;
-    font-size: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    border-radius: 8px;
-    color: var(--text);
-    text-align: left;
-    cursor: pointer;
-}
-.sessions-menu button:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
-.session-name {
-    background: transparent;
-    border: none;
-    padding: 0;
-    color: var(--accent);
-    font-size: 1rem;
-    text-align: left;
-    cursor: pointer;
-}
-.session-name:hover { text-decoration: underline; }
-
-/* ── Custom endpoints ────────────────────────────────────────────────────── */
-
 /* A table of rows, headed once. Labelling every field on every row turned one
    endpoint into most of a screen. */
 /* One grid for the whole table. Each row being its own grid meant the columns
@@ -1878,15 +1755,24 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 }
 
 /* A dialog drops a near-opaque cover over the page. Easing it in is gentler
-   than a hard cut to black, for the same reason the camera fades up. */
-.modal-backdrop { opacity: 0; transition: opacity 180ms ease; }
-.modal-backdrop.shown { opacity: 1; }
+   than a hard cut to black, for the same reason the camera fades up.
+
+   Two durations, from the one class: while `.shown` is on, the longer opening
+   ramp applies; the moment it comes off, the element falls back to the base
+   rule and closes on the shorter one. Out is quicker than in on purpose --
+   opening is something to follow, closing is something already decided, and a
+   slow fade out just holds up whatever you meant to look at next.
+
+   Closing used to have no duration at all: the dialog was hidden outright in
+   the same breath as the class came off, so it faded in and then vanished. */
+.modal-backdrop { opacity: 0; transition: opacity 200ms ease; }
+.modal-backdrop.shown { opacity: 1; transition-duration: 320ms; }
 
 @media (prefers-reduced-motion: reduce) {
     /* These are luminance ramps, not movement, so they stay -- removing them
        would put the abrupt change back. Shortened, not disabled. */
     .theme-shifting, .theme-shifting * { transition-duration: 400ms !important; }
-    .modal-backdrop { transition-duration: 90ms; }
+    .modal-backdrop, .modal-backdrop.shown { transition-duration: 90ms; }
 }
 
 /* Internal navigation is <button>, so these need the font and reset that an
@@ -1922,17 +1808,6 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 .session-name:hover { text-decoration: underline; }
 
 /* ── Custom endpoints ────────────────────────────────────────────────────── */
-
-/* One card per endpoint, with labels that stay visible after you have typed.
-   These were unlabelled boxes in a row, butted straight against the "add" row
-   below them, and once filled in there was nothing to say which was which. */
-/* The card holds two independent forms (settings, and remove) so that pressing
-   Enter in a field can never reach the delete button. They still need to lay
-   out as one block. */
-/* The explanatory note sits under its input rather than beside the label, so
-   a note that wraps cannot push one field's box below its neighbour's. */
-.field-note { color: var(--text-dim); font-weight: 400; font-size: 0.85em; }
-
 
 /* The result of actually contacting a saved endpoint, rather than a guess
    about what was typed. */

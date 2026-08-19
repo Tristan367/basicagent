@@ -139,6 +139,11 @@
     }
   }
 
+  // Matches the closing ramp in the stylesheet. A timer rather than
+  // `transitionend`, which never fires when the duration is zero and would
+  // leave the dialog on screen for good.
+  const MODAL_FADE_OUT_MS = 200;
+
   window.__openModal = function (el, focusEl) {
     window.__modalEl = el;
     window.__modalReturn = document.activeElement;
@@ -158,7 +163,20 @@
     window.__modalReturn = null;
     setBackgroundInert(el, false);
     el.classList.remove('shown');
-    el.hidden = true;
+    // Hidden once the fade has run, not in the same breath as taking the class
+    // off -- doing both together is why a dialog eased in and then vanished.
+    // `hidden` is what actually removes it from the page and from the reading
+    // order, so it still has to happen; it just waits for the ramp.
+    //
+    // Guarded on `.shown` rather than cancelled, because reopening the same
+    // dialog inside the fade puts the class straight back, and this must not
+    // then hide the newly opened one out from under the user.
+    const settle = () => { if (!el.classList.contains('shown')) el.hidden = true; };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      settle();
+    } else {
+      setTimeout(settle, MODAL_FADE_OUT_MS);
+    }
     if (ret && ret.focus) ret.focus();
     // So a dialog can clean up after itself however it was dismissed. The
     // camera needs this: Escape closes the dialog, and without a signal the
@@ -2758,7 +2776,10 @@
       const mic = document.getElementById('welcome-mic');
       if (mic) saveMicDevice(mic.value);
       window.__closeModal();
-      welcomeModal.remove();
+      // Taken out of the page only once it has faded; removing it here and now
+      // would snatch it away mid-ramp, which is the one dialog where the
+      // abrupt version is most likely to be someone's first impression.
+      setTimeout(() => welcomeModal.remove(), 260);
       if (!hasKey) {
         // No AI connected yet: send them to set it up.
         window.location.href = '/settings';
