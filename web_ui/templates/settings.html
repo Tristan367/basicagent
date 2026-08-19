@@ -383,6 +383,12 @@
         <h2 id="password-modal-title">Parent password</h2>
         <p id="password-modal-text">Enter the parent password.</p>
         <input type="password" id="password-input" class="modal-input" autocomplete="new-password" aria-label="Parent password">
+        {# Only shown when a password is being *set*. A password box hides its
+           own typos, and getting one wrong here locks the parent out of their
+           own settings for a full day. #}
+        <input type="password" id="password-confirm-input" class="modal-input"
+               autocomplete="new-password" aria-label="Type the password again" hidden
+               placeholder="Type it again">
         <p class="hint" id="password-modal-note" hidden>If you ever forget this password, you can reset it after a 24-hour wait.</p>
         <p class="hint" id="password-modal-error" hidden style="color: var(--danger)"></p>
         <div class="quit-actions">
@@ -659,6 +665,7 @@ document.querySelectorAll('.theme-choice .theme-opt[data-theme]').forEach((btn) 
 // ── Parental controls ──────────────────────────────────────────────────────
 (function () {
     const modal = document.getElementById('password-modal');
+    const confirmInput = document.getElementById('password-confirm-input');
     const title = document.getElementById('password-modal-title');
     const text = document.getElementById('password-modal-text');
     const note = document.getElementById('password-modal-note');
@@ -670,6 +677,8 @@ document.querySelectorAll('.theme-choice .theme-opt[data-theme]').forEach((btn) 
 
     let action = null;   // function(password) -> Promise<{ok, reason?}>
 
+    // `showForgotNote` marks the prompts that *set* a password rather than
+    // check one, and those are the ones that ask for it twice.
     function openPrompt(titleText, bodyText, showForgotNote, onConfirm) {
         title.textContent = titleText;
         text.textContent = bodyText;
@@ -677,6 +686,8 @@ document.querySelectorAll('.theme-choice .theme-opt[data-theme]').forEach((btn) 
         err.hidden = true;
         err.textContent = '';
         input.value = '';
+        confirmInput.value = '';
+        confirmInput.hidden = !showForgotNote;
         action = onConfirm;
         window.__openModal(modal, input);
     }
@@ -687,6 +698,13 @@ document.querySelectorAll('.theme-choice .theme-opt[data-theme]').forEach((btn) 
     confirmBtn.addEventListener('click', async () => {
         const password = input.value.trim();
         if (!password) { err.textContent = 'Please type a password.'; err.hidden = false; return; }
+        if (!confirmInput.hidden && confirmInput.value.trim() !== password) {
+            err.textContent = 'The two passwords are not the same. Try again.';
+            err.hidden = false;
+            confirmInput.value = '';
+            confirmInput.focus();
+            return;
+        }
         const result = await action(password);
         if (result && result.ok) {
             closePrompt();

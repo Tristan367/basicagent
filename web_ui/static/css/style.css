@@ -778,6 +778,7 @@ html[data-theme="dark"] .setup-banner {
 
 .composer-actions {
     display: flex;
+    flex-wrap: wrap;          /* see the narrow-screen note below */
     gap: 10px;
     align-items: center;
     justify-content: space-between;
@@ -1307,7 +1308,6 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 }
 .welcome-cta { margin: 4px 0 14px 38px; }
 .welcome-card .theme-choice { margin: 2px 0 0 38px; }
-.welcome-noshow { margin: 16px 0 8px; }
 .welcome-card #welcome-go { margin-top: 6px; }
 
 /* ── Link preview cards ──────────────────────────────────────────────────── */
@@ -1452,11 +1452,7 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     }
 }
 
-@media (max-width: 560px) {
-    html { font-size: 17px; }
-    .bubble { max-width: 95%; }
-    .inline-form input[type="text"], .inline-form input[type="password"] { min-width: 100%; }
-}
+
 
 /* ── Attachment chips ────────────────────────────────────────────────────── */
 
@@ -1933,4 +1929,60 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     color: var(--text-dim);
     opacity: 0.9;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ── Narrow ──────────────────────────────────────────────────────────────
+   Not only phones. Someone who needs large text and zooms the browser to
+   250% has a 1366px Chromebook behaving like a 546px one, and this app is
+   for people who need large text.
+
+   Below this width the composer row and the app bar ran past the right edge
+   of the window -- and because nothing here scrolls sideways, Send, the model
+   picker and the Projects menu were simply gone. Not clipped, not awkward:
+   unreachable, with no way to send a message and nothing on screen to
+   suggest why. So both rows wrap instead. */
+@media (max-width: 560px) {
+    html { font-size: 17px; }
+    .bubble { max-width: 95%; }
+    .inline-form input[type="text"], .inline-form input[type="password"] { min-width: 100%; }
+
+    .composer-actions { justify-content: flex-start; }
+    /* Send goes full width on its own line rather than being pushed off the
+       edge -- it is the one control that must never be out of reach. */
+    .composer-actions .send { flex: 1 1 100%; }
+    .composer-tools { flex-wrap: wrap; }
+
+    .app-bar { height: auto; flex-wrap: wrap; row-gap: 2px; }
+    /* The nav takes a full row of its own and wraps inside it. Left as
+       `flex: 0 0 auto` it kept its content width -- 425px of buttons in a
+       360px window -- and carried Projects off the edge. */
+    .app-bar-side { flex: 1 1 0; flex-wrap: wrap; min-width: 0; }
+    .app-bar-title { flex-basis: 100%; order: 3; padding: 0 12px 4px; }
+    /* Stays on the nav's first row rather than claiming one of its own -- a
+       row of vertical space is worth more than the tidiness at this size. */
+    .app-bar-right { flex: 0 0 auto; align-self: flex-start; }
+    .app-bar-btn { padding: 0 10px; min-height: 40px; }
+    .model-menu, .sessions-menu { min-width: 0; max-width: 92vw; }
+
+    .zoom-row { flex-wrap: wrap; }
+
+    /* The endpoint table is five columns with minimum widths that add up to
+       more than a narrow window. One column instead: the header is dropped
+       (it labels columns that no longer exist) and each field is labelled by
+       its placeholder, which already says Name, Address and Key. */
+    /* minmax(0, 1fr), not 1fr: a plain 1fr track refuses to shrink below its
+       contents' min-content width, so a long placeholder pushed the column
+       wider than the window and took the buttons with it. */
+    .endpoint-table { grid-template-columns: minmax(0, 1fr); }
+    .endpoint-table input, .endpoint-table button { min-width: 0; }
+    .endpoint-header { display: none; }
+    .endpoint-name { padding-top: 10px; }
+
+    /* A <select> sizes itself to its widest option, and the model names here
+       are long -- "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M (your own
+       computer) - your own" -- so one dropdown was half a metre wide. */
+    select { width: 100%; max-width: 100%; }
+    .inline-form, .stack, .form-row, .project-row, .quit-actions,
+    .session-row { flex-wrap: wrap; }
+    .btn-sm { flex: 0 1 auto; }
 }

@@ -1,5 +1,7 @@
 """Context builders shared by the page and settings routes."""
 
+from pathlib import Path
+
 from agent_server import database as db
 from agent_server import parental, whisper_streaming
 from agent_server import tts as tts_service
@@ -93,6 +95,16 @@ def _theme(settings: dict[str, str]) -> str:
 
 
 async def _chat_context(session: dict) -> dict:
+    # The project's folder should exist whenever its chat is open. If something
+    # outside the app removed it -- a cleanup tool, a synced folder, a move --
+    # every tool in the session starts failing with an error about a directory
+    # the user has never seen and cannot go and look at. An empty folder back
+    # in its place is recoverable; a project that has silently stopped working
+    # is not.
+    try:
+        Path(session["project_dir"]).expanduser().mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
     messages = await db.get_session_history(session["id"])
     profile = session.get("profile") or parental.profile_for_session(session["id"])
     is_home = session["id"] in (HOME_SESSION_ID, CHILD_HOME_SESSION_ID)

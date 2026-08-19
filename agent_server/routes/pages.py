@@ -15,7 +15,17 @@ router = APIRouter()
 async def index(request: Request):
     session = await db.get_session(await parental.current_home_id())
     if session is None:
-        return RedirectResponse("/settings", status_code=303)
+        # Build it rather than bounce. The home chat is the front door, and if
+        # it is missing -- deleted, or lost with a half-restored database --
+        # redirecting to Settings made every route lead to Settings and
+        # nothing lead back, until someone thought to restart the app. Nobody
+        # who needs this app would think to restart the app.
+        from agent_server.system_prompt import ensure_home_session
+
+        await ensure_home_session()
+        session = await db.get_session(await parental.current_home_id())
+        if session is None:
+            return RedirectResponse("/settings", status_code=303)
     return templates.TemplateResponse(
         request=request, name="chat.html", context=await _chat_context(session)
     )

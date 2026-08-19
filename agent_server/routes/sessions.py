@@ -102,6 +102,14 @@ async def switch_model(session_id: str, request: Request, payload: dict):
         str(payload.get("parent_password", "")).strip()
     ):
         raise HTTPException(403, "Parent password required")
+    # Not while it is working. Switching may summarise the conversation first,
+    # and summarising rewrites the same messages the turn in flight is still
+    # appending to -- and either way the reply arrives from the old model while
+    # the session claims to be on the new one.
+    if agent.is_running(session_id):
+        raise HTTPException(
+            409, "Wait for this project to finish what it is doing, then change the AI."
+        )
     model = (payload.get("model") or "").strip()
     if not model:
         raise HTTPException(400, "Model required")
@@ -159,7 +167,12 @@ async def update_session(session_id: str, payload: dict):
 
 @router.delete("/{session_id}")
 async def delete_session(session_id: str):
-    await _require(session_id)
+    session = await _require(session_id)
+    # The home chat is the front door and is never offered in the list, so
+    # nothing should be asking -- but deleting it left every route redirecting
+    # to Settings with nothing leading back, so it is worth saying no out loud.
+    if session.get("kind") == "manager":
+        raise HTTPException(400, "The home chat cannot be deleted.")
     agent.request_abort(session_id)
     await db.delete_session(session_id)
     agent.forget_session(session_id)

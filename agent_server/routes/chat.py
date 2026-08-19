@@ -92,18 +92,41 @@ async def chat(session_id: str, request: Request, body: ChatRequest):
     return _stream(session_id)
 
 
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+
+
 @router.post("/sessions/{session_id}/upload")
 async def upload_attachment(session_id: str, file: UploadFile = File(...)):
     """Save a dropped file and return its path, so the client can hand that path
-    to the agent in the next message and the agent reads it with its own tools."""
+    to the agent in the next message and the agent reads it with its own tools.
+
+    Written in chunks against a limit rather than read whole. There was no
+    limit at all, and the whole file went into memory first: dropping a video
+    on the chat -- which someone will do, because dropping things on the chat
+    is how this app works -- took the server down with it.
+    """
     await _require_session(session_id)
     name = Path(file.filename or "file").name
     safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in name).strip() or "file"
-    data = await file.read()
-    if not data:
-        raise HTTPException(400, "Empty file")
     target = ATTACH_DIR / f"{_uuid.uuid4().hex[:8]}_{safe}"
-    target.write_bytes(data)
+
+    written = 0
+    try:
+        with target.open("wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                written += len(chunk)
+                if written > MAX_ATTACHMENT_BYTES:
+                    raise HTTPException(
+                        413,
+                        f"That file is too big to attach (the limit is "
+                        f"{MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB).",
+                    )
+                out.write(chunk)
+        if not written:
+            raise HTTPException(400, "Empty file")
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
     return {"ok": True, "path": str(target), "name": name}
 
 

@@ -6,6 +6,7 @@ They are grouped by what an ordinary user would notice.
 """
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -263,3 +264,137 @@ async def test_link_previews_do_not_reach_the_local_network(host):
     from agent_server.routes.chat import _is_public_host
 
     assert await _is_public_host(host.strip("[]")) is False
+
+
+# ── ways to end up somewhere with no way out ───────────────────────────────
+
+
+async def test_the_home_chat_cannot_be_deleted(db):
+    """It is the front door and is never offered in any list, but deleting it
+    left `/` redirecting to Settings and nothing leading back -- for good,
+    until someone thought to restart the app."""
+    from fastapi import HTTPException
+
+    from agent_server.routes.sessions import delete_session
+    from agent_server.system_prompt import ensure_home_session
+
+    home = await ensure_home_session()
+    with pytest.raises(HTTPException) as caught:
+        await delete_session(home["id"])
+    assert caught.value.status_code == 400
+    assert await db.get_session(home["id"]) is not None
+
+
+async def test_a_missing_home_chat_is_rebuilt_rather_than_redirected(db):
+    """Whatever removed it -- a stray request, a half-restored database -- the
+    front door builds itself again instead of bouncing the user to Settings."""
+    from agent_server.config import HOME_SESSION_ID
+    from agent_server.routes.pages import index
+    from agent_server.system_prompt import ensure_home_session
+
+    await ensure_home_session()
+    await db.delete_session(HOME_SESSION_ID)
+    assert await db.get_session(HOME_SESSION_ID) is None
+
+    class Req:
+        def __init__(self):
+            self.scope = {"type": "http"}
+            self.headers = {}
+
+    await index(Req())
+    assert await db.get_session(HOME_SESSION_ID) is not None
+
+
+async def test_a_project_whose_folder_vanished_gets_it_back(db, tmp_path):
+    """Something outside the app can remove the folder -- a cleanup tool, a
+    synced directory. Every tool then fails with an error about a path the user
+    has never seen and cannot go and look at."""
+    from agent_server.routes.context import _chat_context
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    session = await db.create_session("P", str(project), "gemini", "gemini-3.7-flash")
+    project.rmdir()
+    assert not project.exists()
+
+    await _chat_context(session)
+    assert project.is_dir()
+
+
+async def test_the_model_cannot_be_switched_mid_turn(db, monkeypatch):
+    """Switching may summarise the conversation first, and summarising rewrites
+    the same messages the turn in flight is still appending to."""
+    from fastapi import HTTPException
+
+    import agent_server.agent as agent
+    from agent_server.routes.sessions import switch_model
+
+    session = await db.create_session("S", "/tmp", "gemini", "gemini-3.7-flash")
+    monkeypatch.setitem(agent._aborts, session["id"], asyncio.Event())
+    try:
+        with pytest.raises(HTTPException) as caught:
+            await switch_model(session["id"], None, {"model": "gemini-3.5-flash-lite"})
+        assert caught.value.status_code == 409
+    finally:
+        agent._aborts.pop(session["id"], None)
+    assert (await db.get_session(session["id"]))["model"] == "gemini-3.7-flash"
+
+
+# ── an attachment nobody could have meant to send ──────────────────────────
+
+
+async def test_a_huge_attachment_is_refused_rather_than_swallowed(db, tmp_path, monkeypatch):
+    """The whole file was read into memory with no limit at all. Dropping a
+    video on the chat -- and dropping things on the chat is how this app works
+    -- took the server down with it."""
+    from fastapi import HTTPException
+
+    import agent_server.routes.chat as chat_routes
+
+    monkeypatch.setattr(chat_routes, "ATTACH_DIR", tmp_path)
+    monkeypatch.setattr(chat_routes, "MAX_ATTACHMENT_BYTES", 1024)
+    session = await db.create_session("A", str(tmp_path), "gemini", "gemini-3.7-flash")
+
+    class Upload:
+        filename = "huge.bin"
+
+        def __init__(self):
+            self.left = 4096
+
+        async def read(self, size=-1):
+            if not self.left:
+                return b""
+            chunk = b"x" * min(size if size > 0 else self.left, self.left)
+            self.left -= len(chunk)
+            return chunk
+
+    with pytest.raises(HTTPException) as caught:
+        await chat_routes.upload_attachment(session["id"], Upload())
+    assert caught.value.status_code == 413
+    assert not list(tmp_path.iterdir()), "the partial file must not be left behind"
+
+
+async def test_an_attachment_cannot_be_written_outside_the_attachments_folder(
+    db, tmp_path, monkeypatch
+):
+    import agent_server.routes.chat as chat_routes
+
+    monkeypatch.setattr(chat_routes, "ATTACH_DIR", tmp_path)
+    session = await db.create_session("A", str(tmp_path), "gemini", "gemini-3.7-flash")
+
+    class Upload:
+        filename = "../../../etc/passwd"
+
+        def __init__(self):
+            self.done = False
+
+        async def read(self, size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"hello"
+
+    result = await chat_routes.upload_attachment(session["id"], Upload())
+    assert Path(result["path"]).parent == tmp_path
+    assert "passwd" in Path(result["path"]).name
+    assert ".." not in result["path"]

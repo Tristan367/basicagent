@@ -1847,17 +1847,22 @@
       try {
         const fd = new FormData();
         fd.append('file', file, file.name);
-        const data = await fetch('/api/sessions/' + sessionId + '/upload', {
+        const resp = await fetch('/api/sessions/' + sessionId + '/upload', {
           method: 'POST',
           body: fd,
-        }).then((r) => r.json());
-        if (!data || !data.path) throw new Error('no path');
+        });
+        const data = await resp.json().catch(() => null);
+        // The server's own words when it has some -- "that file is too big"
+        // tells you what to do next; "could not attach" tells you to try
+        // again forever.
+        if (!resp.ok) throw new Error((data && data.detail) || 'Could not attach that file.');
+        if (!data || !data.path) throw new Error('Could not attach ' + file.name);
         attachments.push({ path: data.path, name: data.name || file.name, thumb });
         renderAttachments();
         clearStatus();
       } catch (e) {
         if (thumb) { try { URL.revokeObjectURL(thumb); } catch (err) {} }
-        setStatus('Could not attach ' + file.name);
+        setStatus(e && e.message ? e.message : 'Could not attach ' + file.name);
       }
     }
   }
@@ -2677,11 +2682,28 @@
       if (zoomOut) zoomOut.addEventListener('click', () => window.__applyZoom(window.__readZoom() - 0.1));
       if (zoomIn) zoomIn.addEventListener('click', () => window.__applyZoom(window.__readZoom() + 0.1));
     }
+    // Dismissing the welcome screen means it has been seen -- by whichever
+    // route. It used to be remembered only if you also noticed and ticked a
+    // "Don't show this again" box, so pressing Get started welcomed you again
+    // on every single launch. Nothing here is lost by moving on: the theme,
+    // the text size, the microphone and the read-aloud choice all live in
+    // Settings too.
+    let welcomeMarked = false;
+    function markWelcomeSeen() {
+      if (welcomeMarked) return;
+      welcomeMarked = true;
+      const fd = new FormData();
+      fd.append('welcome_seen', 'on');
+      fetch('/_settings/prefs', { method: 'POST', body: fd }).catch(() => {});
+    }
+    welcomeModal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') markWelcomeSeen();
+    });
+
     if (go) go.addEventListener('click', () => {
       const fd = new FormData();
-
-      const dontShow = document.getElementById('welcome-dont-show');
-      if (dontShow && dontShow.checked) fd.append('welcome_seen', 'on');
+      fd.append('welcome_seen', 'on');
+      welcomeMarked = true;
 
       // How the app should talk to the user. A screen reader and our own
       // read-aloud are alternatives, never layers: running both means two
