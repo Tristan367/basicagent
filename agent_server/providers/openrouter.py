@@ -2,13 +2,16 @@
 
 from openai import AsyncOpenAI
 
+from agent_server.config import APP_SLUG, APP_URL
 from agent_server.providers.openai_compat import OpenAICompatibleProvider
 
 # Sent on every request. OpenRouter uses these for attribution and for
-# rate-limit tiering; without them requests are treated as anonymous.
+# rate-limit tiering; without them requests are treated as anonymous. `X-Title`
+# is what the user sees against their own spend on openrouter.ai, so it has to
+# be this app's name and not the project it was forked from.
 _ATTRIBUTION = {
-    "HTTP-Referer": "https://github.com/local/codeagent",
-    "X-Title": "CodeAgent",
+    "HTTP-Referer": APP_URL,
+    "X-Title": APP_SLUG,
 }
 
 

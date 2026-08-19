@@ -5,17 +5,9 @@ below are the heavier, optional ones (speech, browser). On first run the manager
 AI is told what is missing so it can install the rest for the user.
 """
 
-import shutil
 from pathlib import Path
 
-from agent_server.config import (
-    FFMPEG_BIN,
-    TTS_MODEL,
-    TTS_VOICES,
-    WHISPER_BIN,
-    WHISPER_SERVER_BIN,
-    whisper_model,
-)
+from agent_server.config import TTS_MODEL, TTS_VOICES, stt_available
 
 
 def chromium_installed() -> bool:
@@ -30,19 +22,14 @@ def chromium_installed() -> bool:
 
 def detect() -> list[dict]:
     """One entry per optional component: ``{name, ok, hint}``."""
-    stt_ok = bool(WHISPER_BIN and whisper_model() and FFMPEG_BIN)
-    streaming_ok = bool(WHISPER_SERVER_BIN and whisper_model())
     tts_ok = bool(TTS_MODEL and TTS_VOICES)
     return [
         {
             "name": "Microphone (speech-to-text)",
-            "ok": stt_ok,
-            "hint": "needs whisper-cli, a whisper model, and ffmpeg",
-        },
-        {
-            "name": "Live dictation",
-            "ok": streaming_ok,
-            "hint": "needs whisper-server and a whisper model",
+            "ok": stt_available(),
+            # The pip route is named first because it is the one that works
+            # everywhere and needs no system packages.
+            "hint": "run: pip install faster-whisper",
         },
         {
             "name": "Read-aloud (text-to-speech)",
@@ -59,14 +46,3 @@ def detect() -> list[dict]:
 
 def missing() -> list[dict]:
     return [c for c in detect() if not c["ok"]]
-
-
-def render_report() -> str:
-    lines = []
-    for c in detect():
-        lines.append(f"- {c['name']}: {'installed' if c['ok'] else 'MISSING (' + c['hint'] + ')'}")
-    return "\n".join(lines)
-
-
-def command_available(cmd: str) -> bool:
-    return shutil.which(cmd) is not None

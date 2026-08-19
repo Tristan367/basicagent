@@ -69,7 +69,7 @@
     <div id="locked-area" {% if child_mode %}data-locked="1"{% endif %}>
 
     <section class="panel">
-        <h1>Connect your AI</h1>
+        <h2>Connect your AI</h2>
         <p class="hint">
             This app doesn't come with its own AI. Instead, it connects to an AI you
             already pay for, using an <strong>API key</strong> — a secret code that lets
@@ -112,16 +112,21 @@
         <form method="POST" action="/_settings/custom_endpoint" class="inline-form" data-autosave>
             <input type="hidden" name="name" value="{{ ep.name }}">
             <span class="endpoint-name">{{ ep.name }}</span>
-            <input type="text" name="base_url" value="{{ ep.base_url }}" placeholder="http://localhost:8888/v1">
+            <input type="text" name="base_url" value="{{ ep.base_url }}" placeholder="http://localhost:8888/v1"
+                   aria-label="Address for the {{ ep.name }} endpoint">
             <input type="password" name="api_key" placeholder="key (optional)" autocomplete="off"
+                   aria-label="Key for the {{ ep.name }} endpoint (optional)"
                    value="{% if ep.api_key %}&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;{% endif %}">
             <button type="submit" formaction="/_settings/custom_endpoint/delete" class="btn-danger">Remove</button>
         </form>
         {% endfor %}
         <form method="POST" action="/_settings/custom_endpoint" class="inline-form">
-            <input type="text" name="name" placeholder="name, e.g. my-ai" autocomplete="off">
-            <input type="text" name="base_url" placeholder="http://localhost:8888/v1" autocomplete="off">
-            <input type="password" name="api_key" placeholder="key (optional)" autocomplete="off">
+            <input type="text" name="name" placeholder="name, e.g. my-ai" autocomplete="off"
+                   aria-label="Name for this endpoint">
+            <input type="text" name="base_url" placeholder="http://localhost:8888/v1" autocomplete="off"
+                   aria-label="Address of this endpoint">
+            <input type="password" name="api_key" placeholder="key (optional)" autocomplete="off"
+                   aria-label="Key for this endpoint (optional)">
             <button type="submit" class="btn-primary">Add</button>
         </form>
     </section>
@@ -139,6 +144,7 @@
                 {% endfor %}
             </select>
             <input type="text" name="custom_model_id" placeholder="model id (custom only)"
+               aria-label="Model name your custom endpoint expects"
                    value="{{ custom_model_id }}" autocomplete="off" spellcheck="false">
         </form>
     </section>
@@ -147,7 +153,18 @@
     <section class="panel">
         <h2>Voice and speech</h2>
         <form method="POST" action="/_settings/prefs" class="stack" data-autosave>
+            {# The hidden twin makes "unticked" distinguishable from "not on this
+               form"; without it a checkbox can be switched on but never off. #}
             <label class="checkbox-label">
+                <input type="hidden" name="uses_screen_reader" value="off">
+                <input type="checkbox" name="uses_screen_reader"
+                       {% if settings.get('uses_screen_reader', '0') == '1' %}checked{% endif %}>
+                I use a screen reader
+            </label>
+            <p class="hint">When this is on, the app stays quiet and lets your screen reader
+            do the talking, so the two don't read over each other.</p>
+            <label class="checkbox-label">
+                <input type="hidden" name="stt_enabled" value="off">
                 <input type="checkbox" name="stt_enabled" {% if settings.get('stt_enabled', '1') == '1' %}checked{% endif %}>
                 Microphone (talk instead of type)
             </label>
@@ -157,8 +174,25 @@
                         <option value="">Default microphone</option>
                     </select>
                 </label>
+                <label>How well it listens
+                    <select name="whisper_size">
+                        {% for m in whisper_models %}
+                        <option value="{{ m.id }}" {% if m.id == whisper_size %}selected{% endif %}>
+                            {{ m.name }} &mdash; {{ m.size }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </label>
             </div>
+            <p class="hint">
+                You should not need to change this &mdash; the best one is already
+                chosen, and it works without any special hardware. Only come here if
+                dictation feels slow on your computer.<br>
+                {% for m in whisper_models %}<strong>{{ m.name }}:</strong> {{ m.note }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                <br>Switching downloads the new one the first time, which takes a moment.
+            </p>
             <label class="checkbox-label">
+                <input type="hidden" name="tts_auto" value="off">
                 <input type="checkbox" name="tts_auto" {% if settings.get('tts_auto', '0') == '1' %}checked{% endif %}>
                 Read replies aloud automatically
             </label>
@@ -194,6 +228,38 @@
     </section>
 
     <section class="panel">
+        <h2>Sounds</h2>
+        <p class="hint">Short sounds tell you what is happening without you having to
+        watch the screen. Useful if you work by ear, or if you go and do something
+        else while a long job finishes.</p>
+        <form method="POST" action="/_settings/prefs" class="stack" data-autosave>
+            <label class="checkbox-label">
+                <input type="hidden" name="sound_cues" value="off">
+                <input type="checkbox" name="sound_cues"
+                       {% if settings.get('sound_cues', '1') == '1' %}checked{% endif %}>
+                Play a sound when a long job finishes, and when something goes wrong
+            </label>
+            <label class="checkbox-label">
+                <input type="hidden" name="sound_ticks" value="off">
+                <input type="checkbox" name="sound_ticks"
+                       {% if settings.get('sound_ticks', '0') == '1' %}checked{% endif %}>
+                Also tick quietly while the assistant is still working
+            </label>
+            <p class="hint">The tick is off to begin with. Turn it on if silence makes it
+            hard to tell whether the assistant is still going.</p>
+            <div class="form-row">
+                <label>How loud
+                    <input type="range" name="sound_volume" min="0" max="1" step="0.05"
+                           value="{{ settings.get('sound_volume', '0.4') }}"
+                           aria-label="How loud the sounds are">
+                </label>
+                <button type="button" class="btn-neutral" id="sound-preview-btn"
+                        title="Hear what the sounds are like">Try the sounds</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
         <h2>Your projects</h2>
         {% for s in sessions %}
         <div class="session-row">
@@ -223,7 +289,8 @@
 <div class="modal-backdrop" id="rename-modal" role="dialog" aria-modal="true" aria-label="Rename project" hidden>
     <div class="welcome-card quit-card">
         <h2>Rename project</h2>
-        <input type="text" id="rename-input" class="modal-input" autocomplete="off">
+        <input type="text" id="rename-input" class="modal-input" autocomplete="off"
+               aria-label="New project name">
         <div class="quit-actions">
             <button type="button" class="btn-primary" id="rename-confirm">Rename</button>
             <button type="button" class="btn-stop" id="rename-cancel">Cancel</button>
@@ -348,6 +415,18 @@ function flashSaved() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { toast.hidden = true; }, 1400);
 }
+// Hear the cues at the volume currently on the slider, without having to start
+// a long job and wait for it to finish just to find out if they are too loud.
+(function () {
+    const btn = document.getElementById('sound-preview-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        const slider = document.querySelector('input[name="sound_volume"]');
+        const vol = slider ? parseFloat(slider.value) : 0.4;
+        if (window.__previewSounds) window.__previewSounds(vol);
+    });
+})();
+
 document.querySelectorAll('form[data-autosave]').forEach((form) => {
     const save = async () => {
         try {

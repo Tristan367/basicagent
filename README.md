@@ -17,10 +17,15 @@ ln -s "$PWD/bin/basicagent" ~/.local/bin/basicagent
 basicagent                  # starts the server and opens the browser
 ```
 
-On first run, open **Settings** and add an API key for the AI you use (DeepSeek
-is the default and the cheapest for coding). The app does not bundle an AI: it
-connects to one you already pay for, so you know exactly which model you're
-using and what it costs.
+On first run, open **Settings** and add an API key for the AI you use. The app
+does not bundle an AI: it connects to one you already pay for, so you know
+exactly which model you're using and what it costs.
+
+- **Google Gemini** — has a free tier, so it costs nothing to try the whole app.
+  ([get a key](https://aistudio.google.com/apikey))
+- **DeepSeek** — the cheapest paid option and very good at coding; the default.
+- **Anthropic** (Claude) and **OpenRouter** (one key, many models) also work, as
+  does any OpenAI-compatible endpoint you add yourself (Ollama, vLLM, LM Studio).
 
 ## How it works
 
@@ -41,13 +46,23 @@ agent_server/
   conversation.py   DB rows <-> provider wire format
   database.py       SQLite (one connection, WAL)
   system_prompt.py  hard-coded prompts (agent + manager), frozen per session
-  providers/        DeepSeek, Anthropic, OpenRouter, custom OpenAI-compatible
+  providers/        DeepSeek, Gemini, Anthropic, OpenRouter, custom OpenAI-compatible
   tools/            bash, browser, capture, edit, explore, glob, grep, read,
                     task, webfetch, websearch, write, session-manager tools
   routes/           home chat, project chat, settings, chat/streaming, speech
 web_ui/             Jinja templates, CSS, ~one file of vanilla JS
 system_prompts/     agent.md and manager.md — edit these to tune behaviour
+tests/              pytest; `python -m pytest` (nothing here bills an API)
 ```
+
+## Tests
+
+```bash
+.venv/bin/python -m pytest        # fast, offline, no API key needed
+```
+
+Tests marked `live` hit a real provider and bill a real account; they are
+excluded by default and opt-in with `pytest -m live`.
 
 ## Where your data lives
 
@@ -62,8 +77,10 @@ not editable in the UI; tune them here.
 
 ## Accessibility notes
 
-- Dictation uses `whisper-cli` + `ffmpeg` (auto-detected); the mic is on by
-  default.
+- Dictation uses faster-whisper, installed by pip with the other dependencies.
+  It downloads its own model on first use and needs no system packages, so it
+  behaves the same on Linux, macOS and Windows. Pick how accurate you want it
+  to be in Settings. The mic is on by default.
 - Read-aloud uses Kokoro (`kokoro-v1.0.onnx` + `voices-v1.0.bin` in
   `~/models/tts`); toggle it from the chat.
 - The UI is built for screen readers and keyboard use; every control has a

@@ -14,6 +14,10 @@
      data-tts-voice="{{ tts_voice }}"
       data-tts-speed="{{ tts_speed }}"
       data-tts-volume="{{ tts_volume }}"
+      data-sound-cues="{{ '1' if sound_cues else '' }}"
+      data-sound-ticks="{{ '1' if sound_ticks else '' }}"
+      data-sound-volume="{{ sound_volume }}"
+      data-uses-screen-reader="{{ '1' if uses_screen_reader else '' }}"
       data-child-mode="{{ '1' if child_mode else '' }}">
 
     <div id="drop-overlay" role="presentation" hidden>
@@ -34,23 +38,51 @@
             <p>This is your coding assistant. You can just talk to me in plain English —
             tell me what you'd like to build, and I'll make it for you. You don't need to
             know anything technical.</p>
-            <p><strong>Three quick things to get started:</strong></p>
+            <p><strong>A few quick things to get started:</strong></p>
+
+            {# Asked first because it decides how everything else is delivered.
+               There is no way to detect a screen reader from a web page -- no
+               browser exposes one, deliberately -- so the only honest way to
+               get this right is to ask. #}
             <div class="welcome-step">
                 <span class="welcome-num">1</span>
+                <p>How would you like to use the app?</p>
+            </div>
+            <fieldset class="welcome-choice">
+                <legend class="sr-only">How would you like to use the app?</legend>
+                <label class="checkbox-label">
+                    <input type="radio" name="a11y_mode" value="screen_reader">
+                    I already use a screen reader
+                </label>
+                <label class="checkbox-label">
+                    <input type="radio" name="a11y_mode" value="read_aloud">
+                    Read replies out loud to me
+                </label>
+                <label class="checkbox-label">
+                    <input type="radio" name="a11y_mode" value="visual" checked>
+                    Just show it on the screen
+                </label>
+                <p class="hint">If you use a screen reader, it will read the app to you and
+                this app will keep quiet so the two don't talk over each other. You can
+                change any of this later in Settings.</p>
+            </fieldset>
+
+            <div class="welcome-step">
+                <span class="welcome-num">2</span>
                 <p>Connect an AI. This app doesn't come with one built in — it plugs into
                 an AI you already pay for, which is cheaper and gives you choices. It takes
                 about two minutes, one time only.</p>
             </div>
             {% if not has_key %}<a class="btn-primary welcome-cta" href="/settings">Set up your AI key</a>{% endif %}
             <div class="welcome-step">
-                <span class="welcome-num">2</span>
+                <span class="welcome-num">3</span>
                 <p>Pick your microphone, so I can hear you. You can change this later.</p>
             </div>
             <select id="welcome-mic" class="welcome-mic" data-mic-chooser>
                 <option value="">Default microphone</option>
             </select>
             <div class="welcome-step">
-                <span class="welcome-num">3</span>
+                <span class="welcome-num">4</span>
                 <p>Pick how you'd like it to look.</p>
             </div>
             <div class="theme-choice">
@@ -60,7 +92,7 @@
                         aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}">Dark mode</button>
             </div>
             <div class="welcome-step">
-                <span class="welcome-num">4</span>
+                <span class="welcome-num">5</span>
                 <p>Make it the right size for your eyes.</p>
             </div>
             <div class="zoom-row">
@@ -87,7 +119,24 @@
             </div>
             {% endif %}
 
-            <div class="messages" id="messages" role="log" aria-live="polite" aria-relevant="additions">
+            {#
+              aria-live is deliberately off. A streaming reply rewrites this
+              subtree on every token, so a live region here asked the screen
+              reader to re-announce the whole message hundreds of times per
+              reply -- unusable for exactly the person this app is built for.
+              The finished reply is announced once, through #sr-announcer below.
+            #}
+            {#
+              Every message carries a copy and a read-aloud button, so a forty
+              message conversation puts eighty tab stops between the top of the
+              page and the message box. This is the standard "skip block" way
+              out: invisible until focused, and the first thing Tab reaches
+              before the conversation starts.
+            #}
+            <a class="skip-link skip-conversation" id="skip-conversation" href="#chat-textarea">Skip past the conversation</a>
+
+            <div class="messages" id="messages" role="log" aria-live="off"
+                 aria-label="Conversation">
                 {% include "chat_messages.html" %}
             </div>
 
@@ -151,7 +200,18 @@
                                       d="M21.4 11.6l-8.9 8.9a6 6 0 0 1-8.5-8.5l8.9-8.9a4 4 0 0 1 5.7 5.7l-8.9 8.9a2 2 0 0 1-2.8-2.8l8.5-8.5"/>
                             </svg>
                         </button>
-                        <input type="file" id="file-input" multiple hidden>
+                        <input type="file" id="file-input" multiple hidden aria-label="Choose files to attach">
+                        {# Hidden until a camera is found, so a machine without
+                           one never shows a button that cannot work. #}
+                        <button type="button" id="camera-btn" class="icon-btn" hidden
+                                aria-label="Take a photo with your camera"
+                                title="Take a photo — hold something up to the camera and show it to the assistant">
+                            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+                                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"
+                                      d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.7l1.2-2h6.2l1.2 2h2.7A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"/>
+                                <circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
                         {% if tts.available %}
                         <div class="tts-wrap">
                             <button type="button" id="tts-btn" class="icon-btn" aria-pressed="false"
@@ -193,6 +253,30 @@
             <div class="quit-actions">
                 <button type="button" class="btn-primary" id="model-switch-confirm">Switch</button>
                 <button type="button" class="btn-stop" id="model-switch-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    {#
+      Showing the assistant something on paper, on a screen, or in your hands.
+      Deliberately one big target: the whole picture is the shutter, so there is
+      nothing to aim at while you are holding something up with the other hand.
+    #}
+    <div class="modal-backdrop camera-modal" id="camera-modal" role="dialog" aria-modal="true"
+         aria-label="Take a photo" hidden>
+        <div class="camera-card">
+            <p class="camera-help" id="camera-help">
+                Hold what you want to show up to the camera, then press Space or click
+                the picture to take it. Press Escape to cancel.
+            </p>
+            <button type="button" class="camera-shot" id="camera-shot"
+                    aria-describedby="camera-help" aria-label="Take the photo now">
+                <video id="camera-video" playsinline muted autoplay></video>
+            </button>
+            <p class="hint camera-error" id="camera-error" hidden></p>
+            <div class="quit-actions">
+                <button type="button" class="btn-primary" id="camera-take">Take the photo</button>
+                <button type="button" class="btn-stop" id="camera-cancel">Cancel</button>
             </div>
         </div>
     </div>

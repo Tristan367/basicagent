@@ -8,7 +8,9 @@ from agent_server.config import (
     DEFAULT_THEME,
     HOME_SESSION_ID,
     MODELS_BY_ID,
+    WHISPER_MODEL_CHOICES,
     contrast_text,
+    whisper_size,
 )
 from agent_server.model_catalog import (
     any_credentials,
@@ -28,6 +30,16 @@ PROVIDER_INFO = {
         ),
         "get_key_url": "https://platform.deepseek.com",
         "get_key_label": "get a key",
+    },
+    "gemini": {
+        "description": (
+            "Google's AI. The best place to start if you would rather not put a "
+            "card in at all: the everyday Gemini models have a free allowance, so "
+            "you can use this app for nothing until you outgrow it. Friendly, "
+            "creative, and very good with pictures."
+        ),
+        "get_key_url": "https://aistudio.google.com/apikey",
+        "get_key_label": "get a free key",
     },
     "openrouter": {
         "description": (
@@ -83,6 +95,16 @@ async def _chat_context(session: dict) -> dict:
         "tts_voice": settings.get("tts_voice", tts_service.availability()["default_voice"]),
         "tts_speed": settings.get("tts_speed", "1.25"),
         "tts_volume": settings.get("tts_volume", "0.75"),
+        # On by default: a chime after a slow job, and a distinct tone on
+        # failure, are welcome whether or not you can see the screen.
+        "sound_cues": settings.get("sound_cues", "1") == "1",
+        # Off by default: a repeating tick is reassurance for someone working
+        # by ear and a distraction for everyone else.
+        "sound_ticks": settings.get("sound_ticks", "0") == "1",
+        "sound_volume": settings.get("sound_volume", "0.4"),
+        # Answered in the welcome flow. There is no way to detect a screen
+        # reader from a page, so this is the only signal we have.
+        "uses_screen_reader": settings.get("uses_screen_reader", "0") == "1",
     }
 
 
@@ -121,6 +143,8 @@ async def _settings_context() -> dict:
         "nav_sessions": await db.list_sessions(profile=await parental.current_profile()),
         "stt": stt_availability(),
         "tts": tts_service.availability(),
+        "whisper_models": WHISPER_MODEL_CHOICES,
+        "whisper_size": whisper_size(),
         "child_mode": settings.get("child_mode", "0") == "1",
         "override_remaining": await parental.override_remaining(),
         "override_elapsed": await parental.override_elapsed(),

@@ -36,27 +36,33 @@ async def browser(
     reset: bool = False,
     **_,
 ) -> ToolResult:
-    if reset:
-        await engine.reset_session(ctx.session_id)
+    # Validate before doing anything. `reset` used to run first, so a call that
+    # was about to be rejected still threw away the session's cookies and
+    # history -- losing a login the model then had to redo.
+    if isinstance(steps, str):
+        try:
+            steps = json.loads(steps)
+        except json.JSONDecodeError:
+            return ToolResult.error("`steps` must be a list of objects, not a string", "browser")
+    if steps is not None and not isinstance(steps, list):
+        return ToolResult.error("`steps` must be a list of objects", "browser")
+    # After coercion, so a literal "[]" is caught as empty rather than running
+    # zero steps and reporting success.
     if not steps:
         return ToolResult.error(
             "`steps` is empty. Give at least one, e.g. "
             '[{"action": "goto", "url": "http://localhost:3000"}, {"action": "snapshot"}]',
             "browser",
         )
-    if isinstance(steps, str):
-        try:
-            steps = json.loads(steps)
-        except json.JSONDecodeError:
-            return ToolResult.error("`steps` must be a list of objects, not a string", "browser")
-    if not isinstance(steps, list):
-        return ToolResult.error("`steps` must be a list of objects", "browser")
     if len(steps) > MAX_STEPS:
         return ToolResult.error(
             f"{len(steps)} steps is more than the {MAX_STEPS} allowed in one call. "
             "Split the flow -- the browser keeps its state between calls.",
             "browser",
         )
+
+    if reset:
+        await engine.reset_session(ctx.session_id)
 
     try:
         session = await engine.get_session(ctx.session_id, width, height)
@@ -147,7 +153,14 @@ async def _perform(ctx, session, action: str, step: dict):
         url = str(step.get("url") or "")
         if not url:
             raise engine.BrowserError("`goto` needs `url`")
-        await page.goto(url, wait_until=step.get("wait") or "load", timeout=int(step.get("timeout_ms") or 30_000))
+        # `until` is the documented spelling; `wait` was read here but never
+        # appeared in the schema, so asking goto to wait for networkidle -- the
+        # documented way -- silently did nothing.
+        await page.goto(
+            url,
+            wait_until=step.get("until") or step.get("wait") or "load",
+            timeout=int(step.get("timeout_ms") or 30_000),
+        )
         return {"text": f"at {page.url}"}
 
     if action == "click":
@@ -435,8 +448,10 @@ async def _describe(ctx, question: str, images: list[tuple[str, bytes]]) -> str:
     if "vision" not in TOOLS:
         saved = ", ".join(p for p, _ in images)
         return (
-            "(no `vision` tool is installed, so the frames were saved but not "
-            f"described: {saved}. Add one on the Tools page to enable `ask`.)"
+            "(`ask` needs a vision tool and none is installed, so the screenshot "
+            f"was saved but not described: {saved}. Do not retry `ask` -- use "
+            "`snapshot` for the page's accessibility tree, or `expect` to assert "
+            "what should be there. Both are text and both work here.)"
         )
 
     paths = [p for p, _ in images[:6]]

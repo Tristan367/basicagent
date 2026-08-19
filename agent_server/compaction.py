@@ -190,11 +190,6 @@ def render_transcript(rows: list[dict], per_message_limit: int = 4000) -> str:
     return "\n\n".join(lines)
 
 
-async def should_offer_compaction(session_id: str) -> bool:
-    usage = await db.get_session_usage(session_id)
-    return bool(usage["threshold"]) and usage["context"] >= usage["threshold"]
-
-
 # How small a summary compresses its source down to, for switch-cost estimates.
 # Real summaries run ~10-20% of the source; 15% plus a floor is a fair guess.
 SUMMARY_RATIO = 0.15
@@ -344,14 +339,6 @@ async def compact_session_events(
     # The retained tail is the whole cost of a compacted session, so trim what
     # it does not need while the prefix is being rebuilt regardless.
     reasoning_freed = await drop_closed_reasoning(kept)
-
-    # Compaction rewrites the prefix anyway, so this is the cheap moment to
-    # adopt a shared prompt that changed while the conversation was running.
-    pending = session.get("pending_system_prompt")
-    if pending:
-        await db.update_session(
-            session_id, system_prompt=pending, pending_system_prompt=None
-        )
 
     yield {
         "type": "compact_done",

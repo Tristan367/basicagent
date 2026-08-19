@@ -133,7 +133,6 @@ async def run_bash(
     timeout: int | None = None,
     workdir: str | None = None,
     env: dict[str, str] | None = None,
-    sudo_password: str | None = None,
     **_,
 ) -> ToolResult:
     if not command or not command.strip():
@@ -148,11 +147,13 @@ async def run_bash(
             "bash",
         )
 
+    # There is nowhere to prompt for a password: this app has no permission UI
+    # and the user may be listening rather than looking. `-S` makes sudo read
+    # the password from stdin, which is then closed immediately, so it fails in
+    # a second with a clear message instead of hanging until the timeout.
     has_sudo = "sudo" in command.split()
     if has_sudo:
         command = re.sub(r"\bsudo\b", "sudo -S", command, count=1)
-        if sudo_password:
-            command = re.sub(r"-n\b\s*", "", command, count=1)
 
     timeout_ms = min(timeout or DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS)
     timeout_sec = timeout_ms / 1000
@@ -168,16 +169,12 @@ async def run_bash(
             command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            stdin=asyncio.subprocess.PIPE if (sudo_password or has_sudo) else asyncio.subprocess.DEVNULL,
+            stdin=asyncio.subprocess.PIPE if has_sudo else asyncio.subprocess.DEVNULL,
             cwd=cwd,
             start_new_session=True,
             env={**os.environ, "TERM": "dumb", "NO_COLOR": "1", "PAGER": "cat", **(env or {})},
         )
-        if sudo_password and proc.stdin is not None:
-            proc.stdin.write((sudo_password + "\n").encode())
-            await proc.stdin.drain()
-            proc.stdin.close()
-        elif has_sudo and not sudo_password and proc.stdin is not None:
+        if has_sudo and proc.stdin is not None:
             proc.stdin.close()
         stdout, stderr, detached = await asyncio.wait_for(
             _collect(proc), timeout=timeout_sec
@@ -209,6 +206,15 @@ async def run_bash(
         parts.append(
             "[note] the shell exited and left a background process running; "
             "it was not killed and any later output is not captured"
+        )
+    if has_sudo and code != 0:
+        # Otherwise the model reads "sudo: no password was provided" as a bug in
+        # its own command and retries it verbatim until the doom-loop guard fires.
+        parts.append(
+            "[note] sudo cannot be used here: there is no way to ask the user for "
+            "their password. Find a way that does not need administrator rights "
+            "(for example install into the user's own folder), or tell the user "
+            "the exact command to run themselves."
         )
     body = "\n".join(parts) or "(no output)"
 

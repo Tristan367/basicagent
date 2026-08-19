@@ -1,8 +1,8 @@
 """Text-to-speech via Kokoro, running on the CPU through onnxruntime.
 
-Deliberately off the GPU. The whole point of a local voice here is that it costs
-nothing the game work needs, so the 3060 is never touched; an 82M model on
-sixteen cores runs comfortably ahead of playback.
+Deliberately off the GPU. Read-aloud runs constantly for a user who works by
+ear, so it must not compete for the GPU with anything the user is building; an
+82M model on a normal CPU renders comfortably ahead of playback.
 
 The model is loaded once and kept. Loading costs about half a second, which is
 tolerable on the first play of a session and intolerable on every chunk of a

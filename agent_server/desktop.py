@@ -47,7 +47,18 @@ async def _open(url: str) -> None:
         context = await p.chromium.launch_persistent_context(
             str(APP_PROFILE_DIR),
             headless=False,
-            args=[f"--app={url}", "--disable-features=Translate"],
+            args=[
+                f"--app={url}",
+                "--disable-features=Translate",
+                # Publish the accessibility tree unconditionally, so a screen
+                # reader works the moment it is switched on. Chromium otherwise
+                # waits until it detects assistive technology, which is reliable
+                # on Windows and macOS and historically flaky against AT-SPI on
+                # Linux. Asking the user to pass a flag is not an option -- the
+                # people who need this are the least likely to know it exists,
+                # and the cost is a little memory on one small page.
+                "--force-renderer-accessibility",
+            ],
             no_viewport=True,
         )
         page = context.pages[0] if context.pages else await context.new_page()

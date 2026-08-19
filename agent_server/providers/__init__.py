@@ -2,10 +2,14 @@ from agent_server.providers.anthropic import AnthropicProvider
 from agent_server.providers.base import Provider, StreamEvent
 from agent_server.providers.custom_openai import CustomOpenAIProvider
 from agent_server.providers.deepseek import DeepSeekProvider
+from agent_server.providers.gemini import GeminiProvider
 from agent_server.providers.openrouter import OpenRouterProvider
 
+# Insertion order is the order the Settings page lists them in, so it runs
+# cheapest-and-easiest first: DeepSeek is the cheapest, Gemini has a free tier.
 _providers: dict[str, Provider] = {
     "deepseek": DeepSeekProvider(),
+    "gemini": GeminiProvider(),
     "openrouter": OpenRouterProvider(),
     "anthropic": AnthropicProvider(),
 }

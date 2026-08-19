@@ -19,6 +19,10 @@ from agent_server.providers import (
 
 router = APIRouter()
 
+# Strong references to fire-and-forget tasks, so they are not garbage
+# collected mid-flight.
+_background: set = set()
+
 
 @router.post("/_settings")
 async def save_settings(request: Request):
@@ -82,6 +86,22 @@ async def delete_custom_endpoint(name: str = Form(""), parent_password: str = Fo
     return RedirectResponse("/settings", status_code=303)
 
 
+def _checkbox(form, name: str) -> bool | None:
+    """Whether a checkbox is ticked, or None if this form did not carry it.
+
+    A browser omits an unticked checkbox entirely, so "absent" and "off" look
+    identical and `name in form` reads both as "leave it alone" -- every
+    checkbox on the settings page could be switched on and never off again.
+    Each one is therefore paired with a hidden field of the same name, so the
+    field is always submitted and its presence means "this form owns this
+    setting". Order is not relied on: the tick is whichever value says on.
+    """
+    values = [str(v) for v in form.getlist(name)]
+    if not values:
+        return None
+    return "on" in values
+
+
 @router.post("/_settings/prefs")
 async def save_prefs(request: Request):
     form = await request.form()
@@ -95,16 +115,31 @@ async def save_prefs(request: Request):
             await db.delete_setting("accent")
     if "welcome_seen" in form:
         await db.set_setting("welcome_seen", "1" if form.get("welcome_seen") == "on" else "0")
-    if "stt_enabled" in form:
-        await db.set_setting("stt_enabled", "1" if form.get("stt_enabled") == "on" else "0")
-    if "tts_auto" in form:
-        await db.set_setting("tts_auto", "1" if form.get("tts_auto") == "on" else "0")
+    for key in ("stt_enabled", "tts_auto", "sound_cues", "sound_ticks", "uses_screen_reader"):
+        ticked = _checkbox(form, key)
+        if ticked is not None:
+            await db.set_setting(key, "1" if ticked else "0")
     if (voice := str(form.get("tts_voice", "")).strip()):
         await db.set_setting("tts_voice", voice)
     if (speed := str(form.get("tts_speed", "")).strip()):
         await db.set_setting("tts_speed", speed)
     if (volume := str(form.get("tts_volume", "")).strip()):
         await db.set_setting("tts_volume", volume)
+    if (sound_volume := str(form.get("sound_volume", "")).strip()):
+        await db.set_setting("sound_volume", sound_volume)
+    if (size := str(form.get("whisper_size", "")).strip()):
+        from agent_server import config
+        from agent_server import stt as stt_service
+
+        if config.set_whisper_size(size):
+            await db.set_setting("whisper_size", size)
+            # Drop the loaded model so the next sentence uses the new one; it
+            # reloads (and downloads, the first time) in the background rather
+            # than making this request wait on it.
+            await stt_service.reload_model()
+            task = asyncio.create_task(stt_service.warmup())
+            _background.add(task)
+            task.add_done_callback(_background.discard)
     return RedirectResponse(request.headers.get("referer") or "/", status_code=303)
 
 

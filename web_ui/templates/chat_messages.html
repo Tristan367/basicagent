@@ -13,12 +13,20 @@
     </div>
     {% endif %}
   {% elif m.role == 'user' %}
+    {#
+      Who is speaking is otherwise carried only by which side the bubble sits
+      on and what colour it is -- nothing a screen reader can convey. Reading
+      the history back was an undifferentiated stream of text with no way to
+      tell your own words from the assistant's. The label is for that.
+    #}
     <div class="message user" id="msg-{{ m.id }}">
+        <span class="sr-only">You said:</span>
         <div class="bubble"><div class="content" data-markdown>{{ m.content }}</div></div>
     </div>
   {% elif m.role == 'assistant' %}
     {% if (m.content or '') | trim %}
     <div class="message assistant" id="msg-{{ m.id }}">
+        <span class="sr-only">Assistant said:</span>
         <div class="bubble"><div class="content" data-markdown>{{ m.content }}</div></div>
     </div>
     {% endif %}

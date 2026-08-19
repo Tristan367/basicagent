@@ -1,4 +1,4 @@
-"""Streaming dictation backed by whisper-server (whisper.cpp).
+"""Streaming dictation, backed by the same faster-whisper model as `stt`.
 
 Whisper's architecture is non-streaming, so this is a sliding re-transcription:
 the accumulated audio is re-transcribed every couple of seconds and the result
@@ -20,15 +20,10 @@ import os
 import re
 import wave
 
-import httpx
 import numpy as np
 
-from agent_server.config import (
-    WHISPER_SERVER_BIN,
-    WHISPER_SERVER_PORT,
-    whisper_model,
-    whisper_streaming_available,
-)
+from agent_server import stt as stt_service
+from agent_server.config import whisper_streaming_available
 
 SAMPLE_RATE = 16000
 # Re-transcribe only once this much NEW audio has accumulated. Kept low so the
@@ -73,86 +68,52 @@ class WhisperStreamingError(RuntimeError):
 
 
 class WhisperServer:
-    """A persistent whisper-server process with the model already loaded."""
+    """Adapter giving `WhisperSession` the `(text, segments)` shape it wants.
 
-    def __init__(self) -> None:
-        self.proc: asyncio.subprocess.Process | None = None
-        self.client: httpx.AsyncClient | None = None
-        self.url = f"http://127.0.0.1:{WHISPER_SERVER_PORT}/inference"
+    Named for what it replaced: this used to spawn a whisper-server process and
+    talk to it over HTTP. It now calls the shared faster-whisper model directly,
+    so live dictation needs no extra binary and no second copy of the model in
+    memory. The sliding-window logic below is unchanged -- it only ever needed
+    text plus segment timings.
+    """
 
     async def start(self) -> None:
-        if self.proc is not None:
-            return
         if not whisper_streaming_available():
-            raise WhisperStreamingError("whisper-server is not installed")
-        self.proc = await asyncio.create_subprocess_exec(
-            WHISPER_SERVER_BIN,
-            "-m", whisper_model(),
-            "--host", "127.0.0.1",
-            "--port", str(WHISPER_SERVER_PORT),
-            "-l", "en",
-            # Skip the language-probability pass: it re-runs detection on every
-            # request and doubles transcription time for a field we never read.
-            "-nlp",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            raise WhisperStreamingError(
+                "Dictation is not installed. Run: pip install faster-whisper"
+            )
+        await stt_service.get_model()
+
+    @staticmethod
+    def _transcribe(model, wav_bytes: bytes) -> tuple[str, list[dict]]:
+        segments, _info = model.transcribe(
+            io.BytesIO(wav_bytes), language="en", beam_size=1, vad_filter=True
         )
-        # Wait for the HTTP server to answer (the model loads in a few seconds).
-        async with httpx.AsyncClient() as probe:
-            for _ in range(150):
-                if self.proc.returncode is not None:
-                    raise WhisperStreamingError("whisper-server exited during startup")
-                try:
-                    # Any HTTP status means the socket is up; GET is 404 by design.
-                    await probe.get(self.url, timeout=0.5)
-                    break
-                except httpx.HTTPError:
-                    await asyncio.sleep(0.2)
-            else:
-                raise WhisperStreamingError("whisper-server did not become ready")
-        self.client = httpx.AsyncClient(timeout=60)
+        rows: list[dict] = []
+        parts: list[str] = []
+        for seg in segments:
+            text = _clean(str(seg.text))
+            rows.append({"start": float(seg.start), "end": float(seg.end), "text": text})
+            if text:
+                parts.append(text)
+        return _clean(" ".join(parts)), rows
 
     async def transcribe(self, wav_bytes: bytes) -> tuple[str, list[dict]]:
         """Return ``(cleaned_text, segments)`` for one wav.
 
         ``segments`` is a list of ``{"start", "end", "text"}`` with times in
-        seconds, from whisper's ``verbose_json`` output -- used to cut the audio
-        buffer at a word/sentence boundary when committing.
+        seconds, used to cut the audio buffer at a sentence boundary when
+        committing.
         """
-        if self.client is None:
-            await self.start()
-        assert self.client is not None
-        resp = await self.client.post(
-            self.url,
-            files={"file": ("audio.wav", wav_bytes, "audio/wav")},
-            data={"response_format": "verbose_json", "temperature": "0.0"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = _clean(" ".join(str(data.get("text", "")).split()))
-        segments = []
-        for seg in data.get("segments", []):
-            try:
-                start = float(seg.get("start", 0.0))
-                end = float(seg.get("end", 0.0))
-            except (TypeError, ValueError):
-                continue
-            segments.append(
-                {"start": start, "end": end, "text": _clean(str(seg.get("text", "")))}
-            )
-        return text, segments
+        try:
+            model = await stt_service.get_model()
+            return await asyncio.to_thread(self._transcribe, model, wav_bytes)
+        except stt_service.STTError as e:
+            raise WhisperStreamingError(str(e)) from e
 
     async def shutdown(self) -> None:
-        if self.client is not None:
-            await self.client.aclose()
-            self.client = None
-        if self.proc is not None and self.proc.returncode is None:
-            self.proc.terminate()
-            try:
-                await asyncio.wait_for(self.proc.wait(), 3)
-            except TimeoutError:
-                self.proc.kill()
-        self.proc = None
+        # The model belongs to `stt`, which owns its lifecycle.
+        return None
 
 
 _server: WhisperServer | None = None

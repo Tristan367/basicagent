@@ -388,25 +388,6 @@ async def last_messages() -> dict[str, dict]:
     return {r["session_id"]: r for r in rows}
 
 
-async def delete_messages_after(session_id: str, message_id: int) -> int:
-    db = await connect()
-    async with _write_lock:
-        cur = await db.execute(
-            "DELETE FROM messages WHERE session_id = ? AND id > ?", (session_id, message_id)
-        )
-        await db.commit()
-        return cur.rowcount or 0
-
-
-async def clear_system_prompts() -> None:
-    """Drop every session's frozen prompt so they rebuild on next use.
-
-    Used when child mode toggles, so the child-safety instruction is picked up
-    (or removed) even by sessions that were already open.
-    """
-    await _execute("UPDATE sessions SET system_prompt = NULL")
-
-
 async def revert_last_user_message(session_id: str) -> bool:
     """Remove the newest message when it is a user message nobody answered.
 

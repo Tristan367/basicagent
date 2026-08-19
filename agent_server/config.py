@@ -1,12 +1,11 @@
 """Static configuration. Runtime-mutable settings live in the `settings` DB table.
 
-This app is the accessibility-first sibling of the full CodeAgent: the same
-backend, one hard-coded prompt, no per-session knobs. Everything the user would
-otherwise have to decide is defaulted or derived here.
+This app is the accessibility-first sibling of a full power-user coding agent:
+the same backend, one hard-coded prompt, no per-session knobs. Everything the
+user would otherwise have to decide is defaulted or derived here.
 """
 
 import os
-import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -20,6 +19,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # The name shown in the UI. Kept in one place so a real name can be swapped in
 # once it is chosen, without touching templates or the launcher.
 APP_NAME = "Assistant"
+
+# How the app identifies itself to other machines: the User-Agent it sends and
+# the attribution OpenRouter shows on the user's own dashboard. Separate from
+# APP_NAME because "Assistant" is a fine thing to call it on screen and a
+# useless thing to see in a server log.
+APP_SLUG = "BasicAgent"
+APP_URL = "https://github.com/Tristan367/BasicCodingAgent"
+USER_AGENT = f"Mozilla/5.0 (compatible; {APP_SLUG}/1.0)"
 
 # "dark" or "light". Dark is the default; the user chooses on first run and can
 # change it in Settings (or by asking the assistant).
@@ -127,41 +134,78 @@ MODELS = [
         "price_in_miss": 0.14,
         "price_out": 0.28,
     },
+    # Google, first-party. The Flash models have a free tier, which matters a
+    # lot for this app's audience: someone can try the whole thing without
+    # entering a payment method anywhere.
     {
-        "id": "anthropic/claude-sonnet-4-20250514",
-        "name": "Claude Sonnet 4",
-        "provider": "openrouter",
-        "context": 200_000,
-        "price_in_hit": 1.25,
-        "price_in_miss": 3.0,
-        "price_out": 15.0,
-    },
-    {
-        "id": "openai/gpt-4.1",
-        "name": "GPT-4.1",
-        "provider": "openrouter",
+        "id": "gemini-3.5-flash-lite",
+        "name": "Gemini 3.5 Flash Lite",
+        "provider": "gemini",
         "context": 1_000_000,
-        "price_in_hit": 1.25,
-        "price_in_miss": 2.0,
-        "price_out": 8.0,
+        "free_tier": True,
+        "price_in_hit": 0.03,
+        "price_in_miss": 0.30,
+        "price_out": 2.50,
     },
     {
-        "id": "google/gemini-2.5-pro",
-        "name": "Gemini 2.5 Pro",
-        "provider": "openrouter",
+        "id": "gemini-3.7-flash",
+        "name": "Gemini 3.7 Flash",
+        "provider": "gemini",
         "context": 1_000_000,
-        "price_in_hit": 0.25,
-        "price_in_miss": 1.25,
-        "price_out": 10.0,
+        "free_tier": True,
+        "price_in_hit": 0.075,
+        "price_in_miss": 0.75,
+        "price_out": 3.75,
     },
+    {
+        "id": "gemini-3.1-pro-preview",
+        "name": "Gemini 3.1 Pro",
+        "provider": "gemini",
+        "context": 1_000_000,
+        "price_in_hit": 0.20,
+        "price_in_miss": 2.00,
+        "price_out": 12.00,
+    },
+    # OpenRouter is the "one key, everything" option. Kept deliberately short:
+    # models the first-party providers above do not already cover. Its cache-hit
+    # price is set equal to the miss price because OpenRouter does not publish a
+    # single cached rate per model -- guessing low would understate the bill,
+    # and that is the one direction this app must never be wrong in.
     {
         "id": "meta-llama/llama-4-maverick",
         "name": "Llama 4 Maverick",
         "provider": "openrouter",
         "context": 1_000_000,
-        "price_in_hit": 0.15,
+        "price_in_hit": 0.20,
         "price_in_miss": 0.20,
-        "price_out": 0.60,
+        "price_out": 0.80,
+    },
+    {
+        "id": "openai/gpt-5.6-luna",
+        "name": "GPT-5.6 Luna",
+        "provider": "openrouter",
+        "context": 1_000_000,
+        "price_in_hit": 0.20,
+        "price_in_miss": 0.20,
+        "price_out": 1.20,
+    },
+    {
+        "id": "openai/gpt-5-mini",
+        "name": "GPT-5 Mini",
+        "provider": "openrouter",
+        "context": 400_000,
+        "price_in_hit": 0.25,
+        "price_in_miss": 0.25,
+        "price_out": 2.00,
+    },
+    {
+        "id": "x-ai/grok-4.3",
+        "name": "Grok 4.3",
+        "provider": "openrouter",
+        "context": 1_000_000,
+        "price_in_hit": 1.25,
+        "price_in_miss": 1.25,
+        "price_out": 2.50,
     },
     {
         "id": "claude-fable-5",
@@ -207,17 +251,21 @@ MODELS = [
 
 MODELS_BY_ID = {m["id"]: m for m in MODELS}
 
-DYNAMIC_DEEPSEEK_MODELS: list[str] = []
+# Model ids a provider advertised at startup that aren't in the curated list
+# above. They never appear in the picker -- an unlabelled, unpriced id is not a
+# choice a non-technical user can make -- but they are accepted if something
+# else selects one, so a newly released model isn't rejected as "unknown".
+DYNAMIC_MODELS: dict[str, str] = {}
 
 
-def register_dynamic_deepseek_models(ids: list[str]) -> None:
+def register_dynamic_models(provider: str, ids: list[str]) -> None:
     for mid in ids:
-        if mid and mid not in MODELS_BY_ID and mid not in DYNAMIC_DEEPSEEK_MODELS:
-            DYNAMIC_DEEPSEEK_MODELS.append(mid)
+        if mid and mid not in MODELS_BY_ID:
+            DYNAMIC_MODELS.setdefault(mid, provider)
 
 
 def is_known_model(model_id: str) -> bool:
-    return model_id in MODELS_BY_ID or model_id in DYNAMIC_DEEPSEEK_MODELS
+    return model_id in MODELS_BY_ID or model_id in DYNAMIC_MODELS
 
 
 UNKNOWN_MODEL = {
@@ -241,7 +289,11 @@ def model_info(model_id: str) -> dict:
 
 def provider_for_model(model_id: str) -> str:
     entry = MODELS_BY_ID.get(model_id)
-    return entry["provider"] if entry else DEFAULT_PROVIDER
+    if entry:
+        return entry["provider"]
+    # A discovered id knows its own provider. Falling straight through to
+    # DEFAULT_PROVIDER used to send, say, a Gemini model id to DeepSeek.
+    return DYNAMIC_MODELS.get(model_id, DEFAULT_PROVIDER)
 
 
 def resolve_model_choice(choice: str, custom_model: str = "") -> tuple[str, str]:
@@ -280,49 +332,97 @@ WEBFETCH_ALLOW_PRIVATE = os.getenv("WEBFETCH_ALLOW_PRIVATE", "0") == "1"
 # ── Vision ──────────────────────────────────────────────────────────────────
 VISION_MAX_PIXELS = int(os.getenv("VISION_MAX_PIXELS", str(1600 * 1600)))
 
-# ── Speech to text (whisper.cpp) ─────────────────────────────────────────────
-WHISPER_BIN = os.getenv("WHISPER_BIN") or shutil.which("whisper-cli") or shutil.which("whisper")
+# ── Dictation (faster-whisper) ───────────────────────────────────────────────
+# One backend on every platform, deliberately. whisper.cpp is faster, but it is
+# a compiled binary plus an ffmpeg system package, so it is available on a
+# developer's Linux box and awkward-to-impossible on a locked-down Windows
+# laptop -- which meant the app behaved differently depending on who ran it.
+# faster-whisper is a plain pip install with wheels for Linux, macOS and
+# Windows, decodes the browser's WebM/Opus and MP4 itself, and fetches its own
+# model. Same behaviour everywhere is worth more here than raw speed.
+#
+# "int8" keeps it quick on an ordinary CPU without a meaningful accuracy loss.
+FASTER_WHISPER_COMPUTE = os.getenv("FASTER_WHISPER_COMPUTE", "int8")
+
+# The most accurate of the three, and the default. It needs no GPU: measured on
+# CPU only, per utterance, "small" costs about 2.0s limited to two threads and
+# 1.4s on four. (The advice that a bigger model needs a GPU is about `medium`
+# and `large`, which are five to ten times the size; `small` is 244M
+# parameters.) Getting the words right first time matters more here than
+# shaving a second, because the person dictating may not be able to see the
+# mistake to correct it.
+DEFAULT_WHISPER_MODEL = "small.en"
+
+# Whisper pads every clip to 30 seconds internally, so cost is dominated by one
+# fixed encoder pass and barely moves with how long you spoke: on two threads,
+# "small" takes 1.62s for a 1.7s utterance and 2.02s for a 9.3s one. More than
+# four CPU threads buys nothing.
+#
+# The other two exist only as an escape hatch for genuinely old hardware, which
+# this app's users are more likely than most to be running. Nobody should need
+# to come here: the default is the right answer on any machine from the last
+# decade or so.
+WHISPER_MODEL_CHOICES = [
+    {
+        "id": "small.en",
+        "name": "Most accurate",
+        "note": "The best at names, unusual words, and messy speech. Use this "
+                "unless dictation feels slow.",
+        "size": "about 480 MB",
+    },
+    {
+        "id": "base.en",
+        "name": "Faster",
+        "note": "About three times quicker, and makes more mistakes. Worth trying "
+                "on an older computer.",
+        "size": "about 145 MB",
+    },
+    {
+        "id": "tiny.en",
+        "name": "Fastest",
+        "note": "For a very old or very slow computer. Expect to correct it often.",
+        "size": "about 75 MB",
+    },
+]
+WHISPER_MODEL_IDS = {m["id"] for m in WHISPER_MODEL_CHOICES}
+
+# Runtime-selected; the `settings` row wins, and this is primed from it at
+# startup so the synchronous callers below do not need the database.
+_whisper_size = os.getenv("FASTER_WHISPER_MODEL", DEFAULT_WHISPER_MODEL)
 
 
-def _find_whisper_model() -> str:
-    if os.getenv("WHISPER_MODEL"):
-        return os.getenv("WHISPER_MODEL", "")
-    candidates = [
-        Path.home() / "opt/whisper.cpp/models/ggml-base.en.bin",
-        Path.home() / "models/stt/ggml-base.en.bin",
-        Path.home() / "opt/whisper.cpp/models/ggml-tiny.en.bin",
-        Path.home() / "models/stt/ggml-tiny.en-q8_0.bin",
-        Path.home() / "models/stt/ggml-tiny.en-q4_1.bin",
-    ]
-    for c in candidates:
-        if c.exists():
-            return str(c)
-    return ""
+def whisper_size() -> str:
+    return _whisper_size if _whisper_size in WHISPER_MODEL_IDS else DEFAULT_WHISPER_MODEL
 
 
-_whisper_model = _find_whisper_model()
-
-
-def whisper_model() -> str:
-    return _whisper_model
-
-
-def set_whisper_model(value: str) -> None:
-    global _whisper_model
-    _whisper_model = (value or "").strip() or _find_whisper_model()
-
-
-FFMPEG_BIN = os.getenv("FFMPEG_BIN") or shutil.which("ffmpeg")
-WHISPER_SERVER_BIN = os.getenv("WHISPER_SERVER_BIN") or shutil.which("whisper-server")
-WHISPER_SERVER_PORT = int(os.getenv("WHISPER_SERVER_PORT", "8177"))
+def set_whisper_size(value: str) -> bool:
+    """Choose the dictation model. True when it actually changed."""
+    global _whisper_size
+    value = (value or "").strip()
+    if value not in WHISPER_MODEL_IDS or value == _whisper_size:
+        return False
+    _whisper_size = value
+    return True
 
 
 def stt_available() -> bool:
-    return bool(WHISPER_BIN and whisper_model() and FFMPEG_BIN)
+    """Whether dictation can run at all.
+
+    The import is not attempted here -- it is heavy -- so this only reports
+    whether the package is installed.
+    """
+    from importlib.util import find_spec
+
+    try:
+        return find_spec("faster_whisper") is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def whisper_streaming_available() -> bool:
-    return bool(WHISPER_SERVER_BIN and whisper_model())
+    """Live dictation uses the same model as everything else, so if dictation
+    works at all, words can appear as they are spoken."""
+    return stt_available()
 
 
 # ── Text to speech (Kokoro) ──────────────────────────────────────────────────

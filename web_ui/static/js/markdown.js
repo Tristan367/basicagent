@@ -32,12 +32,49 @@
     return escapeHtml(code);
   }
 
-  /* A path starts with /, ~/, ./, ../, or a directory segment, then runs to the
+  /* Add a line-number gutter to already-highlighted HTML.
+   *
+   * Split on newlines rather than wrapping each source line before
+   * highlighting: highlight.js needs the whole block to get multi-line strings
+   * and comments right. A span left open at a line break is closed and
+   * reopened so each row is valid on its own.
+   *
+   * The numbers live in a `::before` on each row, not in the text, so copying
+   * the block copies code and not a column of digits. */
+  function withLineNumbers(html, startLine) {
+    const rows = html.split('\n');
+    let open = [];
+    const out = rows.map((row, idx) => {
+      const prefix = open.length ? open.join('') : '';
+      // Track spans that cross the line break.
+      const tags = row.match(/<span[^>]*>|<\/span>/g) || [];
+      for (const tag of tags) {
+        if (tag === '</span>') open.pop();
+        else open.push(tag);
+      }
+      const suffix = '</span>'.repeat(open.length);
+      const n = (startLine || 1) + idx;
+      return '<span class="code-row" data-line="' + n + '">' +
+             prefix + row + suffix + '</span>';
+    });
+    return out.join('\n');
+  }
+
+  /* Two shapes are recognised.
+   *
+   * A path with a slash in it, anywhere. And -- because the file the assistant
+   * most often means is in the top of the project and so has no slash at all
+   * ("app.js:3-7") -- a bare filename, but only when it carries a line
+   * reference. Requiring the line number there is what keeps ordinary prose
+   * out: "Node.js" and "version 1.2" are not paths, and without that rule both
+   * would become clickable.
+   *
+   * A path starts with /, ~/, ./, ../, or a directory segment, then runs to the
    * next whitespace/quote/angle. The negative lookbehind stops the pass from
    * re-linkifying a href value the link pass just wrote. Trailing sentence
    * punctuation is split back out so it is not swallowed by the link. The line
    * (and optional range) ride in data attributes the app reads on click. */
-  const FILE_REF_TOKEN = /(?<![=">])(^|[\s(["'`])((?:\/|~\/|\.{1,2}\/|[\w@.~\-]+\/)[^\s<>"'`]+)/g;
+  const FILE_REF_TOKEN = /(?<![=">])(^|[\s(["'`])((?:\/|~\/|\.{1,2}\/|[\w@.~\-]+\/)[^\s<>"'`]+|[\w@.~\-]+\.[A-Za-z][\w]{0,5}:\d+(?:-\d+)?)/g;
 
   /* "n/a", "and/or", "AC/DC" are prose, not paths. A path is absolute or
    * explicitly relative, nested, or ends in a filename extension. */
@@ -56,7 +93,12 @@
     if (!path || !looksLikePath(path)) return full;
     const line = m[2], end = m[3];
     const display = path + (line ? ':' + line + (end ? '-' + end : '') : '');
-    return pre + '<code>' + display + '</code>' + trail;
+    const attrs = ' data-path="' + escapeHtml(path) + '"' +
+      (line ? ' data-line="' + line + '"' : '') +
+      (end ? ' data-end="' + end + '"' : '');
+    return pre + '<button type="button" class="file-ref"' + attrs +
+      ' title="Show this in your file manager">' + escapeHtml(display) +
+      '</button>' + trail;
   }
 
   function inline(text) {
@@ -143,7 +185,7 @@
           '<button type="button" class="code-copy" onclick="copyCode(this)" title="Copy to clipboard">' +
           '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" fill="none" stroke="currentColor" stroke-width="2"/></svg>' +
           '</button></div>' +
-          '<pre><code>' + highlight(code, lang) + '</code></pre></div>'
+          '<pre><code>' + withLineNumbers(highlight(code, lang), 1) + '</code></pre></div>'
         );
         continue;
       }
@@ -242,7 +284,7 @@
     return html.join('\n');
   }
 
-  global.md = { render, escapeHtml, highlight };
+  global.md = { render, escapeHtml, highlight, withLineNumbers };
 })(window);
 
 function copyCode(button) {

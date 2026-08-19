@@ -35,9 +35,10 @@ class Tool:
     handler: Handler
     # Read-only and side-effect free, so several may run at once.
     parallel_safe: bool = field(default=False)
-    # Requires a vision host; skipped when the provider cannot see, so the
-    # `vision` custom tool steps in where it is configured.
-    vision_only: bool = field(default=False)
+    # Useless without something that can look at an image. Offered only when a
+    # `vision` tool is actually registered, because a tool that can only ever
+    # answer "I can't see that" wastes a round trip and confuses the model.
+    needs_vision: bool = field(default=False)
 
     def schema(self) -> dict:
         return {
@@ -127,7 +128,10 @@ register(Tool(
     name="bash",
     description=(
         "Run a shell command in the project directory. Use for git, builds, tests, and "
-        "package managers. Do not use it to read or search files — use read/grep/glob."
+        "package managers. Do not use it to read or search files — use read/grep/glob.\n"
+        "Long-running processes (dev servers, watchers) must be backgrounded with `&`, "
+        "or the call blocks until it times out. sudo does not work here and never will: "
+        "there is no way to ask the user for a password."
     ),
     parameters={
         "type": "object",
@@ -143,7 +147,12 @@ register(Tool(
 
 register(Tool(
     name="grep",
-    description="Search file contents with a regular expression (ripgrep).",
+    description=(
+        "Search file contents with a regular expression (ripgrep). Prefer this over "
+        "reading files to look for something. Search for a distinctive fragment rather "
+        "than a whole phrase — an over-specific pattern matching nothing reads like "
+        "the code is absent when it is merely spelled differently."
+    ),
     parameters={
         "type": "object",
         "properties": {
@@ -174,7 +183,11 @@ register(Tool(
 
 register(Tool(
     name="webfetch",
-    description="Fetch a URL and return its content as readable text.",
+    description=(
+        "Fetch a URL and return its content as readable text. Use it to read "
+        "documentation you found with `websearch`, and whenever you are unsure "
+        "whether a library's API has changed since your training data."
+    ),
     parameters={
         "type": "object",
         "properties": {"url": {"type": "string", "description": "Absolute http(s) URL"}},
@@ -186,7 +199,10 @@ register(Tool(
 
 register(Tool(
     name="websearch",
-    description="Search the web via DuckDuckGo. No API key required.",
+    description=(
+        "Search the web via DuckDuckGo. No API key required. Returns titles and "
+        "links only — follow up with `webfetch` to actually read a result."
+    ),
     parameters={
         "type": "object",
         "properties": {"query": {"type": "string", "description": "Search query"}},
@@ -251,7 +267,7 @@ register(Tool(
     },
     handler=capture,
     parallel_safe=True,
-    vision_only=True,
+    needs_vision=True,
 ))
 
 register(Tool(
@@ -300,7 +316,7 @@ register(Tool(
                         "ms": {"type": "integer", "description": "For wait"},
                         "interval_ms": {"type": "integer", "description": "For record"},
                         "to": {"type": "string", "description": "For scroll: top, bottom, or pixels"},
-                        "until": {"type": "string", "description": "For wait: load|domcontentloaded|networkidle"},
+                        "until": {"type": "string", "description": "For wait and goto: load|domcontentloaded|networkidle"},
                         "width": {"type": "integer"},
                         "height": {"type": "integer"},
                         "timeout_ms": {"type": "integer"},
@@ -316,7 +332,13 @@ register(Tool(
         "required": ["steps"],
     },
     handler=browser_tool,
-    vision_only=True,
+    # Deliberately NOT needs_vision. Everything that makes this tool worth
+    # having -- navigating, filling forms, asserting, reading the console, and
+    # `snapshot`, which returns the page's accessibility tree as text -- works
+    # with no ability to see an image at all. Only the optional `ask` on a
+    # screenshot needs vision, and it says so when it is unavailable. Gating the
+    # whole tool on vision took a website-building assistant's ability to open
+    # the website it had just built.
 ))
 
 # ── Session manager tools (home session only) ───────────────────────────────
@@ -417,17 +439,36 @@ def allowed_tool_names(session: dict) -> list[str]:
     return [n for n in TOOLS if n not in MANAGER_TOOLS]
 
 
+def vision_available() -> bool:
+    """Whether anything registered can actually look at an image.
+
+    This app ships no vision tool: describing a picture needs a GPU or a paid
+    account it cannot assume. One can be registered by an embedding
+    application, and everything gated on this appears the moment it is.
+    """
+    return "vision" in TOOLS
+
+
 def tool_schemas(
     names: Iterable[str] | None = None,
-    include_vision: bool = True,
+    include_vision: bool | None = None,
     exclude: set[str] | None = None,
 ) -> list[dict]:
+    """The schemas to send. `include_vision` defaults to whether vision exists.
+
+    This used to be passed `not provider.supports_vision()`, which was backwards
+    twice over: it asked whether the *model* was multimodal (irrelevant -- this
+    app never puts an image in a request) and then inverted the answer, so a
+    multimodal provider was the one that lost the tools.
+    """
+    if include_vision is None:
+        include_vision = vision_available()
     selected = list(names) if names is not None else list(TOOLS)
     return [
         TOOLS[n].schema()
         for n in selected
         if n in TOOLS
-        and (include_vision or not TOOLS[n].vision_only)
+        and (include_vision or not TOOLS[n].needs_vision)
         and (exclude is None or n not in exclude)
     ]
 

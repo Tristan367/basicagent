@@ -8,6 +8,7 @@ import httpx
 
 from agent_server.config import (
     MAX_TOOL_RESULT_CHARS,
+    USER_AGENT,
     WEBFETCH_ALLOW_PRIVATE,
     WEBFETCH_MAX_BYTES,
     WEBFETCH_TIMEOUT,
@@ -63,7 +64,7 @@ async def webfetch(ctx: ToolContext, *, url: str, **_) -> ToolResult:
             timeout=TIMEOUT,
             follow_redirects=False,
             headers={
-                "User-Agent": "Mozilla/5.0 (compatible; CodeAgent/1.0)",
+                "User-Agent": USER_AGENT,
                 "Accept": "text/html,application/xhtml+xml,text/plain,*/*",
             },
         ) as client:
@@ -147,7 +148,7 @@ async def websearch(ctx: ToolContext, *, query: str, **_) -> ToolResult:
         async with httpx.AsyncClient(
             timeout=TIMEOUT,
             follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; CodeAgent/1.0)"},
+            headers={"User-Agent": USER_AGENT},
         ) as client:
             resp = await client.post(
                 "https://lite.duckduckgo.com/lite/",

@@ -68,11 +68,57 @@
   // so after tabbing deep into a long chat you can reach the message box without
   // tabbing through every message in reverse. Exposed on window so the settings
   // page's modals share the same behaviour.
+  const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), ' +
+    'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  function focusableIn(root) {
+    return Array.from(root.querySelectorAll(FOCUSABLE))
+      .filter((el) => !el.hidden && el.offsetParent !== null);
+  }
+
+  // Everything outside the dialog is made `inert` while it is open, so it is
+  // removed from the tab order AND from the screen reader's browse mode. These
+  // dialogs are declared aria-modal, and without this a user could tab or
+  // arrow straight out into the page behind with nothing to signal they had
+  // left -- the welcome dialog is the first thing a new user meets, so getting
+  // lost there is getting lost immediately.
+  //
+  // Walking the ancestor chain and inerting each level's other children means
+  // this works wherever the dialog sits in the document; some live inside
+  // <main>, so inerting <main> wholesale would inert the dialog itself.
+  // Live regions must never be inerted: `inert` takes an element out of the
+  // accessibility tree entirely, so inerting the announcer would silence
+  // exactly the errors raised while a dialog is open -- a rejected password,
+  // a failed model switch -- for the user who most needs to hear them.
+  const ALWAYS_LIVE = new Set(['sr-announcer', 'toast-area']);
+
+  let inerted = [];
+  function setBackgroundInert(modalEl, on) {
+    if (!on) {
+      inerted.forEach((el) => el.removeAttribute('inert'));
+      inerted = [];
+      return;
+    }
+    inerted = [];
+    let node = modalEl;
+    while (node && node !== document.body && node.parentElement) {
+      for (const sib of node.parentElement.children) {
+        if (sib === node || sib.hasAttribute('inert')) continue;
+        if (ALWAYS_LIVE.has(sib.id)) continue;
+        sib.setAttribute('inert', '');
+        inerted.push(sib);
+      }
+      node = node.parentElement;
+    }
+  }
+
   window.__openModal = function (el, focusEl) {
     window.__modalEl = el;
     window.__modalReturn = document.activeElement;
     el.hidden = false;
-    if (focusEl) focusEl.focus();
+    setBackgroundInert(el, true);
+    const target = focusEl || focusableIn(el)[0];
+    if (target) target.focus();
   };
   window.__closeModal = function () {
     if (!window.__modalEl) return false;
@@ -80,10 +126,33 @@
     const ret = window.__modalReturn;
     window.__modalEl = null;
     window.__modalReturn = null;
+    setBackgroundInert(el, false);
     el.hidden = true;
     if (ret && ret.focus) ret.focus();
+    // So a dialog can clean up after itself however it was dismissed. The
+    // camera needs this: Escape closes the dialog, and without a signal the
+    // webcam would stay live -- and its light stay on -- until the tab closed.
+    el.dispatchEvent(new CustomEvent('modalclosed'));
     return true;
   };
+
+  // `inert` covers modern engines; this keeps Tab inside the dialog on anything
+  // that does not support it, and wraps the cycle so the last control leads
+  // back to the first rather than to the browser chrome.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || !window.__modalEl) return;
+    const items = focusableIn(window.__modalEl);
+    if (!items.length) { e.preventDefault(); return; }
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, true);
 
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
@@ -97,15 +166,7 @@
   // Skip links jump past the app bar straight to the real content. On the
   // settings page the target is a plain <main>, so land on its first focusable
   // control rather than an inert container that would need an extra Tab.
-  function firstFocusable(root) {
-    const sel = 'a[href], button:not([disabled]), input:not([disabled]), ' +
-      'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    const list = root.querySelectorAll(sel);
-    for (const el of list) {
-      if (!el.hidden && el.offsetParent !== null) return el;
-    }
-    return null;
-  }
+  const firstFocusable = (root) => focusableIn(root)[0] || null;
   const skipLinkTop = document.getElementById('skip-link');
   if (skipLinkTop && skipLinkTop.getAttribute('href') === '#main-content') {
     skipLinkTop.addEventListener('click', (e) => {
@@ -357,10 +418,103 @@
     }, { passive: true });
   })();
 
+  // ── Sound cues ────────────────────────────────────────────────────────────
+  //
+  // For someone working by ear, a long turn is indistinguishable from a crash:
+  // the screen changes, and nothing else does. These are the non-speech signals
+  // for the three moments that matter -- finished, failed, still going.
+  //
+  // Synthesised rather than shipped as audio files: a few sine tones need no
+  // assets, no network, and no decoding, and they can be retuned by editing a
+  // number. Kept deliberately soft and low; an alert that startles you is one
+  // you will turn off within a day.
+
+  const SOUND = {
+    // A quick reply does not need celebrating -- only chime once a turn has run
+    // long enough that the user has plausibly looked away.
+    minTurnMs: 10_000,
+    // Long enough not to nag, short enough to reassure. Starts only after the
+    // turn is already slow, so an ordinary reply never ticks at all.
+    tickAfterMs: 12_000,
+    tickEveryMs: 5_000,
+  };
+
+  // Defaults; the chat page overrides these from its own data attributes
+  // once it has them. Settings only ever needs the preview.
+  let soundCues = true;
+  let soundTicks = false;
+  let soundVolume = 0.4;
+  let audioCtx = null;
+  let tickTimer = 0;
+
+  function ctx() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    }
+    // Browsers suspend audio until the user interacts; by the time a cue fires
+    // they have sent a message, so resuming here is enough.
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    return audioCtx;
+  }
+
+  // One soft sine blip. `gain` is relative to the user's volume setting.
+  function blip(freq, startAt, durationSec, gain) {
+    const ac = ctx();
+    if (!ac) return;
+    const t0 = ac.currentTime + startAt;
+    const osc = ac.createOscillator();
+    const amp = ac.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    // Ramped rather than switched, because an instant start or stop is heard
+    // as a click regardless of how quiet the tone itself is.
+    const peak = Math.max(0.0001, gain * soundVolume);
+    amp.gain.setValueAtTime(0.0001, t0);
+    amp.gain.exponentialRampToValueAtTime(peak, t0 + 0.015);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + durationSec);
+    osc.connect(amp).connect(ac.destination);
+    osc.start(t0);
+    osc.stop(t0 + durationSec + 0.02);
+  }
+
+  // Rising pair: settled, finished, nothing needed from you.
+  function cueDone() { blip(660, 0, 0.16, 0.20); blip(880, 0.12, 0.22, 0.20); }
+  // Falling pair, lower and longer: unmistakably not the finished sound, even
+  // at low volume or through a laptop speaker.
+  function cueError() { blip(400, 0, 0.20, 0.26); blip(300, 0.16, 0.32, 0.26); }
+  // Barely there on purpose. This one repeats, so it has to be ignorable.
+  function cueTick() { blip(520, 0, 0.05, 0.05); }
+
+  function startTicks() {
+    stopTicks();
+    if (!soundTicks) return;
+    tickTimer = setTimeout(function repeat() {
+      cueTick();
+      tickTimer = setTimeout(repeat, SOUND.tickEveryMs);
+    }, SOUND.tickAfterMs);
+  }
+
+  function stopTicks() {
+    clearTimeout(tickTimer);
+    tickTimer = 0;
+  }
+
+  window.__previewSounds = function (volume) {
+    if (typeof volume === 'number') soundVolume = volume;
+    cueDone();
+    setTimeout(cueError, 900);
+  };
+
   // ── Chat (chat pages only) ────────────────────────────────────────────────
 
   const view = document.getElementById('chat-view');
   if (!view) return;
+
+  soundCues = view.dataset.soundCues === '1';
+  soundTicks = view.dataset.soundTicks === '1';
+  soundVolume = parseFloat(view.dataset.soundVolume || '0.4');
 
   const sessionId = view.dataset.sessionId;
   const isHome = view.dataset.isHome === '1';
@@ -400,9 +554,99 @@
   let running = false;
   let turnStartedAt = 0;
 
+  // ── File references ───────────────────────────────────────────────────────
+  //
+  // The assistant cannot tell the user to go and open a file: they have no file
+  // manager open and no idea where the project lives. So a path it mentions
+  // becomes something that works from here instead.
+  //
+  //  * anywhere in a sentence -> a chip that opens their file manager on it
+  //  * alone on a line, with a line range -> a window showing those lines
+  //
+  // The second is the cheap way for the assistant to show code: it writes
+  // twenty characters and the app fetches the rest, so nothing is paid for
+  // twice and the excerpt cannot drift out of date with the file.
+
+  async function revealFile(path) {
+    try {
+      const resp = await fetch('/api/files/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, path }),
+      });
+      if (resp.ok) return;
+      let detail = 'Could not open that folder.';
+      try { const d = await resp.json(); if (d && d.detail) detail = d.detail; } catch (e) {}
+      showToast(detail);
+    } catch (e) {
+      showToast('Could not open that folder.');
+    }
+  }
+
+  function peekBlock(ref) {
+    const path = ref.dataset.path;
+    const start = parseInt(ref.dataset.line || '1', 10);
+    const end = parseInt(ref.dataset.end || ref.dataset.line || '0', 10);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'code-block file-peek';
+    wrap.innerHTML =
+      '<div class="code-head">' +
+      '<span class="peek-path"></span>' +
+      '<button type="button" class="peek-open">Show in folder</button>' +
+      '</div><pre><code></code></pre>';
+    const label = wrap.querySelector('.peek-path');
+    const body = wrap.querySelector('code');
+    label.textContent = path + ':' + start + (end && end !== start ? '-' + end : '');
+    wrap.querySelector('.peek-open').addEventListener('click', () => revealFile(path));
+
+    const query = new URLSearchParams({
+      session_id: sessionId, path, start: String(start), end: String(end || 0),
+    });
+    fetch('/api/files/peek?' + query)
+      .then((r) => (r.ok ? r.json() : r.json().then((d) => Promise.reject(d))))
+      .then((data) => {
+        body.innerHTML = window.md.withLineNumbers(
+          window.md.highlight(data.text, data.lang), data.start
+        );
+        label.textContent = data.name + ':' + data.start +
+          (data.end !== data.start ? '-' + data.end : '');
+        label.title = data.path;
+      })
+      .catch((d) => {
+        // Still useful: the path is named, and the button still works.
+        wrap.classList.add('peek-error');
+        body.textContent = (d && d.detail) || 'Could not read that file.';
+      });
+    return wrap;
+  }
+
+  function upgradeFileRefs(el) {
+    el.querySelectorAll('button.file-ref').forEach((ref) => {
+      const parent = ref.parentElement;
+      // "Alone on its own line" means it is the only thing in its paragraph.
+      const alone = parent && parent.tagName === 'P' &&
+        parent.textContent.trim() === ref.textContent.trim();
+      if (alone && ref.dataset.line) {
+        parent.replaceWith(peekBlock(ref));
+        return;
+      }
+      ref.addEventListener('click', () => revealFile(ref.dataset.path));
+    });
+  }
+
   function renderMarkdown(el) {
     const raw = el.textContent;
     if (raw.trim()) el.innerHTML = window.md.render(raw);
+  }
+
+  /* Render, then turn file references into chips and peek windows. Only for
+   * finished text: `renderMarkdown` runs on every streamed token, and
+   * upgrading there would start a fetch per token and rebuild the peek
+   * underneath the user on each one. */
+  function renderFinal(el) {
+    renderMarkdown(el);
+    upgradeFileRefs(el);
   }
 
   function escapeAttr(s) {
@@ -478,9 +722,21 @@
     bubbleEl.insertBefore(btn, bubbleEl.firstChild);
   }
 
+  // Matches the server-rendered markup in chat_messages.html. Which side a
+  // bubble sits on and what colour it is are the only visual cues to who is
+  // speaking, and neither reaches a screen reader, so the speaker is named in
+  // text that only assistive technology sees.
+  const SPEAKER = { user: 'You said:', assistant: 'Assistant said:' };
+
   function bubble(role) {
     const wrap = document.createElement('div');
     wrap.className = 'message ' + role;
+    if (SPEAKER[role]) {
+      const who = document.createElement('span');
+      who.className = 'sr-only';
+      who.textContent = SPEAKER[role];
+      wrap.appendChild(who);
+    }
     const inner = document.createElement('div');
     inner.className = 'bubble';
     // Copy is inserted last so it comes first in the DOM (and thus first in
@@ -498,7 +754,7 @@
   function appendUser(text) {
     const content = bubble('user');
     content.textContent = text;
-    renderMarkdown(content);
+    renderFinal(content);
     scrollToBottom();
     return content.closest('.message');
   }
@@ -575,6 +831,11 @@
   }
 
   function setStatus(text) {
+    // The status bar is a live region and `content` events arrive per token,
+    // so this is called with "Writing a reply..." hundreds of times a turn.
+    // Rewriting the node with the same string can make a screen reader
+    // re-announce it, so an unchanged status is left strictly alone.
+    if (statusBar.textContent === text && !statusBar.hidden) return;
     statusBar.textContent = text;
     statusBar.hidden = false;
   }
@@ -582,6 +843,24 @@
   function clearStatus() {
     statusBar.hidden = true;
     statusBar.textContent = '';
+  }
+
+  // ── Screen reader announcements ───────────────────────────────────────────
+
+  const srAnnouncer = document.getElementById('sr-announcer');
+  let announceTimer = 0;
+
+  // Say something once, out of band. Used for finished replies and errors,
+  // which are the two things a user who cannot see the screen must not miss.
+  function announce(text) {
+    if (!srAnnouncer) return;
+    text = (text || '').trim();
+    if (!text) return;
+    clearTimeout(announceTimer);
+    // Clearing first guarantees a change even when the same text repeats,
+    // which is what makes a repeated error announce the second time too.
+    srAnnouncer.textContent = '';
+    announceTimer = setTimeout(() => { srAnnouncer.textContent = text; }, 50);
   }
 
   // ── Status wording ────────────────────────────────────────────────────────
@@ -643,6 +922,17 @@
   // ── Read-aloud ────────────────────────────────────────────────────────────
 
   let ttsAutoEnabled = view.dataset.ttsAuto === '1';
+
+  // Apply the welcome question's answer to the page that is already open, so
+  // the first reply behaves the way the user just asked for rather than
+  // waiting for a reload they have no reason to perform.
+  function applyA11yMode(mode) {
+    const usesReader = mode === 'screen_reader';
+    ttsAutoEnabled = mode === 'read_aloud';
+    soundTicks = usesReader;
+    const btn = document.getElementById('tts-btn');
+    if (btn) btn.setAttribute('aria-pressed', ttsAutoEnabled ? 'true' : 'false');
+  }
   const ttsVoice = view.dataset.ttsVoice;
   const ttsSpeed = parseFloat(view.dataset.ttsSpeed || '1.25');
   let ttsVolume = parseFloat(view.dataset.ttsVolume || '0.75');
@@ -971,8 +1261,19 @@
       // ends the element holds already-rendered HTML, and re-rendering its
       // textContent would strip every markdown construct.
       assistantEl.innerHTML = window.md.render(assistantBuffer);
+      upgradeFileRefs(assistantEl);
       speak(assistantBuffer, assistantEl.closest('.bubble'));
       addLinkPreviews(assistantEl);
+      // Announce the finished reply once. Skipped when read-aloud is on,
+      // because Kokoro is about to say the same words and two voices talking
+      // over each other is worse than either alone.
+      if (!ttsAutoEnabled) announce(assistantBuffer);
+      // Only for a turn slow enough that the user may have looked away, and
+      // never when read-aloud is on -- the reply speaking is itself the signal.
+      if (soundCues && !ttsAutoEnabled && turnStartedAt &&
+          Date.now() - turnStartedAt >= SOUND.minTurnMs) {
+        cueDone();
+      }
     } else {
       removeEmptyAssistant();
     }
@@ -987,6 +1288,7 @@
     turnStartedAt = 0;
     assistantEl = null;
     assistantBuffer = '';
+    stopTicks();
     clearStatus();
     maybeAutoOpen();
     scrollToBottom();
@@ -1006,6 +1308,13 @@
     wrap.textContent = text || 'Something went wrong. Please try again.';
     messages.appendChild(wrap);
     scrollToBottom();
+    // The message log is not a live region, so an error would otherwise appear
+    // in silence -- the user would sit waiting for a reply that never comes.
+    announce(wrap.textContent);
+    stopTicks();
+    // Unlike the finished chime this fires however short the turn was, and
+    // regardless of read-aloud: a failure is the one thing you must not miss.
+    if (soundCues) cueError();
   }
 
   function endTurn() {
@@ -1022,6 +1331,7 @@
     sendBtn.hidden = true;
     stopBtn.hidden = false;
     turnStartedAt = Date.now();
+    startTicks();
     setStatus('Working\u2026');
   }
 
@@ -1247,6 +1557,116 @@
         setStatus('Could not attach ' + file.name);
       }
     }
+  }
+
+  // ── Camera ────────────────────────────────────────────────────────────────
+  //
+  // Showing the assistant something that is not on the computer: homework on
+  // paper, a label, a device with an error on its screen, a drawing. Typing a
+  // description of it is exactly the step this app exists to remove.
+  //
+  // The button only appears once a camera is known to exist, so nobody is
+  // offered something that will fail.
+
+  const cameraBtn = document.getElementById('camera-btn');
+  const cameraModal = document.getElementById('camera-modal');
+  const cameraVideo = document.getElementById('camera-video');
+  const cameraShot = document.getElementById('camera-shot');
+  const cameraError = document.getElementById('camera-error');
+  let cameraStream = null;
+
+  async function hasCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return false;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices.some((d) => d.kind === 'videoinput');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function stopCamera() {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} });
+      cameraStream = null;
+    }
+    if (cameraVideo) cameraVideo.srcObject = null;
+  }
+
+  function closeCamera() {
+    stopCamera();
+    if (window.__modalEl === cameraModal) window.__closeModal();
+  }
+
+  async function openCamera() {
+    if (!cameraModal) return;
+    cameraError.hidden = true;
+    window.__openModal(cameraModal, cameraShot);
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false,
+      });
+      cameraVideo.srcObject = cameraStream;
+      await cameraVideo.play().catch(() => {});
+      announce('Camera ready. Press Space to take the photo.');
+    } catch (e) {
+      // Denied, in use, or unplugged since the button appeared. Say which in
+      // ordinary words rather than showing the browser's exception.
+      const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+      cameraError.textContent = denied
+        ? 'This app needs permission to use your camera. Allow it in your browser, then try again.'
+        : 'No camera was available. It may be unplugged, or another program may be using it.';
+      cameraError.hidden = false;
+      announce(cameraError.textContent);
+    }
+  }
+
+  function takePhoto() {
+    if (!cameraStream || !cameraVideo.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = cameraVideo.videoWidth;
+    canvas.height = cameraVideo.videoHeight;
+    // Drawn unmirrored: the preview is flipped so aiming feels natural, but the
+    // photo has to show text the right way round or it is useless to read.
+    canvas.getContext('2d').drawImage(cameraVideo, 0, 0);
+
+    cameraShot.classList.add('flash');
+    setTimeout(() => cameraShot.classList.remove('flash'), 240);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        cameraError.textContent = 'The photo could not be saved. Please try again.';
+        cameraError.hidden = false;
+        return;
+      }
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const file = new File([blob], 'photo-' + stamp + '.jpg', { type: 'image/jpeg' });
+      closeCamera();
+      announce('Photo taken and attached to your message.');
+      if (soundCues) cueDone();
+      handleDroppedFiles([file]);
+    }, 'image/jpeg', 0.92);
+  }
+
+  if (cameraBtn && cameraModal) {
+    hasCamera().then((present) => { if (present) cameraBtn.hidden = false; });
+    cameraBtn.addEventListener('click', openCamera);
+    cameraShot.addEventListener('click', takePhoto);
+    document.getElementById('camera-take').addEventListener('click', takePhoto);
+    document.getElementById('camera-cancel').addEventListener('click', closeCamera);
+    // Space anywhere in the dialog takes the photo. Enter already activates
+    // whichever button has focus, so it needs nothing here.
+    cameraModal.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        e.stopPropagation();
+        takePhoto();
+      }
+    });
+    // Escape is handled globally and closes the dialog; make sure the camera
+    // light goes out with it rather than staying on until the tab closes.
+    cameraModal.addEventListener('modalclosed', stopCamera);
   }
 
   const attachBtn = document.getElementById('attach-btn');
@@ -1626,7 +2046,7 @@
         } else if (m.role === 'assistant' && (m.content || '').trim()) {
           const content = bubble('assistant');
           content.textContent = m.content;
-          renderMarkdown(content);
+          renderFinal(content);
           addLinkPreviews(content);
         }
       }
@@ -1636,7 +2056,7 @@
   }
 
   document.querySelectorAll('.content[data-markdown], .summary-text[data-markdown]').forEach((el) => {
-    renderMarkdown(el);
+    renderFinal(el);
     addLinkPreviews(el);
   });
 
@@ -1792,6 +2212,7 @@
           return;
         }
         let finished = false;
+        let failure = '';
         await readSSE(resp, (ev) => {
           if (ev.type === 'switch_status') {
             setStatus(ev.phase === 'compacting'
@@ -1799,13 +2220,18 @@
               : 'Switching to ' + m.name + '…');
           } else if (ev.type === 'switch_done') {
             finished = true;
+          } else if (ev.type === 'error') {
+            // The stream has already sent 200 by this point, so a failure can
+            // only arrive as an event. Without this the real reason was
+            // discarded and every failure read as "please try again".
+            failure = ev.message || '';
           }
         });
         if (finished) {
           location.reload();
         } else {
           clearStatus();
-          showError('Could not switch model. Please try again.');
+          showError(failure || 'Could not switch model. Please try again.');
         }
       } catch (e) {
         clearStatus();
@@ -1840,10 +2266,27 @@
       if (zoomIn) zoomIn.addEventListener('click', () => window.__applyZoom(window.__readZoom() + 0.1));
     }
     if (go) go.addEventListener('click', () => {
+      const fd = new FormData();
+
       const dontShow = document.getElementById('welcome-dont-show');
-      if (dontShow && dontShow.checked) {
-        const fd = new FormData();
-        fd.append('welcome_seen', 'on');
+      if (dontShow && dontShow.checked) fd.append('welcome_seen', 'on');
+
+      // How the app should talk to the user. A screen reader and our own
+      // read-aloud are alternatives, never layers: running both means two
+      // voices reading the same reply over each other.
+      const mode = (welcomeModal.querySelector('input[name="a11y_mode"]:checked') || {}).value;
+      if (mode) {
+        const usesReader = mode === 'screen_reader';
+        fd.append('uses_screen_reader', usesReader ? 'on' : 'off');
+        // The reader speaks the replies, so ours must not.
+        fd.append('tts_auto', mode === 'read_aloud' ? 'on' : 'off');
+        // The working tick exists for people who cannot watch the screen, so
+        // it is on by default for exactly them and off for everyone else.
+        fd.append('sound_ticks', usesReader ? 'on' : 'off');
+        applyA11yMode(mode);
+      }
+
+      if ([...fd.keys()].length) {
         fetch('/_settings/prefs', { method: 'POST', body: fd });
       }
       const mic = document.getElementById('welcome-mic');

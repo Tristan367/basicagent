@@ -110,6 +110,12 @@ body {
 }
 .skip-link:focus { left: 0; }
 
+/* The skip link that sits inside the scrolling conversation. Fixed rather than
+   absolute, so focusing it does not park it somewhere the user has scrolled
+   away from. */
+.skip-conversation { position: fixed; top: 44px; }
+.skip-conversation:focus { left: 0; }
+
 /* ── App bar (persistent context) ────────────────────────────────────────── */
 
 .app-bar {
@@ -133,6 +139,9 @@ body {
 .app-bar-right { justify-content: flex-end; margin-left: auto; }
 
 .app-bar-title {
+    /* Now an <h1> for document structure; these reset the heading defaults so
+       it looks exactly as it did as a <span>. */
+    margin: 0;
     flex: 1 1 0;
     min-width: 0;
     align-self: center;
@@ -409,6 +418,121 @@ html[data-theme="dark"] .setup-banner {
     margin: 0;
     border-radius: 0;
     background: transparent;
+}
+
+/* Line numbers.
+ *
+ * Drawn with ::before from a data attribute rather than put in the text, so
+ * selecting and copying a block yields code and not a column of digits. The
+ * gutter is not announced by a screen reader either, which is right: hearing
+ * "one, two, three" before every line would be unbearable. */
+.code-row {
+    display: block;
+    position: relative;
+    padding-left: 3.6em;
+    min-height: 1.35em;
+}
+.code-row::before {
+    content: attr(data-line);
+    position: absolute;
+    left: 0;
+    width: 2.8em;
+    text-align: right;
+    color: var(--text-dim);
+    opacity: 0.55;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.code-row:hover::before { opacity: 0.95; }
+
+/* A path the assistant mentioned. Looks like inline code, behaves like a
+   button: it opens the user's own file manager on that file. */
+.file-ref {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--accent-dim);
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    min-height: 24px;
+}
+.file-ref:hover { border-color: var(--accent); color: var(--accent); }
+
+/* The window into a file, produced when the assistant writes a path and a line
+   range on a line of its own. */
+.file-peek { margin: 0.85em 0; }
+.file-peek .code-head { justify-content: space-between; }
+.file-peek .peek-path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.file-peek .peek-open {
+    flex: none;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    padding: 3px 9px;
+    min-height: 24px;
+    cursor: pointer;
+}
+.file-peek .peek-open:hover { color: var(--accent); border-color: var(--accent); }
+.file-peek.peek-error .peek-path { color: var(--danger); }
+
+/* ── Camera ──────────────────────────────────────────────────────────────── */
+
+.camera-card {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 18px;
+    max-width: min(720px, 92vw);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.camera-help { margin: 0; font-size: 1.02rem; }
+
+/* The preview is the shutter. One enormous target, because the other hand is
+   holding up whatever is being photographed. */
+.camera-shot {
+    display: block;
+    padding: 0;
+    border: 3px solid var(--border);
+    border-radius: 10px;
+    background: #000;
+    cursor: pointer;
+    overflow: hidden;
+    line-height: 0;
+}
+.camera-shot:hover, .camera-shot:focus-visible { border-color: var(--accent); }
+.camera-shot video {
+    display: block;
+    width: 100%;
+    max-height: 58vh;
+    object-fit: contain;
+    /* Mirrored, because an unmirrored preview makes holding a page up to the
+       lens a guessing game. The saved photo is not mirrored. */
+    transform: scaleX(-1);
+}
+.camera-error { color: var(--danger); margin: 0; }
+
+/* A brief white flash on capture, so it is obvious the photo was taken even
+   with the sound off. Skipped when the user asked for less motion. */
+.camera-shot.flash { animation: camera-flash 220ms ease-out; }
+@keyframes camera-flash {
+    0% { filter: brightness(3); }
+    100% { filter: brightness(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .camera-shot.flash { animation: none; }
 }
 .bubble a { color: var(--accent); }
 .message.user .bubble a { color: var(--user-bubble-text, #ffffff); text-decoration: underline; }
@@ -823,7 +947,18 @@ html[data-theme="dark"] select.welcome-mic {
 .form-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
 .form-row label { display: flex; flex-direction: column; gap: 6px; font-size: 0.95rem; }
 
-.get-key-link { font-size: 0.9rem; margin-left: 10px; color: var(--accent); }
+/* Padded to clear the 24x24 minimum target size. This app is used by people
+   with unsteady hands and by people driving it from a phone, so a link that is
+   only as tall as its text is genuinely hard to hit. */
+.get-key-link {
+    font-size: 0.9rem;
+    margin-left: 10px;
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 2px 4px;
+}
 
 .endpoint-name { font-weight: 600; min-width: 90px; }
 
@@ -889,6 +1024,19 @@ html[data-theme="dark"] select.welcome-mic {
     font-size: 1.02rem;
 }
 .checkbox-label input { width: 20px; height: 20px; }
+
+/* A real <fieldset> so the choice is announced as one group with a name,
+   rather than three unrelated radios. The default border and padding are
+   removed; the grouping is for assistive technology, not decoration. */
+.welcome-choice {
+    border: 0;
+    margin: 0 0 18px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.welcome-choice .hint { margin-top: 2px; }
 
 /* Focus visibility for keyboard and screen-reader users */
 a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible {
@@ -1019,7 +1167,11 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    /* Nearly opaque. Purely a visual matter -- a screen reader is unaffected by
+       opacity, and it is `inert` that actually removes the page behind from the
+       accessibility tree. The strong cover is for low vision and for anyone who
+       finds a busy background hard to look past. */
+    background: rgba(0, 0, 0, 0.86);
     display: flex;
     align-items: center;
     justify-content: center;

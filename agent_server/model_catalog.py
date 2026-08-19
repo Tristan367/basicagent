@@ -6,20 +6,31 @@ from agent_server.providers import _providers, get_provider
 # Models we steer beginners toward — cheap-ish and genuinely good. A model not in
 # this set is still selectable, it just isn't the one the app will ever pick for
 # them by default (so a new user can't accidentally land on the most expensive).
+#
+# Deliberately excludes the top of each vendor's range. `recommended_default_model`
+# picks the cheapest entry here that the user has a key for, so anything listed is
+# something we are willing to start a beginner on unprompted.
 RECOMMENDED_MODELS = {
     "deepseek-v4-pro",
+    "gemini-3.5-flash-lite",
+    "gemini-3.7-flash",
     "claude-haiku-4-5",
     "claude-sonnet-5",
-    "claude-opus-5",
 }
 
 
-def price_label(price_out: float) -> str:
+def price_label(price_out: float, free_tier: bool = False) -> str:
     """The price in dollars per million output tokens, compact enough for a
     dropdown. Showing the real number (rather than a "cheap/expensive" bucket)
-    lets the user compare models directly."""
+    lets the user compare models directly.
+
+    A free allowance is called out because it is the single fact most likely to
+    change a beginner's mind about whether they can use the app at all.
+    """
     if price_out <= 0:
         return "your own"
+    if free_tier:
+        return f"free to start, then ${price_out:g}/M"
     return f"${price_out:g}/M"
 
 
@@ -35,7 +46,9 @@ def offerable_models() -> list[dict]:
         if provider.has_credentials():
             offered.append({
                 **model,
-                "price_label": price_label(model.get("price_out", 0.0)),
+                "price_label": price_label(
+                    model.get("price_out", 0.0), model.get("free_tier", False)
+                ),
                 "recommended": model["id"] in RECOMMENDED_MODELS,
             })
 

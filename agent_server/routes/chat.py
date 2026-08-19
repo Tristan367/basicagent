@@ -2,6 +2,7 @@
 
 import re as _re
 import uuid as _uuid
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from agent_server import agent, whisper_streaming
 from agent_server import database as db
 from agent_server import stt as stt_service
-from agent_server.config import ATTACH_DIR
+from agent_server.config import ATTACH_DIR, USER_AGENT
 from agent_server.models import ChatRequest
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -145,7 +146,10 @@ _DESC = _re.compile(
     _re.IGNORECASE,
 )
 
-_link_cache: dict[str, dict] = {}
+# Bounded, oldest-out. The server is long-lived and a chat can accumulate an
+# unlimited number of distinct links, so an unbounded dict here is a slow leak.
+_link_cache: OrderedDict[str, dict] = OrderedDict()
+_LINK_CACHE_MAX = 256
 
 
 def _decode(text: str) -> str:
@@ -163,11 +167,12 @@ async def link_preview(url: str):
     if parsed.scheme not in ("http", "https"):
         return {"ok": False}
     if url in _link_cache:
+        _link_cache.move_to_end(url)
         return _link_cache[url]
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
             resp = await client.get(
-                url, headers={"User-Agent": "Mozilla/5.0 (compatible; Assistant/1.0)"}
+                url, headers={"User-Agent": USER_AGENT}
             )
         body = resp.text[:200_000]
     except Exception:
@@ -195,6 +200,8 @@ async def link_preview(url: str):
     }
     if result["ok"]:
         _link_cache[url] = result
+        while len(_link_cache) > _LINK_CACHE_MAX:
+            _link_cache.popitem(last=False)
     return result
 
 

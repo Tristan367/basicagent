@@ -63,8 +63,9 @@ async def capture(
 
     if "vision" not in TOOLS:
         body += (
-            "\n\nNot described: no `vision` tool is installed. "
-            "Add one on the Tools page, or ask about these paths another way."
+            "\n\nNot described: no vision tool is installed, so nothing here can "
+            "look at an image. The frames were saved at the paths above; tell the "
+            "user where they are rather than guessing at what they show."
         )
         return ToolResult(output=body, title=f"{len(paths)} frame{plural}")
 

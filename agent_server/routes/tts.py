@@ -42,7 +42,12 @@ async def tts_plan(body: PlanBody):
 
 
 async def _tone() -> int:
-    """The output sample rate, from the `tts_tone` setting (default 13 kHz)."""
+    """The output sample rate, from the `tts_tone` setting.
+
+    Defaults to Kokoro's own 24 kHz. There is no UI for this: it exists so a
+    lower rate can be set directly in the database for someone who finds the
+    full-band voice harsh, without needing a code change.
+    """
     try:
         return int(float(await db.get_setting("tts_tone", str(tts_service.TTS_SAMPLE_RATE))))
     except (TypeError, ValueError):

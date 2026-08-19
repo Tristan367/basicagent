@@ -13,7 +13,7 @@ from agent_server.config import DATA_DIR, DB_PATH
 from agent_server.database import close as close_db
 from agent_server.database import init_db
 from agent_server.providers import load_custom_endpoint_providers
-from agent_server.routes import chat, pages, sessions, settings, tts
+from agent_server.routes import chat, files, pages, sessions, settings, tts
 from agent_server.system_prompt import ensure_home_session
 from agent_server.templating import STATIC_DIR
 
@@ -44,22 +44,33 @@ async def _reap_browsers():
             log.warning("reaping idle browsers failed", exc_info=True)
 
 
-async def _discover_deepseek_models():
+async def _discover_models():
+    """Ask each provider that can list models what it currently offers.
+
+    Best-effort and never fatal: the curated catalogue in `config` is what the
+    picker shows, and this only widens the set of ids the app will accept, so a
+    model released after this version shipped still works if something selects it.
+    """
     from agent_server import config
     from agent_server.providers import get_provider
 
-    try:
-        provider = get_provider("deepseek")
-        if not provider.has_credentials():
-            return
-        ids = await provider.fetch_model_ids()
-        config.register_dynamic_deepseek_models(ids)
-    except Exception:
-        log.warning("deepseek model discovery failed", exc_info=True)
+    for key in ("deepseek", "gemini"):
+        try:
+            provider = get_provider(key)
+            if not provider.has_credentials():
+                continue
+            config.register_dynamic_models(key, await provider.fetch_model_ids())
+        except Exception:
+            log.warning("%s model discovery failed", key, exc_info=True)
 
 
 async def _warm_whisper():
+    from agent_server import stt as stt_service
     from agent_server import whisper_streaming
+
+    # The portable fallback loads (and on first run downloads) its own model, so
+    # warm it here rather than making the user wait on their first sentence.
+    await stt_service.warmup()
 
     if not whisper_streaming.whisper_streaming_available():
         return
@@ -120,9 +131,15 @@ async def lifespan(app: FastAPI):
     await init_db()
     from agent_server.providers import credentials
 
-    credentials.prime(await db.get_all_settings())
+    all_settings = await db.get_all_settings()
+    credentials.prime(all_settings)
+    # The dictation model size lives in `settings`; prime the synchronous
+    # accessor with it before anything asks which model to load.
+    from agent_server import config as _config
+
+    _config.set_whisper_size(all_settings.get('whisper_size', ''))
     await load_custom_endpoint_providers()
-    await _discover_deepseek_models()
+    await _discover_models()
     await _seed_home()
 
     reaper = asyncio.create_task(_reap_browsers())
@@ -147,6 +164,7 @@ app = FastAPI(title="Assistant", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(pages.router)
 app.include_router(chat.router)
+app.include_router(files.router)
 app.include_router(sessions.router)
 app.include_router(tts.router)
 app.include_router(settings.router)

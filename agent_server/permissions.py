@@ -1,10 +1,16 @@
-"""Permission policy: everything is auto-approved.
+"""The few paths no tool may ever write to.
 
-This app is for people who should never have to answer "may I run this?" — the
-agent just does the work. The only hard lines are a handful of machine-critical
-paths that no tool may ever write, and the destructive-command guard inside the
-`bash` tool itself (`rm -rf /` and friends). Both refuse and explain rather than
-ask, so the model can tell the user in plain words what it avoided.
+This app has no permission prompts. The user should never have to answer "may I
+run this?" — the agent just does the work. What replaces the prompt is a small
+number of hard guards that refuse and explain, so the model can tell the user in
+plain words what it avoided and why:
+
+* this deny-list, checked by the write tools and by the subagent guard, and
+* the destructive-command guard in `tools/bash.py` (`rm -rf /` and friends).
+
+Deliberately short. A long list would start refusing ordinary work, and the
+thing it is actually protecting against is a confused model wrecking the
+machine, not a hostile one.
 """
 
 from pathlib import Path
@@ -21,16 +27,3 @@ def is_denied(path: Path) -> bool:
     except OSError:
         text = str(path)
     return text.startswith(DENIED_PREFIXES)
-
-
-async def check(
-    name: str,
-    args: dict,
-    session_id: str,
-    project_dir: str,
-    shell_auto_approve: bool,
-) -> dict | None:
-    """Always allow. The `bash` tool and the write tools enforce the few hard
-    guards themselves; the user is never interrupted with a permission prompt.
-    """
-    return None
