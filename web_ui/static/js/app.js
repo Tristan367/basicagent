@@ -1684,22 +1684,28 @@
         chip.addEventListener('dragend', () => {
           dragFrom = null;
           attachmentsBox.querySelectorAll('.attachment-chip')
-            .forEach((c) => c.classList.remove('dragging', 'drop-before', 'drop-after'));
+            .forEach((c) => c.classList.remove('dragging', 'drop-target'));
         });
         chip.addEventListener('dragover', (e) => {
           if (dragFrom === null || dragFrom === i) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
-          chip.classList.toggle('drop-before', i < dragFrom);
-          chip.classList.toggle('drop-after', i > dragFrom);
+          // Clear them all and mark the one under the pointer, rather than
+          // pairing up enter and leave: dragleave also fires when the pointer
+          // crosses onto a child of the chip, and a chip is made of five of
+          // them, so the paired version flickered on the way across.
+          attachmentsBox.querySelectorAll('.attachment-chip')
+            .forEach((c) => c.classList.remove('drop-target'));
+          chip.classList.add('drop-target');
         });
         chip.addEventListener('dragleave', () => {
-          chip.classList.remove('drop-before', 'drop-after');
+          chip.classList.remove('drop-target');
         });
         chip.addEventListener('drop', (e) => {
           if (dragFrom === null || dragFrom === i) return;
           e.preventDefault();
           e.stopPropagation();
+          chip.classList.remove('drop-target');
           moveAttachment(dragFrom, i);
           dragFrom = null;
         });

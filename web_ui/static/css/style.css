@@ -729,9 +729,14 @@ html[data-theme="dark"] .setup-banner {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 26px;
-    height: 26px;
-    padding: 0 6px;
+    /* Wide enough for two digits from the start, so the tenth attachment does
+       not push its own name sideways and leave the row looking ragged. In em
+       so it grows with the text size rather than in spite of it, and tabular
+       figures so 1 and 7 take the same space. Past ninety-nine it gives up and
+       widens, which is the right way round. */
+    min-width: 2.1em;
+    height: 1.7em;
+    padding: 0 4px;
     border-radius: 999px;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1561,11 +1566,23 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     white-space: nowrap;
 }
 
-/* Dragging an attachment to reorder it. */
+/* Dragging an attachment to reorder it.
+
+   The chip under the pointer is lit whole, because that is what dropping
+   does: the dragged attachment takes this one's place in the order. It used
+   to be a 3px line down one edge -- which drew an insertion point between two
+   chips, a thing this app does not have, and was three pixels of colour to
+   find besides. */
 .attachment-chip[draggable="true"] { cursor: grab; }
 .attachment-chip.dragging { opacity: 0.45; cursor: grabbing; }
-.attachment-chip.drop-before { box-shadow: -3px 0 0 0 var(--accent); }
-.attachment-chip.drop-after { box-shadow: 3px 0 0 0 var(--accent); }
+.attachment-chip.drop-target {
+    /* Outline, not border: it takes no space, so nothing shifts under the
+       pointer at the moment the user is aiming at it. */
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+    background: color-mix(in srgb, var(--accent) 45%, var(--surface));
+    border-color: var(--accent);
+}
 
 /* A disabled button must look disabled, not merely refuse to work. Without
    this the camera's shutter stayed fully lit while the camera was still
@@ -1776,11 +1793,6 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     white-space: nowrap;
 }
 
-/* Dragging an attachment to reorder it. */
-.attachment-chip[draggable="true"] { cursor: grab; }
-.attachment-chip.dragging { opacity: 0.45; cursor: grabbing; }
-.attachment-chip.drop-before { box-shadow: -3px 0 0 0 var(--accent); }
-.attachment-chip.drop-after { box-shadow: 3px 0 0 0 var(--accent); }
 
 /* A disabled button must look disabled, not merely refuse to work. Without
    this the camera's shutter stayed fully lit while the camera was still
