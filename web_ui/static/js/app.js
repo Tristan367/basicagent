@@ -853,16 +853,18 @@
     return content.closest('.message');
   }
 
-  function appendAction(sessionId) {
+  function appendAction(sessionId, name) {
     const wrap = document.createElement('div');
     wrap.className = 'message action';
-    const a = document.createElement('a');
-    a.className = 'open-project-btn';
-    a.href = '/sessions/' + sessionId;
-    a.textContent = 'Open this project \u2192';
-    wrap.appendChild(a);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'open-project-btn';
+    button.dataset.nav = '/sessions/' + sessionId;
+    button.textContent = name ? 'Open ' + name + ' \u2192' : 'Open this project \u2192';
+    wrap.appendChild(button);
     messages.appendChild(wrap);
     scrollToBottom();
+    return button;
   }
 
   function appendSummary(summaryText) {
@@ -1388,12 +1390,23 @@
     scrollToBottom();
   }
 
+  /* Creating a project used to throw the user into it a moment later, in the
+   * middle of reading the reply that said it had been made. Disorienting for
+   * anyone, and much worse if you cannot see it happen -- the page changes
+   * underneath you with no warning and no way back to what you were reading.
+   *
+   * The button was always there; it was just pointless while this navigated
+   * anyway. Now it is the only way in, so the user moves when they are ready.
+   * Keyboard focus lands on it, so pressing Enter is all it takes. */
   function maybeAutoOpen() {
     if (!pendingOpen || !isHome) return;
-    const target = pendingOpen;
     pendingOpen = null;
-    setStatus('Opening your project\u2026');
-    setTimeout(() => { window.location.href = '/sessions/' + target; }, 1200);
+    const button = messages.querySelector('.message.action .open-project-btn:last-of-type')
+      || [...messages.querySelectorAll('.open-project-btn')].pop();
+    if (!button) return;
+    button.focus({ preventScroll: true });
+    scrollToBottom();
+    announce(button.textContent.trim() + '. Press Enter to open it.');
   }
 
   function showError(text) {

@@ -56,23 +56,11 @@ Two constraints that should survive whatever design wins:
   frustrated by long instructions" — yes. "Struggles with maths" — no. That
   kind of line calcifies into a label a child never escapes.
 
-## Confirmation before switching into a new project
+## Built since this file was written
 
-**Status: agreed, not built.**
-
-Creating a project currently teleports the user into it mid-conversation. That
-is disorienting generally and much worse if you cannot see it happen. A button
-("Create a project called Budget Tracker") would let the user choose when to
-move, and let them correct the name before it exists.
-
-The plumbing is already there — `open_session` on a tool result drives the
-switch — so this is turning an automatic redirect into a rendered button.
-
-## Time awareness
-
-**Status: agreed, not built.**
-
-The assistant has no sense of elapsed time, which confuses people who assume it
-does. Prepending something like "(one day later)" to the **first message of a
-run** — not every message — when a session has been idle for a while would fix
-it cheaply.
+- **Confirmation before switching into a new project** — creating a project no
+  longer teleports the user into it. The button that was already there is now
+  the only way in, and keyboard focus lands on it.
+- **Time awareness** — a gap of an hour or more is described in words on the
+  outgoing request only ("3 days later"), never written into the stored
+  message.

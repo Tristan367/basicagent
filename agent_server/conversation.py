@@ -180,6 +180,45 @@ def sanitize(messages: list[dict]) -> list[dict]:
     ]
 
 
+# A model has no sense of elapsed time, and users assume it does -- they come
+# back a week later and say "carry on with that", or ask why it does not know
+# it is a new day. Below an hour is not worth saying; a pause that short is
+# just someone getting a cup of tea.
+MIN_GAP_SECONDS = 3600
+
+
+def elapsed_note(previous: str, current: str) -> str:
+    """How long passed between two messages, in words, or "" if not long."""
+    from datetime import datetime
+
+    try:
+        was = datetime.fromisoformat(previous)
+        now = datetime.fromisoformat(current)
+    except (TypeError, ValueError):
+        return ""
+    seconds = (now - was).total_seconds()
+    if seconds < MIN_GAP_SECONDS:
+        return ""
+
+    hours = seconds / 3600
+    if hours < 2:
+        return "about an hour later"
+    if hours < 24:
+        return f"{round(hours)} hours later"
+    days = hours / 24
+    if days < 2:
+        return "the next day"
+    if days < 14:
+        return f"{round(days)} days later"
+    weeks = days / 7
+    if weeks < 9:
+        return f"{round(weeks)} weeks later"
+    months = days / 30
+    if months < 18:
+        return f"{round(months)} months later"
+    return f"{round(days / 365)} years later"
+
+
 def build_messages(
     system_prompt: str,
     compactions: list[dict],
@@ -192,5 +231,16 @@ def build_messages(
             "role": "system",
             "content": f"[Summary of earlier conversation]\n{c['summary_text']}",
         })
-    messages.extend(to_api_message(r) for r in rows)
+
+    previous_at = ""
+    for row in rows:
+        message = to_api_message(row)
+        # Marked on the wire only; the stored message is untouched, so the note
+        # never appears in the user's own bubble as though they had typed it.
+        if row.get("role") == "user" and previous_at:
+            note = elapsed_note(previous_at, row.get("created_at") or "")
+            if note and isinstance(message.get("content"), str):
+                message = {**message, "content": f"({note})\n{message['content']}"}
+        previous_at = row.get("created_at") or previous_at
+        messages.append(message)
     return sanitize(messages)

@@ -18,7 +18,10 @@ import struct
 import sys
 import zlib
 
-data = pathlib.Path(sys.argv[1])
+DEFAULT_DATA = pathlib.Path.home() / ".local" / "share" / "basicagent"
+data = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_DATA
+if not (data / "agent.db").exists():
+    raise SystemExit(f"No database at {data}. Start the app once first, or pass a data dir.")
 db = data / "agent.db"
 proj = data / "projects" / "formatting-demo"
 (proj / "src").mkdir(parents=True, exist_ok=True)
@@ -38,6 +41,19 @@ proj = data / "projects" / "formatting-demo"
     "render(state);",
 ]))
 (proj / "src" / "ui.js").write_text("\n".join(f"export const line{i} = {i};" for i in range(1, 40)))
+(proj / "styles.css").write_text("\n".join([
+    "body {",
+    "  font-family: system-ui, sans-serif;",
+    "  background: #f5f6f8;",
+    "  color: #1a1d21;",
+    "}",
+    "",
+    ".total {",
+    "  font-size: 2rem;",
+    "  font-weight: 600;",
+    "}",
+]))
+(proj / "README.md").write_text("# Budget Tracker\n\nA small app for tracking what you spend.\n")
 
 # a real PNG: a 240x120 gradient
 
@@ -54,6 +70,7 @@ def png(w, h):
             + chunk(b"IDAT", zlib.compress(raw))
             + chunk(b"IEND", b""))
 (proj / "chart.png").write_bytes(png(240, 120))
+(proj / "screenshot.png").write_bytes(png(420, 260))
 
 MARKDOWN = """Here is everything the formatter can do, so you can see it all at once.
 
@@ -137,5 +154,52 @@ c.execute("INSERT INTO messages (session_id,role,content,created_at,code_start) 
           ("Show me everything you can render, so I can check it looks right.", now))
 c.execute("INSERT INTO messages (session_id,role,content,created_at,code_start) VALUES ('fmt-demo','assistant',?,?,1)",
           (MARKDOWN, now))
+
+SECOND = """Good question. Here is where each piece lives.
+
+The look of the page is all in one file:
+
+styles.css:1-5
+
+The bit that adds up your expenses is here:
+
+app.js:6-10
+
+And the long file of exports, so you can see a wider gutter:
+
+src/ui.js:12-28
+
+Here is the chart as it currently looks:
+
+chart.png
+
+And a wider screenshot of the whole page:
+
+screenshot.png
+
+A path mentioned mid-sentence, like src/ui.js or ./README.md, stays as a small
+button you can click to open the folder. Only one on a line of its own turns
+into a window.
+
+A bare name with no slash and no line number is left as prose on purpose, so
+ordinary writing is not turned into links: Node.js, version 1.2, and/or, 3.14,
+and README.md are all just words here.
+
+Finally, a table with a lot of columns, to check it scrolls rather than
+stretching the page:
+
+| File | Purpose | Language | Lines | Last change | Notes |
+| --- | --- | --- | --- | --- | --- |
+| app.js | Entry point and totals | JavaScript | 12 | today | The main file |
+| src/ui.js | Rendering helpers | JavaScript | 39 | today | Mostly exports |
+| styles.css | How the page looks | CSS | 10 | yesterday | Colours and sizes |
+| README.md | What this is | Markdown | 3 | last week | Worth keeping short |
+"""
+
+c.execute("INSERT INTO messages (session_id,role,content,created_at,code_start) VALUES ('fmt-demo','user',?,?,1)",
+          ("Where does each part of the project live?", now))
+c.execute("INSERT INTO messages (session_id,role,content,created_at,code_start) VALUES ('fmt-demo','assistant',?,?,1)",
+          (SECOND, now))
 c.commit()
 print("seeded session 'fmt-demo' with project at", proj)
+print("open it at /sessions/fmt-demo")

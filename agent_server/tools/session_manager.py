@@ -105,7 +105,8 @@ async def create_project(
     return ToolResult(
         output=(
             f"Created project '{name}' (id {session['id']}) in {project_dir}. "
-            f"The app has switched to it. Tell the user their new project is ready."
+            f"A button to open it is now on screen; the user is NOT in it yet. "
+            f"Tell them it is ready and that they can open it whenever they like."
         ),
         title=f"Created project '{name}'",
         open_session=session["id"],
@@ -136,7 +137,10 @@ async def open_project(ctx: ToolContext, *, name: str, **_) -> ToolResult:
             f"there is no project named '{name}'. Existing projects: {available}", title
         )
     return ToolResult(
-        output=f"Opened project '{session['name']}'. The app has switched to it.",
+        output=(
+            f"'{session['name']}' is ready to open. A button for it is on screen; "
+            f"the user is NOT in it yet, so do not talk as though they are."
+        ),
         title=f"Opened '{session['name']}'",
         open_session=session["id"],
     )
