@@ -91,12 +91,12 @@
         <form method="POST" action="/_settings" class="inline-form" data-autosave>
             {% for f in ps.fields %}
             {% if f.kind == 'password' %}
-            {# Never prefilled with dots -- see the note on the endpoint key
-               below. Clicking in and typing used to append to the mask, and the
-               server silently kept the old key. #}
-            <input type="password" name="{{ f.key }}"
-                   placeholder="{% if f.has_value %}A key is saved. Type here to replace it.{% else %}Paste your key here{% if ps.info.key_hint %} ({{ ps.info.key_hint }}){% endif %}{% endif %}"
-                   aria-label="{{ ps.name }} {{ f.label }}"
+            {# The saved key's ends, as the placeholder -- enough to see one is
+               there and which it is. Never the full value, and never a row of
+               dots, which typing appended to and the server then discarded. #}
+            <input type="password" name="{{ f.key }}" class="{{ 'has-key' if f.has_value }}"
+                   placeholder="{% if f.has_value %}{{ f.masked }}{% else %}Paste your key here{% if ps.info.key_hint %} ({{ ps.info.key_hint }}){% endif %}{% endif %}"
+                   aria-label="{{ ps.name }} {{ f.label }}{% if f.has_value %} (saved: {{ f.masked }})){% endif %}"
                    autocomplete="new-password" spellcheck="false">
             {% else %}
             <input type="text" name="{{ f.key }}" value="" placeholder="https://..." autocomplete="off" spellcheck="false"
@@ -112,91 +112,56 @@
         <p class="hint">For connecting to an AI that runs on your own computer, or on a
         company's own private AI. Most people can skip this.</p>
 
-        {% for ep in custom_endpoints %}
-        {# Remove is its own form, deliberately.
+        {# A table-shaped list: one row per endpoint, headed once. Labelling
+           every field on every row made a single endpoint fill most of a
+           screen; heading the columns once says the same thing in two lines. #}
+        <div class="endpoint-table">
+            {# Five cells, one per grid column. With four, auto-placement carried
+               the next row's first item into the leftover fifth column and every
+               row after shifted along by one. #}
+            <div class="endpoint-row endpoint-header" aria-hidden="true">
+                <span>Name</span><span>Address</span><span>Key</span><span></span><span></span>
+            </div>
 
-           It used to be a submit button inside the settings form with
-           formaction pointing at the delete route -- and being the only submit
-           button there, it was the one the browser used when you pressed Enter
-           in a text field. So typing a key and hitting Enter deleted the whole
-           endpoint. Two separate forms means Enter can only ever save. #}
-        <div class="endpoint-card">
-            <div class="endpoint-head">
+            {% for ep in custom_endpoints %}
+            <div class="endpoint-row">
                 <span class="endpoint-name">{{ ep.name }}</span>
-                <form method="POST" action="/_settings/custom_endpoint/delete">
+                {# Remove is a separate form: as a submit button inside the
+                   settings form it was the one the browser used when you
+                   pressed Enter in a field, so Enter deleted the endpoint. #}
+                <form method="POST" action="/_settings/custom_endpoint" class="endpoint-edit">
+                    <input type="hidden" name="name" value="{{ ep.name }}">
+                    <input type="text" name="base_url" value="{{ ep.base_url }}"
+                           aria-label="Address for {{ ep.name }}"
+                           placeholder="http://localhost:8888/v1" spellcheck="false" autocomplete="off">
+                    {# Shows the ends of the saved key. Never the whole value,
+                       and never a row of dots that typing would append to. #}
+                    <input type="password" name="api_key" spellcheck="false"
+                           autocomplete="new-password"
+                           aria-label="Key for {{ ep.name }}{% if ep.masked %} (currently {{ ep.masked }}){% endif %}"
+                           placeholder="{{ ep.masked if ep.masked else 'none set' }}">
+                    <button type="submit" class="btn-neutral btn-sm">Save</button>
+                </form>
+                <form method="POST" action="/_settings/custom_endpoint/delete" class="endpoint-del">
                     <input type="hidden" name="name" value="{{ ep.name }}">
                     <button type="submit" class="btn-danger btn-sm"
                             aria-label="Remove the {{ ep.name }} endpoint">Remove</button>
                 </form>
             </div>
-            {# Not data-autosave: this form has a Save button, and having both
-               meant every edit posted twice -- once by the autosave fetch and
-               once by the form itself. An endpoint is also the one thing here
-               worth confirming deliberately, since a half-typed address saved
-               on blur just breaks the connection. #}
-            <form method="POST" action="/_settings/custom_endpoint">
-                <input type="hidden" name="name" value="{{ ep.name }}">
-                <div class="endpoint-fields">
-                    <label>Address
-                        <input type="text" name="base_url" value="{{ ep.base_url }}"
-                               placeholder="http://localhost:8888/v1" spellcheck="false"
-                               autocomplete="off">
-                        <span class="field-note">Where the AI is running.</span>
-                    </label>
-                    <label>Key
-                        {# `new-password` rather than `off`: browsers ignore `off`
-                           on password fields and will helpfully refill whatever
-                           they saw here last time -- which, if an address was
-                           ever saved by mistake, is the address. #}
-                        {# Rendered empty, never prefilled with a row of dots.
-                           A masked value invites you to click in and type, which
-                           appended to the dots instead of replacing them -- and
-                           the server, seeing a dot, treated the whole thing as
-                           "unchanged" and threw the typed key away without a
-                           word. An empty box cannot do that. #}
-                        <input type="password" name="api_key" spellcheck="false"
-                               autocomplete="new-password"
-                               placeholder="{{ 'A key is saved. Type here to replace it.' if ep.api_key else 'Not set' }}">
-                        <span class="field-note">
-                            {% if ep.api_key %}Leave empty to keep the saved key.
-                            {% else %}Leave empty if it does not need one.{% endif %}
-                        </span>
-                        {% if ep.api_key %}
-                        <label class="checkbox-label field-note">
-                            <input type="checkbox" name="clear_key" value="on">
-                            Remove the saved key
-                        </label>
-                        {% endif %}
-                    </label>
-                </div>
-                {# An explicit Save, so pressing Enter has a defined target
-                   rather than depending on the browser's implicit-submission
-                   rules -- and so there is a visible way to commit a change
-                   for anyone who does not trust a field that saves itself. #}
-                <button type="submit" class="btn-neutral btn-sm endpoint-save">Save changes</button>
+            {% endfor %}
+
+            <form method="POST" action="/_settings/custom_endpoint" class="endpoint-row endpoint-new">
+                <input type="text" name="name" placeholder="my-ai" aria-label="Name for the new endpoint"
+                       autocomplete="off" spellcheck="false">
+                <input type="text" name="base_url" placeholder="http://localhost:8888/v1"
+                       aria-label="Address of the new endpoint" autocomplete="off" spellcheck="false">
+                <input type="password" name="api_key" placeholder="only if it needs one"
+                       aria-label="Key for the new endpoint (optional)"
+                       autocomplete="new-password" spellcheck="false">
+                <button type="submit" class="btn-primary btn-sm">Add</button>
             </form>
         </div>
-        {% endfor %}
 
-        <form method="POST" action="/_settings/custom_endpoint" class="endpoint-card endpoint-new">
-            <h3>Add an endpoint</h3>
-            <div class="endpoint-fields">
-                <label>Name
-                    <input type="text" name="name" placeholder="my-ai" autocomplete="off" spellcheck="false">
-                </label>
-                <label>Address
-                    <input type="text" name="base_url" placeholder="http://localhost:8888/v1"
-                           autocomplete="off" spellcheck="false">
-                    <span class="field-note">Where the AI is running.</span>
-                </label>
-                <label>Key
-                    <input type="password" name="api_key" placeholder="only if it needs one"
-                           autocomplete="new-password" spellcheck="false">
-                    <span class="field-note">Optional. Many local AIs need none.</span>
-                </label>
-            </div>
-            <button type="submit" class="btn-primary">Add</button>
-        </form>
         {% set checked = request.query_params.get('checked') %}
         {% if request.query_params.get('error') == 'endpoint_url' %}
         <p class="endpoint-status bad">The <strong>Address</strong> needs to start with http://
@@ -205,15 +170,16 @@
         <p class="endpoint-status bad">An endpoint needs both a name and an address.</p>
         {% elif checked and checked.startswith('ok') %}
         <p class="endpoint-status good">Saved, and it answered — {{ checked[2:] }} model{{ '' if checked[2:] == '1' else 's' }} available.</p>
-        {% elif checked == 'unauthorized' %}
-        <p class="endpoint-status bad">Saved, but it refused the key. Check the <strong>Key</strong>
-        is right, or clear it if this AI does not need one.</p>
+        {% elif checked and checked.startswith('auth') %}
+        <p class="endpoint-status bad">Saved, but it answered {{ checked[4:] }}. That usually means
+        the key is wrong or missing — but some servers reply that way to any request they do not
+        recognise, so check the address ends in the right place too, often <code>/v1</code>.</p>
         {% elif checked == 'unreachable' %}
         <p class="endpoint-status bad">Saved, but nothing answered at that address. Check the AI is
         running and the address is right.</p>
-        {% elif checked == 'error' %}
-        <p class="endpoint-status bad">Saved, but the reply was not what an AI endpoint usually
-        sends. Check the address ends in the right place — often <code>/v1</code>.</p>
+        {% elif checked and checked.startswith('http') %}
+        <p class="endpoint-status bad">Saved, but it answered {{ checked[4:] }}, which is not what an
+        AI endpoint usually sends. Check the address.</p>
         {% endif %}
     </section>
 
@@ -224,7 +190,7 @@
         <form method="POST" action="/_settings" class="inline-form" data-autosave>
             <select name="default_model">
                 {% for m in models %}
-                <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }} — {{ m.price_label }}{% if m.recommended %} (recommended){% endif %}</option>
+                <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }} ({{ m.provider_label }}) — {{ m.price_label }}{% if m.recommended %} (recommended){% endif %}</option>
                 {% else %}
                 <option value="" disabled selected>No AI key set up yet</option>
                 {% endfor %}

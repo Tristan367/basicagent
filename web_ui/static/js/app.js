@@ -2496,8 +2496,16 @@
       const b = document.createElement('button');
       b.type = 'button';
       if (m.id === modelData.current_model) b.classList.add('current');
+      // The provider is part of the identity, not decoration: OpenRouter
+      // resells most of what the first-party keys offer, so "Claude Opus 5"
+      // can appear twice, at different prices and against different accounts.
+      // "recommended" rides on the provider line rather than the name: inline
+      // it pushed names onto three wrapped lines and made the menu enormous.
+      const via = [m.provider_label, m.recommended ? 'recommended' : '']
+        .filter(Boolean).join(' \u00b7 ');
       b.innerHTML =
-        '<span>' + escapeAttr(m.name) + (m.recommended ? ' (recommended)' : '') + '</span>' +
+        '<span class="model-name"><span class="model-title">' + escapeAttr(m.name) + '</span>' +
+        '<span class="model-via">' + escapeAttr(via) + '</span></span>' +
         '<span class="model-price">' + escapeAttr(m.price_label) + '</span>';
       b.addEventListener('click', () => {
         modelMenu.hidden = true;

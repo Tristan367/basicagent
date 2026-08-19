@@ -63,6 +63,10 @@ async def session_models(session_id: str):
         models.append({
             "id": m["id"],
             "name": m["name"],
+            # Which account it comes through. OpenRouter resells most of what
+            # the first-party keys offer, so the name alone does not identify
+            # one -- "Claude Opus 5" can legitimately appear twice.
+            "provider_label": m.get("provider_label", ""),
             "price_label": m["price_label"],
             "recommended": bool(m.get("recommended")),
             "price_in": m.get("price_in_miss", 0.0),

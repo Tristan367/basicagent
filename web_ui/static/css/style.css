@@ -1004,15 +1004,6 @@ input.tts-volume {
 .inline-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 
 .inline-form input, .inline-form select, .stack input, .stack select,
-.endpoint-fields input {
-    padding: 11px 12px;
-    border: 2px solid var(--border);
-    border-radius: 8px;
-    font-size: 1rem;
-    font-family: var(--font);
-    background-color: var(--surface);
-    color: var(--text);
-}
 .inline-form input[type="text"], .inline-form input[type="password"] { min-width: 220px; flex: 1; }
 
 /* Dropdowns everywhere use the same triangle as the composer, with padding so
@@ -1672,59 +1663,237 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 
 /* ── Custom endpoints ────────────────────────────────────────────────────── */
 
-/* One card per endpoint, with labels that stay visible after you have typed.
-   These were unlabelled boxes in a row, butted straight against the "add" row
-   below them, and once filled in there was nothing to say which was which. */
-.endpoint-card {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 16px;
-    margin: 14px 0;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-/* The card holds two independent forms (settings, and remove) so that pressing
-   Enter in a field can never reach the delete button. They still need to lay
-   out as one block. */
-.endpoint-card > form { margin: 0; }
-.endpoint-head form { margin: 0; flex: none; }
-.endpoint-card h3 { margin: 0; font-size: 1.05rem; }
-.endpoint-head {
-    display: flex;
+/* A table of rows, headed once. Labelling every field on every row turned one
+   endpoint into most of a screen. */
+/* One grid for the whole table. Each row being its own grid meant the columns
+   sized themselves independently and drifted out of line with the header. */
+.endpoint-table {
+    display: grid;
+    /* name | address | key | save | remove */
+    grid-template-columns: minmax(80px, 0.6fr) minmax(180px, 1.6fr) minmax(140px, 1.1fr) auto auto;
+    gap: 8px 10px;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    margin: 12px 0 0;
 }
-.endpoint-head .endpoint-name {
+.endpoint-row { display: contents; }
+/* Both forms use `display: contents`, so their inputs become direct children
+   of the row's grid and line up with the header. A nested grid could not: the
+   Save button inside it consumed width the header knew nothing about, so the
+   columns drifted apart. The forms still submit exactly as before. */
+.endpoint-edit, .endpoint-del { display: contents; }
+.endpoint-name {
     font-weight: 600;
-    font-size: 1.05rem;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
-.endpoint-fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 12px 16px;
+.endpoint-row input {
+    padding: 9px 11px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: var(--font);
+    background-color: var(--surface);
+    color: var(--text);
+    min-width: 0;
+    width: 100%;
 }
-.endpoint-fields label {
+/* The saved key's ends, shown as the placeholder. Not the usual faint grey:
+   it is information about what is stored, not a hint about what to type. */
+.endpoint-row input[type="password"]::placeholder {
+    color: var(--text-dim);
+    opacity: 0.9;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+}
+/* The add row has no Remove, so its button sits in the last two columns. */
+.endpoint-new > button { grid-column: 4 / 6; }
+
+.endpoint-status {
+    margin: 12px 0 0;
+    font-size: 0.95rem;
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+.endpoint-status.good { color: var(--accent); border-color: var(--accent); }
+.endpoint-status.bad { color: var(--danger); border-color: var(--danger); }
+
+/* ── Picture preview ─────────────────────────────────────────────────────── */
+
+.preview-card {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 16px;
+    max-width: 92vw;
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    font-size: 0.95rem;
-    min-width: 0;
+    gap: 12px;
+    align-items: center;
 }
+.preview-card img {
+    max-width: min(1000px, 88vw);
+    max-height: 74vh;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #000;
+}
+.preview-name {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--text-dim);
+    max-width: 88vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Dragging an attachment to reorder it. */
+.attachment-chip[draggable="true"] { cursor: grab; }
+.attachment-chip.dragging { opacity: 0.45; cursor: grabbing; }
+.attachment-chip.drop-before { box-shadow: -3px 0 0 0 var(--accent); }
+.attachment-chip.drop-after { box-shadow: 3px 0 0 0 var(--accent); }
+
+/* A disabled button must look disabled, not merely refuse to work. Without
+   this the camera's shutter stayed fully lit while the camera was still
+   starting, so the only way to discover it was inert was to press it. */
+.btn-primary:disabled, .btn-neutral:disabled, .btn-stop:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.btn-primary:disabled:hover, .btn-neutral:disabled:hover, .btn-stop:disabled:hover {
+    background: transparent;
+}
+
+/* An image the assistant referenced, shown in the conversation. */
+.file-image { margin: 0.85em 0; }
+.file-image img {
+    display: block;
+    max-width: 100%;
+    max-height: 60vh;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    cursor: zoom-in;
+    background: var(--code-bg);
+}
+.file-image figcaption {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    font-size: 0.9rem;
+    color: var(--text-dim);
+}
+.file-image.image-missing figcaption { color: var(--danger); }
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+
+/* The renderer emits a plain <table>, which browsers draw with no padding and
+   no rules at all -- columns run into each other and it reads as a jumble.
+   A table is one of the few things here whose meaning is carried by its
+   layout, so it has to be legible. */
+.bubble .table-wrap, .file-peek .table-wrap {
+    /* The wrapper scrolls; the table inside stays a normal table so its rows
+       fill the full width and the header tint reaches the right edge. */
+    overflow-x: auto;
+    margin: 0.9em 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+.bubble table, .file-peek table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0;
+    font-size: 0.97rem;
+}
+.bubble th, .bubble td {
+    padding: 9px 14px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+}
+.bubble th {
+    font-weight: 600;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    white-space: nowrap;
+}
+/* Zebra striping, so the eye can follow a row across a wide table. Kept very
+   faint: it is a reading aid, not decoration. */
+.bubble tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.bubble tbody tr:last-child td { border-bottom: none; }
+.bubble table code { white-space: nowrap; }
+
+/* ── Softening abrupt brightness changes ─────────────────────────────────── */
+
+/* Switching light/dark repaints the entire screen. Instantly, that is the
+   largest luminance jump the app can produce -- larger than anything else here.
+   The transition is applied only while the switch happens, so it never slows
+   ordinary interaction or animates during the first paint of a page. */
+.theme-shifting, .theme-shifting * {
+    transition: background-color 1000ms ease, color 1000ms ease,
+                border-color 1000ms ease !important;
+}
+
+/* A dialog drops a near-opaque cover over the page. Easing it in is gentler
+   than a hard cut to black, for the same reason the camera fades up. */
+.modal-backdrop { opacity: 0; transition: opacity 180ms ease; }
+.modal-backdrop.shown { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+    /* These are luminance ramps, not movement, so they stay -- removing them
+       would put the abrupt change back. Shortened, not disabled. */
+    .theme-shifting, .theme-shifting * { transition-duration: 400ms !important; }
+    .modal-backdrop { transition-duration: 90ms; }
+}
+
+/* Internal navigation is <button>, so these need the font and reset that an
+   <a> got for free. Appearance is unchanged; only the element differs. */
+.app-bar-btn, .project-card, .session-name, .open-project-btn,
+.sessions-menu button, .welcome-cta {
+    font-family: var(--font);
+}
+.sessions-menu button {
+    width: 100%;
+    background: transparent;
+    border: none;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+.sessions-menu button:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.session-name {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 1rem;
+    text-align: left;
+    cursor: pointer;
+}
+.session-name:hover { text-decoration: underline; }
+
+/* ── Custom endpoints ────────────────────────────────────────────────────── */
+
+/* One card per endpoint, with labels that stay visible after you have typed.
+   These were unlabelled boxes in a row, butted straight against the "add" row
+   below them, and once filled in there was nothing to say which was which. */
+/* The card holds two independent forms (settings, and remove) so that pressing
+   Enter in a field can never reach the delete button. They still need to lay
+   out as one block. */
 /* The explanatory note sits under its input rather than beside the label, so
    a note that wraps cannot push one field's box below its neighbour's. */
-.endpoint-fields .field-note { margin-top: 1px; }
-.endpoint-fields input { width: 100%; }
 .field-note { color: var(--text-dim); font-weight: 400; font-size: 0.85em; }
-.endpoint-new { border-style: dashed; }
-.endpoint-new .btn-primary { align-self: flex-start; }
 
-.endpoint-save { align-self: flex-start; margin-top: 12px; }
-.endpoint-card > form { display: flex; flex-direction: column; }
 
 /* The result of actually contacting a saved endpoint, rather than a guess
    about what was typed. */
@@ -1737,3 +1906,19 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 }
 .endpoint-status.good { color: var(--accent); border-color: var(--accent); }
 .endpoint-status.bad { color: var(--danger); border-color: var(--danger); }
+
+/* Which account a model comes through. OpenRouter resells most of what the
+   first-party keys offer, so the name alone does not identify one. */
+.model-name { display: flex; flex-direction: column; gap: 0; min-width: 0; text-align: left; }
+.model-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-via { font-size: 0.78rem; color: var(--text-dim); white-space: nowrap; }
+#model-menu button { align-items: center; gap: 14px; }
+#model-menu .model-price { white-space: nowrap; }
+
+/* A provider key box that already holds a key shows its ends. Monospace and
+   not too faint, because it is information rather than a hint. */
+.inline-form input.has-key::placeholder {
+    color: var(--text-dim);
+    opacity: 0.9;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

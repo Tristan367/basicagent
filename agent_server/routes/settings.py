@@ -60,7 +60,6 @@ async def save_custom_endpoint(
     name: str = Form(""),
     base_url: str = Form(""),
     api_key: str = Form(""),
-    clear_key: str = Form(""),
     parent_password: str = Form(""),
 ):
     if await parental.child_mode_enabled() and not await parental.parent_password_correct(
@@ -73,12 +72,11 @@ async def save_custom_endpoint(
         return RedirectResponse("/settings?error=endpoint", status_code=303)
     if not base_url.startswith(("http://", "https://")):
         return RedirectResponse("/settings?error=endpoint_url", status_code=303)
-    # The key box is rendered empty, so "nothing typed" means keep what is
-    # saved; the tick box is the only way to remove one.
+    # The key box shows the ends of the saved key rather than its value, so
+    # "nothing typed" means keep what is there. To remove a key, remove the
+    # endpoint -- an endpoint without its key is not a thing anyone wants.
     api_key = api_key.strip()
-    if clear_key == "on":
-        api_key = ""
-    elif not api_key:
+    if not api_key:
         existing = await db.get_custom_endpoint(name)
         api_key = existing["api_key"] if existing else ""
     await db.save_custom_endpoint(name, base_url, api_key)
@@ -104,10 +102,13 @@ async def _check_endpoint(base_url: str, api_key: str) -> str:
             response = await client.get(f"{base_url.rstrip('/')}/models", headers=headers)
     except httpx.HTTPError:
         return "unreachable"
+    # The real status, not a verdict. A 401 usually means the key, but some
+    # servers answer that way to any path they do not recognise, so saying
+    # "the key is wrong" outright sends people hunting for the wrong problem.
     if response.status_code in (401, 403):
-        return "unauthorized"
+        return f"auth{response.status_code}"
     if response.status_code >= 400:
-        return "error"
+        return f"http{response.status_code}"
     try:
         count = len(response.json().get("data", []))
     except ValueError:

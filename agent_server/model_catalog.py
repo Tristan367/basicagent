@@ -11,7 +11,7 @@ from agent_server.providers import _providers, get_provider
 # picks the cheapest entry here that the user has a key for, so anything listed is
 # something we are willing to start a beginner on unprompted.
 RECOMMENDED_MODELS = {
-    "deepseek-v4-pro",
+    "deepseek-v4-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.7-flash",
     "claude-haiku-4-5-20251001",
@@ -34,9 +34,22 @@ def price_label(price_out: float, free_tier: bool = False) -> str:
     return f"${price_out:g}/M"
 
 
+# Shown after the model's name, so two entries for the same model are
+# distinguishable. OpenRouter resells most of what the first-party providers
+# offer, so "Claude Opus 5" can legitimately appear twice at different prices
+# and against different accounts.
+PROVIDER_LABEL = {
+    "gemini": "Google",
+    "deepseek": "DeepSeek",
+    "anthropic": "Anthropic",
+    "openrouter": "OpenRouter",
+}
+
+
 def offerable_models() -> list[dict]:
     """Models whose provider has credentials (plus custom endpoints), sorted
-    cheapest-first and annotated with a price label and a recommended flag."""
+    free-first then cheapest-first, annotated with a price label, the provider
+    it comes through, and a recommended flag."""
     offered = []
     for model in MODELS:
         try:
@@ -49,6 +62,7 @@ def offerable_models() -> list[dict]:
                 "price_label": price_label(
                     model.get("price_out", 0.0), model.get("free_tier", False)
                 ),
+                "provider_label": PROVIDER_LABEL.get(model["provider"], model["provider"]),
                 "recommended": model["id"] in RECOMMENDED_MODELS,
             })
 
@@ -56,7 +70,8 @@ def offerable_models() -> list[dict]:
         if key.startswith("custom:") and provider.has_credentials():
             offered.append({
                 "id": key,
-                "name": f"{provider.name} (custom endpoint)",
+                "name": provider.name,
+                "provider_label": "your own computer",
                 "provider": key,
                 "needs_model_id": True,
                 "price_out": 0.0,
@@ -64,7 +79,13 @@ def offerable_models() -> list[dict]:
                 "recommended": False,
             })
 
-    offered.sort(key=lambda m: m.get("price_out", 0.0))
+    # Free first, then by price. Someone looking for the cheapest option should
+    # find it at the top rather than having to read down the middle of the list
+    # to notice one costs nothing.
+    offered.sort(key=lambda m: (
+        0 if (m.get("free_tier") or m.get("price_out", 0.0) <= 0) else 1,
+        m.get("price_out", 0.0),
+    ))
     return offered
 
 

@@ -72,6 +72,22 @@ PROVIDER_INFO = {
 }
 
 
+def mask_key(value: str) -> str:
+    """A key shown the way keys are shown everywhere: ends visible, middle not.
+
+    A field that renders completely empty when a key is saved reads as "my key
+    is gone" for the second or two it takes to find the placeholder explaining
+    otherwise. Showing the ends removes that doubt, and is enough to tell two
+    keys apart or to spot something that is not a key at all.
+    """
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if len(value) <= 12:
+        return value[:2] + "\u2026" + value[-2:] if len(value) > 6 else "\u2026"
+    return f"{value[:6]}\u2026{value[-4:]}"
+
+
 def _theme(settings: dict[str, str]) -> str:
     return settings.get("theme") or DEFAULT_THEME
 
@@ -127,7 +143,8 @@ async def _settings_context() -> dict:
         for f in ps["fields"]:
             raw = settings.get(f["key"], "")
             is_pw = f.get("kind") == "password"
-            fields.append(dict(f, has_value=bool(raw) and is_pw))
+            fields.append(dict(f, has_value=bool(raw) and is_pw,
+                               masked=mask_key(raw) if is_pw else ""))
         provider_settings.append({
             "name": ps["name"],
             "key": ps["key"],
@@ -143,7 +160,10 @@ async def _settings_context() -> dict:
         "accent": settings.get("accent", ""),
         "accent_text": contrast_text(settings.get("accent", "")) if settings.get("accent") else "",
         "provider_settings": provider_settings,
-        "custom_endpoints": await db.list_custom_endpoints(),
+        "custom_endpoints": [
+            dict(ep, masked=mask_key(ep["api_key"]))
+            for ep in await db.list_custom_endpoints()
+        ],
         "models": offerable_models(),
         "default_model": effective_default_model(settings),
         "custom_model_id": settings.get("custom_model_id", ""),
