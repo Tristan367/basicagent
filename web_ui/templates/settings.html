@@ -91,11 +91,13 @@
         <form method="POST" action="/_settings" class="inline-form" data-autosave>
             {% for f in ps.fields %}
             {% if f.kind == 'password' %}
+            {# Never prefilled with dots -- see the note on the endpoint key
+               below. Clicking in and typing used to append to the mask, and the
+               server silently kept the old key. #}
             <input type="password" name="{{ f.key }}"
-                   placeholder="Paste your key here{% if ps.info.key_hint %} ({{ ps.info.key_hint }}){% endif %}"
+                   placeholder="{% if f.has_value %}A key is saved. Type here to replace it.{% else %}Paste your key here{% if ps.info.key_hint %} ({{ ps.info.key_hint }}){% endif %}{% endif %}"
                    aria-label="{{ ps.name }} {{ f.label }}"
-                   autocomplete="off" spellcheck="false"
-                   value="{% if f.has_value %}&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;{% endif %}">
+                   autocomplete="new-password" spellcheck="false">
             {% else %}
             <input type="text" name="{{ f.key }}" value="" placeholder="https://..." autocomplete="off" spellcheck="false"
                    aria-label="{{ ps.name }} {{ f.label }}">
@@ -146,10 +148,25 @@
                            on password fields and will helpfully refill whatever
                            they saw here last time -- which, if an address was
                            ever saved by mistake, is the address. #}
+                        {# Rendered empty, never prefilled with a row of dots.
+                           A masked value invites you to click in and type, which
+                           appended to the dots instead of replacing them -- and
+                           the server, seeing a dot, treated the whole thing as
+                           "unchanged" and threw the typed key away without a
+                           word. An empty box cannot do that. #}
                         <input type="password" name="api_key" spellcheck="false"
-                               autocomplete="new-password" placeholder="not set"
-                               value="{% if ep.api_key %}&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;{% endif %}">
-                        <span class="field-note">Leave empty if it does not need one.</span>
+                               autocomplete="new-password"
+                               placeholder="{{ 'A key is saved. Type here to replace it.' if ep.api_key else 'Not set' }}">
+                        <span class="field-note">
+                            {% if ep.api_key %}Leave empty to keep the saved key.
+                            {% else %}Leave empty if it does not need one.{% endif %}
+                        </span>
+                        {% if ep.api_key %}
+                        <label class="checkbox-label field-note">
+                            <input type="checkbox" name="clear_key" value="on">
+                            Remove the saved key
+                        </label>
+                        {% endif %}
                     </label>
                 </div>
                 {# An explicit Save, so pressing Enter has a defined target

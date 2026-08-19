@@ -37,7 +37,11 @@ async def save_settings(request: Request):
             if f["key"] not in form:
                 continue
             value = str(form.get(f["key"], "")).strip()
-            if f.get("kind") == "password" and "\u2022" in value:
+            # An empty password box means "leave the saved key alone", because
+            # the box is deliberately rendered empty rather than pre-filled.
+            # (It used to be pre-filled with dots and skipped if a dot came
+            # back -- which silently discarded a key typed on the end of them.)
+            if f.get("kind") == "password" and not value:
                 continue
             await db.set_setting(f["key"], value)
             changed = True
@@ -56,6 +60,7 @@ async def save_custom_endpoint(
     name: str = Form(""),
     base_url: str = Form(""),
     api_key: str = Form(""),
+    clear_key: str = Form(""),
     parent_password: str = Form(""),
 ):
     if await parental.child_mode_enabled() and not await parental.parent_password_correct(
@@ -68,7 +73,12 @@ async def save_custom_endpoint(
         return RedirectResponse("/settings?error=endpoint", status_code=303)
     if not base_url.startswith(("http://", "https://")):
         return RedirectResponse("/settings?error=endpoint_url", status_code=303)
-    if api_key and "\u2022" in api_key:
+    # The key box is rendered empty, so "nothing typed" means keep what is
+    # saved; the tick box is the only way to remove one.
+    api_key = api_key.strip()
+    if clear_key == "on":
+        api_key = ""
+    elif not api_key:
         existing = await db.get_custom_endpoint(name)
         api_key = existing["api_key"] if existing else ""
     await db.save_custom_endpoint(name, base_url, api_key)
