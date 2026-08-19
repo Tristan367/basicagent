@@ -166,16 +166,39 @@
   // Skip links jump past the app bar straight to the real content. On the
   // settings page the target is a plain <main>, so land on its first focusable
   // control rather than an inert container that would need an extra Tab.
+  /* The document itself must never scroll: the app bar, the conversation and
+   * the composer are each fixed or self-scrolling, so any movement of the root
+   * is a bug that drags the whole interface off screen and leaves dead space
+   * with no way to scroll back.
+   *
+   * `overflow: hidden` alone does not achieve this -- it stops the user
+   * scrolling, not the browser, which still scrolls the root to reveal a
+   * focus target. Putting it back on every scroll makes the whole class of
+   * bug impossible rather than fixing one route into it. */
+  window.addEventListener('scroll', () => {
+    const root = document.documentElement;
+    if (root.scrollTop) root.scrollTop = 0;
+    if (root.scrollLeft) root.scrollLeft = 0;
+  }, true);
+
   const firstFocusable = (root) => focusableIn(root)[0] || null;
-  const skipLinkTop = document.getElementById('skip-link');
-  if (skipLinkTop && skipLinkTop.getAttribute('href') === '#main-content') {
-    skipLinkTop.addEventListener('click', (e) => {
+
+  /* Every skip link moves focus itself rather than letting the browser follow
+   * the #fragment. Two reasons: an inert container (<main> on the settings
+   * page) is not focusable, so the jump would land nowhere; and a fragment
+   * jump asks the browser to scroll the target into view, which it did by
+   * scrolling the document -- shoving the whole app up the screen. */
+  document.querySelectorAll('.skip-link').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      const href = link.getAttribute('href') || '';
+      if (!href.startsWith('#')) return;
       e.preventDefault();
-      const main = document.getElementById('main-content');
-      const target = main ? firstFocusable(main) : null;
-      if (target) target.focus();
+      const named = document.querySelector(href);
+      if (!named) return;
+      const target = named.matches(FOCUSABLE) ? named : firstFocusable(named);
+      if (target) target.focus({ preventScroll: true });
     });
-  }
+  });
 
   // ── App bar: back/forward history, session dropdown, quit ─────────────────
 
@@ -1491,6 +1514,8 @@
     if (textarea) textarea.focus();
   }
 
+  let dragFrom = null;
+
   function renderAttachments() {
     if (!attachmentsBox) return;
     attachmentsBox.hidden = attachments.length === 0;
@@ -1499,6 +1524,43 @@
       const chip = document.createElement('span');
       chip.className = 'attachment-chip';
       const position = ' (' + (i + 1) + ' of ' + attachments.length + ')';
+
+      // Dragging is the quick way for anyone with a mouse; the arrow buttons
+      // below do the same job for everyone else. Neither replaces the other.
+      if (attachments.length > 1) {
+        chip.draggable = true;
+        chip.dataset.index = String(i);
+        chip.addEventListener('dragstart', (e) => {
+          dragFrom = i;
+          chip.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          // Some payload is required for a drag to start at all; the marker
+          // also lets the file-drop overlay tell this apart from a real file.
+          e.dataTransfer.setData('text/x-attachment', String(i));
+        });
+        chip.addEventListener('dragend', () => {
+          dragFrom = null;
+          attachmentsBox.querySelectorAll('.attachment-chip')
+            .forEach((c) => c.classList.remove('dragging', 'drop-before', 'drop-after'));
+        });
+        chip.addEventListener('dragover', (e) => {
+          if (dragFrom === null || dragFrom === i) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          chip.classList.toggle('drop-before', i < dragFrom);
+          chip.classList.toggle('drop-after', i > dragFrom);
+        });
+        chip.addEventListener('dragleave', () => {
+          chip.classList.remove('drop-before', 'drop-after');
+        });
+        chip.addEventListener('drop', (e) => {
+          if (dragFrom === null || dragFrom === i) return;
+          e.preventDefault();
+          e.stopPropagation();
+          moveAttachment(dragFrom, i);
+          dragFrom = null;
+        });
+      }
 
       const thumb = document.createElement('span');
       thumb.className = 'attachment-thumb';
@@ -1701,6 +1763,9 @@
     // Starting a camera takes a second or two. Without this the dialog is just
     // a black rectangle and it is not obvious anything is happening.
     cameraModal.classList.add('camera-starting');
+    // Nothing to take a picture of yet. Enabled once a real frame arrives, so
+    // pressing it early cannot produce an empty photo.
+    setCameraReady(false);
     window.__openModal(cameraModal, cameraShot);
     try {
       cameraStream = await navigator.mediaDevices.getUserMedia({
@@ -1718,6 +1783,7 @@
         });
       }
       cameraModal.classList.remove('camera-starting');
+      setCameraReady(true);
       announce('Camera ready. Press Space to take the photo.');
     } catch (e) {
       // Denied, in use, or unplugged since the button appeared. Say which in
@@ -1730,6 +1796,12 @@
       cameraModal.classList.remove('camera-starting');
       announce(cameraError.textContent);
     }
+  }
+
+  function setCameraReady(ready) {
+    const take = document.getElementById('camera-take');
+    if (take) take.disabled = !ready;
+    if (cameraShot) cameraShot.disabled = !ready;
   }
 
   function takePhoto() {

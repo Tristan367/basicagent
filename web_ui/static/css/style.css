@@ -16,6 +16,7 @@
     --working: #d97706;
     --code-bg: #20242a;
     --code-text: #e8eaed;
+    --code-gutter: #c3c9d0;
     --font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
@@ -37,6 +38,7 @@ html[data-theme="dark"] {
     --working: #f0a63c;
     --code-bg: #14161a;
     --code-text: #e8eaed;
+    --code-gutter: #454d57;
 }
 
 * { box-sizing: border-box; }
@@ -82,7 +84,14 @@ input[type="checkbox"], input[type="radio"], input[type="range"], select, progre
 
 html { font-size: 18px; }
 
-html, body { height: 100%; }
+html, body {
+    height: 100%;
+    /* This is a fixed-viewport app: the panes scroll, the document never does.
+       Without this, following a skip link's #fragment scrolled the document
+       itself, shoving the composer up the screen and leaving a band of empty
+       space below it that nothing could scroll back. */
+    overflow: hidden;
+}
 
 body {
     margin: 0;
@@ -95,11 +104,18 @@ body {
     overflow: hidden;
 }
 
-/* Keyboard users can jump straight past the app bar. */
+/* Keyboard users can jump straight past the app bar.
+ *
+ * Hidden by moving it just above the top of the screen rather than to
+ * left: -9999px. The far-off-screen trick makes the browser scroll to reveal
+ * the link the moment it takes focus -- and it does that before :focus has
+ * brought the link back, so the whole app ended up shoved up the screen with a
+ * band of dead space below it. A few pixels away, there is nothing to scroll
+ * to. */
 .skip-link {
-    position: absolute;
-    left: -9999px;
-    top: 0;
+    position: fixed;
+    left: 0;
+    top: -80px;
     z-index: 100;
     padding: 10px 16px;
     background: var(--accent);
@@ -108,13 +124,12 @@ body {
     border-radius: 0 0 8px 0;
     text-decoration: none;
 }
-.skip-link:focus { left: 0; }
+.skip-link:focus { top: 0; }
 
-/* The skip link that sits inside the scrolling conversation. Fixed rather than
-   absolute, so focusing it does not park it somewhere the user has scrolled
-   away from. */
-.skip-conversation { position: fixed; top: 44px; }
-.skip-conversation:focus { left: 0; }
+/* The one inside the conversation sits below the app bar so it does not cover
+   it. Fixed as well, so focusing it does not park it somewhere the user has
+   scrolled away from. */
+.skip-conversation:focus { top: 44px; }
 
 /* ── App bar (persistent context) ────────────────────────────────────────── */
 
@@ -420,9 +435,9 @@ html[data-theme="dark"] .setup-banner {
     margin: 0;
     border-radius: 0;
     background: transparent;
-    /* Tightened on the left because the line-number gutter supplies its own
-       inset; the usual padding on top of it left a wide empty column. */
-    padding-left: 10px;
+    /* No left padding: the gutter is flush with the block edge and supplies
+       its own inset, the way an editor's does. */
+    padding-left: 0;
 }
 
 /* Line numbers.
@@ -434,8 +449,9 @@ html[data-theme="dark"] .setup-banner {
 .code-row {
     display: block;
     position: relative;
-    /* Just enough room for the gutter plus a small gap. */
-    padding-left: 2.9em;
+    /* Room for the gutter and its rule, then a normal gap before the code --
+       the same arrangement an editor uses. */
+    padding-left: 3em;
     /* A blank line in the source is an empty block, which collapses to no
        height at all -- the line vanishes and its number lands on top of the
        next one. One line's worth keeps it. */
@@ -445,14 +461,20 @@ html[data-theme="dark"] .setup-banner {
     content: attr(data-line);
     position: absolute;
     left: 0;
-    width: 2.1em;
+    /* Full row height so consecutive rules butt together into one continuous
+       line down the block, rather than a dashed column. */
+    top: 0;
+    bottom: 0;
+    width: 2.2em;
+    padding-right: 0.55em;
     text-align: right;
+    border-right: 1px solid var(--code-gutter);
     color: var(--text-dim);
-    opacity: 0.5;
+    opacity: 0.65;
     user-select: none;
     -webkit-user-select: none;
 }
-.code-row:hover::before { opacity: 0.9; }
+.code-row:hover::before { opacity: 1; }
 
 /* A path the assistant mentioned. Looks like inline code, behaves like a
    button: it opens the user's own file manager on that file. */
@@ -502,7 +524,7 @@ html[data-theme="dark"] .setup-banner {
     background: var(--surface);
     border-radius: 14px;
     padding: 18px;
-    max-width: min(720px, 92vw);
+    max-width: min(1000px, 94vw);
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -525,7 +547,7 @@ html[data-theme="dark"] .setup-banner {
 .camera-shot video {
     display: block;
     width: 100%;
-    max-height: 58vh;
+    max-height: 70vh;
     object-fit: contain;
     /* Mirrored, because an unmirrored preview makes holding a page up to the
        lens a guessing game. The saved photo is not mirrored. */
@@ -631,25 +653,36 @@ html[data-theme="dark"] .setup-banner {
     background: transparent;
 }
 
-.attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+/* Attachment cards. Sized for people who cannot make out a small target and
+   for people whose aim is imprecise: full body text, a thumbnail you can
+   actually see, and every control at least 32px. */
+.attachments {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
 .attachment-chip {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    height: 32px;
+    gap: 8px;
+    min-height: 52px;
     background: var(--accent-dim);
     border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 0 6px 0 4px;
-    font-size: 0.85rem;
+    border-radius: 12px;
+    padding: 5px 8px 5px 6px;
+    /* Body text, not a smaller size. A filename is exactly the sort of thing
+       that gets misread when it is set small. */
+    font-size: 1rem;
     color: var(--text);
     max-width: 100%;
 }
 .attachment-thumb {
     flex: none;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
     overflow: hidden;
     display: grid;
     place-items: center;
@@ -658,17 +691,17 @@ html[data-theme="dark"] .setup-banner {
     color: var(--text-dim);
 }
 .attachment-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.attachment-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.attachment-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 230px; }
 .attachment-chip .rm {
     background: transparent;
     border: none;
-    border-radius: 50%;
-    width: 20px;
-    height: 20px;
+    border-radius: 8px;
+    width: 34px;
+    height: 34px;
     padding: 0;
     cursor: pointer;
     color: var(--text-dim);
-    font-size: 1.1rem;
+    font-size: 1.35rem;
     line-height: 1;
     flex: none;
 }
@@ -1409,8 +1442,8 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
    put them in the order they are about to describe matters. */
 .attachment-chip .move {
     flex: none;
-    width: 24px;
-    min-height: 24px;
+    width: 32px;
+    min-height: 34px;
     border: none;
     border-radius: 6px;
     background: transparent;
@@ -1419,6 +1452,7 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     line-height: 1;
     cursor: pointer;
 }
+.attachment-chip .move { font-size: 1.3rem; }
 .attachment-chip .move:hover:not(:disabled) { color: var(--accent); background: var(--accent-dim); }
 .attachment-chip .move:disabled { opacity: 0.3; cursor: default; }
 
@@ -1433,9 +1467,13 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     background: transparent;
     color: var(--text-dim);
     font-family: var(--font);
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     cursor: pointer;
     align-self: center;
+    /* Pushed to the far end, away from the cards it would otherwise look like
+       one of. */
+    margin-left: auto;
+    min-height: 40px;
 }
 .attachment-clear:hover { color: var(--danger); border-color: var(--danger); }
 
@@ -1466,4 +1504,21 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* Dragging an attachment to reorder it. */
+.attachment-chip[draggable="true"] { cursor: grab; }
+.attachment-chip.dragging { opacity: 0.45; cursor: grabbing; }
+.attachment-chip.drop-before { box-shadow: -3px 0 0 0 var(--accent); }
+.attachment-chip.drop-after { box-shadow: 3px 0 0 0 var(--accent); }
+
+/* A disabled button must look disabled, not merely refuse to work. Without
+   this the camera's shutter stayed fully lit while the camera was still
+   starting, so the only way to discover it was inert was to press it. */
+.btn-primary:disabled, .btn-neutral:disabled, .btn-stop:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.btn-primary:disabled:hover, .btn-neutral:disabled:hover, .btn-stop:disabled:hover {
+    background: transparent;
 }
