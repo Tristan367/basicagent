@@ -56,94 +56,62 @@ Two constraints that should survive whatever design wins:
   frustrated by long instructions" — yes. "Struggles with maths" — no. That
   kind of line calcifies into a label a child never escapes.
 
-## Media in a reply: video, audio, and pictures from the web
+## Media in a reply: video, audio and pictures — from disk only
 
-Deferred, and worth doing.
+**Status: decided, not built.**
 
-A picture already appears in the chat when the assistant writes a path on a
-line of its own. Three things extend the same idea, in rising order of how much
-they change:
+A picture already appears in the chat when the assistant writes a path on a line
+of its own. Audio and video should work exactly the same way, and so should
+anything the *user* attached: attach a sound file, and it is playable from your
+own message.
 
-1. **Picture links.** The same treatment for an `https://` image URL, not only
-   a path on this computer. Almost free: `imageBlock` already builds the
-   element, the only difference is where `src` points. The one real question is
-   whether an image the model chose should be fetched from wherever it says --
-   it is a request to a third party the user did not make, and on a school
-   network that is worth thinking about before it ships.
+**Only files on this computer. No `https://` sources of any kind** -- not video,
+not audio, not even images. That was argued both ways and the simple rule won.
 
-2. **Audio.** A `<audio controls>` for a sound file, local or linked. Small,
-   and obviously right for a child making a game with sound effects.
+### Why nothing from the internet
 
-3. **Video, and YouTube.** A `<video controls>` for a file. A YouTube link is
-   the interesting one, and the reason to bother: a child who is bored of
-   reading can be shown the thing instead. It needs an iframe embed
-   (`youtube-nocookie.com/embed/ID`), which is a third-party frame inside the
-   app -- so it wants a decision about whether that frame may run at all, and
-   in child mode probably a stricter one.
-
-Whatever ships has to be told to the model, or it will never use it: the agent
-prompt has a section on showing a picture, and this is another paragraph in it.
-Keep that paragraph in the same voice -- *what it does for the user*, not what
-the syntax is.
-
-Read-aloud has to skip them. `to_prose` strips fenced code and turns a bare URL
-into "a link"; a player is another thing that must not be read out, and its
-title probably should be.
-
-### The line to draw, and why
-
-The worry that stalled this was "what if the AI shows a child something
-inappropriate". That is the right worry but the wrong mechanism, and naming the
-real one settles the design:
+The worry that started this was "what if the AI shows a child something
+inappropriate". That is the right worry with the wrong mechanism, and naming the
+real one settles it:
 
 - **A model does not choose a bad video. It guesses a video ID.** Eleven
-  characters, invented, and the ones that are not a 404 are a stranger's
-  upload with no relation to the lesson. That is the actual exposure, it is not
-  fixed by a better-behaved model, and it applies to any URL the model made up.
-- **An embed is a doorway, not a video.** Even `youtube-nocookie.com/embed`
-  ends on recommendations and a "Watch on YouTube" link. Embedding one video
-  puts all of YouTube inside a homeschooling app. That is precisely what the
-  parents this is for are avoiding, and they are right.
-- **A remote image is a request to a third party the user did not make** --
-  their address given to whatever host the model named. Smaller, but the same
-  shape.
+  invented characters; the ones that are not a 404 are a stranger's upload with
+  no relation to the lesson. Not fixable by a better-behaved model, and it
+  applies to any URL a model made up.
+- **An embed is a doorway, not a video.** Even `youtube-nocookie.com/embed` ends
+  on recommendations and a "Watch on YouTube" link. Embedding one video puts all
+  of YouTube inside a homeschooling app -- precisely what these parents are
+  avoiding.
+- **A remote image is a request to a third party the user never made**, handing
+  their address to whatever host the model named.
 
-So the rule is about **provenance, not media type**:
-
-> A player is for a file on this computer, or for something a *person* chose.
-> Never for a URL the model invented.
-
-Which gives, in order of what to build:
-
-1. **Audio and video for local files.** `<audio controls>` / `<video controls>`
-   for a path, exactly like a picture path today. No provenance problem at all
-   -- the agent made or fetched the file deliberately. Obviously right for a
-   child making a game with sound. Build this first; it is the cheap half.
-2. **Remote images, proxied.** Fetch server-side and re-serve from our own
-   origin rather than putting a foreign URL in `src`. Kills the address leak,
-   gives one place to enforce a child-mode rule, and makes local and remote a
-   single code path.
-3. **YouTube: a link card, not an embed.** Title, channel, thumbnail, opens in
-   the real browser. The family's own controls then apply, and we have not
-   built a video portal. An actual embed, if ever, is a parent-password
-   setting that is off by default.
-
-The exception worth building toward: **a video a parent put in a lesson is
-fine to embed**, because a human chose it. That inverts the whole problem, and
-it is an argument for the lesson-plan idea below rather than against players.
+A proxy-and-allowlist scheme was considered for images and rejected. It works,
+but it buys a marginal feature for a permanent piece of policy surface -- and
+every argument for it starts with "the model found a picture of", which is the
+part we do not want to trust. A file on disk has none of these questions, and
+the agent can always download one deliberately first if it truly needs to.
 
 ### "Limit the internet in child mode"
 
 Tempting, and mostly not possible. The agent has `bash`, `webfetch` and
 `websearch`, and it needs them -- to install a package, to read current
-documentation, to find a picture of a shark a child asked for. Cutting them off
-leaves an agent that cannot do the job.
+documentation, to find something a child asked about. Cutting them off leaves an
+agent that cannot do the job.
 
-The line that *is* enforceable: **the agent may read the internet; the child is
-never handed a doorway into it.** Reading a page and telling a child what it
-says is supervised by the model. A live, navigable third-party surface inside
-the app is not supervised by anything. That distinction is defensible to a
-parent and it is the one to hold.
+The line that *is* enforceable, and the one the rule above implements:
+**the agent may read the internet; the child is never handed a doorway into
+it.** Reading a page and telling a child what it says is supervised by the
+model. A live, navigable third-party surface inside the app is supervised by
+nothing.
+
+### What has to happen when it is built
+
+- **Read-aloud must skip a player.** `to_prose` already strips fenced code and
+  turns a bare URL into "a link". A player is another thing not to read out --
+  its name probably should be.
+- **The agent has to be told.** The prompt has a section on showing a picture;
+  this is another paragraph in it, in the same voice: what it does for the user,
+  not what the syntax is.
 
 ## Lessons a parent writes and a child opens
 
@@ -161,39 +129,84 @@ Two things a child does in this app, and they are not the same thing:
    AI.
 
 The instinct is to build these as two separate features. They should be one
-object: **a lesson is attached to a project, not a project of its own.** The
-parent says "I want her to make a bouncing-ball game, and to come out of it
-understanding loops and coordinates." That produces a child project that is a
-game project, with objectives the agent knows about. The child opens it and
-makes a game; the teaching rides along inside the thing they wanted to do
-anyway. Two competing lists collapse into one.
+object: **a lesson is a project, and the parent and the child are two sessions
+in it.** The parent creates the project exactly as they would create their own,
+talks to its agent about what they want taught, and then marks it visible in
+child mode. Switch profiles, sit the child down, and they open it. No new kind
+of thing to explain, and the parent has a place to go back to.
 
-The authoring flow is the good part of the original idea and should survive
-intact: the parent *talks* to the home assistant about what they want their
-child to learn, it drafts the objectives and the questions, the parent adjusts
-them in conversation. A parent cannot author a lesson plan in a text box. They
-can absolutely describe one out loud.
+The plan itself is **`LESSON.md` in the project folder**. Session agents are
+told never to change it, and always to look for one, because that is what the
+parent wants covered today. A file rather than a database row: the parent can
+have their own session edit it, it lives with the project, and it is the one
+thing in this app a user might genuinely want to keep.
 
-Four things that have to be solved:
+The authoring flow is the good part and should survive intact: the parent
+*talks* about what they want their child to learn, the agent drafts the
+objectives and the questions, the parent adjusts them in conversation. A parent
+cannot author a lesson plan in a text box. They can absolutely describe one out
+loud.
 
-- **The child's agent must not be able to edit the lesson.** Today a project's
-  agent has `write` and `edit` over the whole folder, so "can you make it
-  easier" would have it cheerfully rewrite the objectives. And the lesson is
-  partly *instructions to the agent* -- "do not give her these four answers" --
-  which only works if it is trusted, which only holds if the child cannot
-  change it. Read for the child, write for the parent. `file_ops` already
-  resolves every path, so one denied path is a small change.
-- **Handing it over.** Child projects live under their own directory and the
-  child has a separate home session. A parent-authored lesson has to be
-  published into the child's list -- probably a flag on the project rather than
-  moving files.
-- **The child has to be told it is there.** Otherwise it is a folder nobody
-  opens. The child's home assistant should say so on arrival, in its own words:
-  "your mum left you something to do today."
-- **It makes the parent review real.** The deferred review feature above has
-  nothing to compare against right now. Objectives give it one, and turn "was
-  she engaged" into "did she get there". These two features are one feature and
+### Open questions
+
+- **Read-only has to be enforced, not just asked for.** "Can you make it
+  easier?" and today's agent rewrites the objectives without hesitating.
+  `file_ops` resolves every path already, so refusing `write`/`edit` on
+  `LESSON.md` for a child-profile session is small. `bash` can still clobber it
+  and probably always will be able to -- the realistic guard is that a refused
+  `edit` must not send the agent looking for a way round, which is a prompt
+  line as much as a code one.
+- **Who greets the child, and with what.** The child's home assistant should say
+  a plan is waiting -- but the plan changes daily and a session's prompt is
+  frozen on first use, so today's lesson cannot live in the prompt. It has to be
+  discovered: `list_projects` reporting which projects have a `LESSON.md`, and a
+  standing line in the prompt about what that means.
+- **The first message in the project.** Hard-coded today, and identical whether
+  the project is a bouncing-ball lesson or a spreadsheet. Generating it is
+  better *when there is a lesson* -- there is something worth saying, so the
+  wait earns itself -- and hard-coded is better when there is not, because an
+  empty chat that spins for three seconds is worse than an instant line,
+  especially for someone listening. The seed should be fixed text from the app,
+  not a prompt the home assistant composes: otherwise its wording drifts and the
+  project agent gets a game of telephone.
+- **It makes the parent review real.** The review idea at the top of this file
+  has nothing to compare against right now. Objectives give it one, and turn
+  "was she engaged" into "did she get there". These two are one feature and
   should be designed together.
+
+## Running the thing for the user
+
+**Status: decided in principle -- the app owns the process, not the agent.**
+
+A "Play" button was considered. The objection to it is real: press play, get a
+tab; the agent works, press play again, get another tab; by the evening there
+are thirty and none of them is obviously the current build.
+
+But the objection applies just as much to the agent launching things, and
+prompting cannot fix it -- **an agent that opened a tab with `xdg-open` has no
+handle on it and physically cannot close it again.** Telling it to "close the
+old tab first" instructs it to do something impossible, which is worse than not
+telling it anything.
+
+So the missing piece is not the button. It is that **the app must own what is
+running**: one slot per project, one process, one window. Starting again means
+killing the old one and replacing it. The agent declares how the project runs --
+a command, and a URL if it serves one -- and the app does the launching. A play
+button, if there is one, calls exactly the same thing and is greyed out while
+the agent is mid-turn.
+
+This app already runs in a Chromium instance it drives itself, which is what
+makes the window half tractable: a window opened through that can also be
+closed through it. A raw `xdg-open` cannot.
+
+Two things fall out of this that are worth keeping straight:
+
+- **`browser` is not the user's window.** It is headless -- an instrument for
+  the agent to verify with. Driving a page in it shows the user nothing. The
+  prompt now says so, because the two were obviously conflatable.
+- **Not everything is a web page.** A pygame window has no tab and no URL, and
+  the same one-slot process supervision covers it. Which is the argument for
+  "declare a command" over anything web-specific.
 
 ## Built since this file was written
 
