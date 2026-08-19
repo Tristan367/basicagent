@@ -17,7 +17,7 @@ import uuid
 from collections.abc import AsyncIterator
 
 from agent_server import database as db
-from agent_server.config import MAX_TOOL_RESULT_CHARS
+from agent_server.config import MAX_TOOL_RESULT_CHARS, model_sees_images
 from agent_server.conversation import (
     build_messages,
     normalize_tool_calls,
@@ -357,6 +357,10 @@ async def _loop(
     session_id = session["id"]
     names = allowed_tool_names(session)
     tools = tool_schemas(names)
+    # Asked once per turn rather than per message, and of the model running
+    # *now*: a conversation that began on a text-only model and moved to one
+    # that sees pictures should show it the pictures it can now look at.
+    sees_images = model_sees_images(session.get("model") or "")
 
     async for event in _drain_pending(session, ctx):
         yield event
@@ -388,7 +392,9 @@ async def _loop(
                 continue
 
         rows = await db.get_messages(session_id)
-        messages = build_messages(system_prompt, await db.get_compactions(session_id), rows)
+        messages = build_messages(
+            system_prompt, await db.get_compactions(session_id), rows, sees_images
+        )
 
         if not any(m["role"] != "system" for m in messages):
             yield {"type": "error", "message": "Nothing to send: the conversation is empty."}
@@ -712,6 +718,7 @@ async def _record(session_id: str, call: dict, result: ToolResult, duration_ms: 
         code_start=result.code_start,
         usage=result.usage,
         open_session=result.open_session,
+        images=result.images,
     )
 
 

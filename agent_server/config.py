@@ -119,6 +119,7 @@ REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 MODELS = [
     {
         "id": "deepseek-v4-pro",
+        "images": False,
         "name": "DeepSeek V4 Pro",
         "provider": "deepseek",
         "context": 1_000_000,
@@ -128,6 +129,7 @@ MODELS = [
     },
     {
         "id": "deepseek-v4-flash",
+        "images": False,
         "name": "DeepSeek V4 Flash",
         "provider": "deepseek",
         "context": 1_000_000,
@@ -140,6 +142,7 @@ MODELS = [
     # entering a payment method anywhere.
     {
         "id": "gemini-3.5-flash-lite",
+        "images": True,
         "name": "Gemini 3.5 Flash Lite",
         "provider": "gemini",
         "context": 1_000_000,
@@ -150,6 +153,7 @@ MODELS = [
     },
     {
         "id": "gemini-3.7-flash",
+        "images": True,
         "name": "Gemini 3.7 Flash",
         "provider": "gemini",
         "context": 1_000_000,
@@ -160,6 +164,7 @@ MODELS = [
     },
     {
         "id": "gemini-3.1-pro-preview",
+        "images": True,
         "name": "Gemini 3.1 Pro",
         "provider": "gemini",
         "context": 1_000_000,
@@ -174,6 +179,7 @@ MODELS = [
     # and that is the one direction this app must never be wrong in.
     {
         "id": "meta-llama/llama-4-maverick",
+        "images": True,
         "name": "Llama 4 Maverick",
         "provider": "openrouter",
         "context": 1_000_000,
@@ -183,6 +189,7 @@ MODELS = [
     },
     {
         "id": "openai/gpt-5.6-luna",
+        "images": True,
         "name": "GPT-5.6 Luna",
         "provider": "openrouter",
         "context": 1_000_000,
@@ -192,6 +199,7 @@ MODELS = [
     },
     {
         "id": "openai/gpt-5-mini",
+        "images": True,
         "name": "GPT-5 Mini",
         "provider": "openrouter",
         "context": 400_000,
@@ -201,6 +209,7 @@ MODELS = [
     },
     {
         "id": "x-ai/grok-4.3",
+        "images": True,
         "name": "Grok 4.3",
         "provider": "openrouter",
         "context": 1_000_000,
@@ -210,6 +219,7 @@ MODELS = [
     },
     {
         "id": "claude-fable-5",
+        "images": True,
         "name": "Claude Fable 5",
         "provider": "anthropic",
         "context": 1_000_000,
@@ -220,6 +230,7 @@ MODELS = [
     },
     {
         "id": "claude-opus-5",
+        "images": True,
         "name": "Claude Opus 5",
         "provider": "anthropic",
         "context": 1_000_000,
@@ -230,6 +241,7 @@ MODELS = [
     },
     {
         "id": "claude-sonnet-5",
+        "images": True,
         "name": "Claude Sonnet 5",
         "provider": "anthropic",
         "context": 1_000_000,
@@ -242,6 +254,7 @@ MODELS = [
         # Dated id, deliberately: unlike the Opus and Sonnet 5 family, Haiku
         # 4.5 has no undated alias on the API, so the short form 404s.
         "id": "claude-haiku-4-5-20251001",
+        "images": True,
         "name": "Claude Haiku 4.5",
         "provider": "anthropic",
         "context": 200_000,
@@ -253,6 +266,30 @@ MODELS = [
 ]
 
 MODELS_BY_ID = {m["id"]: m for m in MODELS}
+
+
+# Families that accept a picture in the request. Consulted only for a model id
+# this app does not carry a price for -- one discovered from a provider's own
+# list, or named by a custom endpoint.
+#
+# The default for anything unrecognised is "cannot", which is the safe way
+# round: telling a model that can see it cannot costs a picture, while sending
+# one to a model that cannot is a 400 that fails the whole turn.
+_SEES_IMAGES = (
+    "claude-", "gemini-", "gpt-4o", "gpt-4.1", "gpt-5", "o3", "o4-",
+    "grok-", "llama-4", "-vl", "vl-", "pixtral", "llava", "internvl", "minicpm-v",
+)
+
+
+def model_sees_images(model_id: str) -> bool:
+    """Whether a picture may be put in a request to this model."""
+    entry = MODELS_BY_ID.get(model_id)
+    if entry is not None:
+        return bool(entry.get("images"))
+    # OpenRouter and custom endpoints namespace their ids; the family is in the
+    # last segment.
+    name = (model_id or "").rsplit("/", 1)[-1].lower()
+    return any(family in name for family in _SEES_IMAGES)
 
 # Model ids a provider advertised at startup that aren't in the curated list
 # above. They never appear in the picker -- an unlabelled, unpriced id is not a

@@ -84,7 +84,7 @@ async def chat(session_id: str, request: Request, body: ChatRequest):
         raise HTTPException(409, "This project is already working.")
     handle, abort = claimed
     try:
-        await db.add_message(session_id, "user", text)
+        await db.add_message(session_id, "user", text, images=_pictures(body.images))
     except Exception:
         agent.release_turn(session_id, handle, abort)
         raise
@@ -93,6 +93,30 @@ async def chat(session_id: str, request: Request, body: ChatRequest):
 
 
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+
+# Pictures sent with one message. Someone dropping a folder of forty holiday
+# photos on the chat should not turn into a sixty-thousand-token request they
+# did not ask for and cannot see coming.
+MAX_PICTURES_PER_MESSAGE = 8
+
+
+def _pictures(paths: list[str]) -> list[str]:
+    """Keep the ones that are really pictures that really exist.
+
+    The client says which attachments were images, and it is right about that
+    -- but it is also the one part of this app a mistake can reach from
+    outside, so the claim is checked rather than trusted. A path that has been
+    deleted between attaching and sending is dropped here instead of failing
+    the turn later.
+    """
+    from agent_server import images as pictures
+
+    kept = []
+    for raw in paths[:MAX_PICTURES_PER_MESSAGE]:
+        path = Path(str(raw)).expanduser()
+        if pictures.is_image(path) and path.is_file():
+            kept.append(str(path))
+    return kept
 
 
 @router.post("/sessions/{session_id}/upload")

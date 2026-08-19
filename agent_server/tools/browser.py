@@ -9,6 +9,10 @@ Every step is reported with its outcome, whatever the model asked for is
 checked rather than described, and when something fails the things needed to
 diagnose it (console, accessibility tree, screenshot) are gathered without
 being asked.
+
+Screenshots come back as pictures when the model can see them, and as paths
+when it cannot. Both are useful: a path written into a reply is how the user is
+shown the thing that was built.
 """
 
 import json
@@ -20,6 +24,10 @@ from agent_server.browser import locate as _locate
 from agent_server.tools.base import ToolContext, ToolResult
 
 MAX_STEPS = 24
+# Frames returned to the model as pictures in one call. Each one costs on the
+# order of 1,500 tokens, and a `record` of 24 frames is for finding the moment
+# something moved, not for looking at all of them.
+MAX_FRAMES = 6
 
 # Actions that name a target element. `press` is deliberately not here: without
 # `at` it goes to the page's keyboard, which is the only way to send Escape or
@@ -130,7 +138,12 @@ async def _run(ctx, session, steps, stop_on_error) -> ToolResult:
 
     report = await _report(ctx, session, lines, frames, failed_at, len(steps))
     title = _title(session, steps, failed_at)
-    return ToolResult(output=report, is_error=bool(failed_at), title=title)
+    # The frames go back as pictures, not as paths. A screenshot the model is
+    # told about but cannot look at verifies nothing -- and "check your work
+    # before you say it is done" is the whole point of this tool.
+    return ToolResult(
+        output=report, is_error=bool(failed_at), title=title, images=frames[-MAX_FRAMES:]
+    )
 
 
 # ── Actions ─────────────────────────────────────────────────────────────────

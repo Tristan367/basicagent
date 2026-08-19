@@ -374,7 +374,7 @@ def _convert_messages(messages: list[dict]) -> list[dict]:
         elif role == "user":
             content = m.get("content")
             if isinstance(content, list):
-                _append(out, "user", content)
+                _append(out, "user", [_block(part) for part in content if _block(part)])
             elif content:
                 _append(out, "user", [{"type": "text", "text": content}])
 
@@ -384,6 +384,40 @@ def _convert_messages(messages: list[dict]) -> list[dict]:
     while out and out[0]["role"] != "user":
         out.pop(0)
     return out
+
+
+def _block(part: dict) -> dict | None:
+    """One OpenAI content part as an Anthropic content block.
+
+    A picture is the only part that differs. This app stores the OpenAI shape
+    -- a `data:` URL under `image_url` -- because three of the four providers
+    speak it natively; unpacking it back into base64 is the price of that, and
+    it is paid here only.
+    """
+    if not isinstance(part, dict):
+        return None
+    kind = part.get("type")
+    if kind == "text":
+        return {"type": "text", "text": part.get("text") or ""} if part.get("text") else None
+    if kind == "image_url":
+        url = (part.get("image_url") or {}).get("url") or ""
+        if not url.startswith("data:") or ";base64," not in url:
+            # A remote URL is deliberately unreachable here: nothing in this app
+            # puts one in a message, and quietly passing one through would make
+            # a request to a third party on the model's say-so.
+            return None
+        header, payload = url.split(";base64,", 1)
+        return {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": header.removeprefix("data:") or "image/png",
+                "data": payload,
+            },
+        }
+    # Anything already in Anthropic's own vocabulary passes straight through,
+    # which is what tool_result blocks arriving from `flush_results` rely on.
+    return part if kind else None
 
 
 def _append(out: list[dict], role: str, blocks: list[dict]) -> None:

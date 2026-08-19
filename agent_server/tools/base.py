@@ -62,6 +62,10 @@ class ToolResult:
     # When a manager tool creates or opens a session, this carries its id so the
     # UI can offer an "open it" button. Display-only, never sent to the model.
     open_session: str = ""
+    # Paths to pictures this call captured. Unlike everything else here they do
+    # not go in `output` -- they are sent to the model as pictures, so it can
+    # look at what it just did rather than read a path and take it on trust.
+    images: list[str] = field(default_factory=list)
 
     @classmethod
     def error(cls, message: str, title: str = "", usage: dict | None = None) -> "ToolResult":

@@ -10,6 +10,7 @@ from typing import Any
 from agent_server.tools.base import ToolContext, ToolResult
 from agent_server.tools.bash import run_bash
 from agent_server.tools.browser import browser as browser_tool
+from agent_server.tools.capture import capture
 from agent_server.tools.file_ops import edit_file, read_file, write_file
 from agent_server.tools.search import glob_search, grep_search
 from agent_server.tools.session_manager import (
@@ -241,6 +242,28 @@ register(Tool(
         "required": ["description", "prompt"],
     },
     handler=run_task,
+    parallel_safe=True,
+))
+
+register(Tool(
+    name="capture",
+    description=(
+        "Screenshot the screen and look at it. For anything that is not a web page "
+        "-- a game window, a desktop app, an emulator -- because `browser` runs "
+        "headless and can only see web pages. Run the thing for real first, then "
+        "capture. This is for your own eyes: the user is already looking at their "
+        "screen and does not need a picture of it."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "region": {"type": "string", "description": "'x,y,w,h' to capture part of the screen"},
+            "count": {"type": "integer", "description": "Number of frames, 1-24 (default 1)"},
+            "interval_ms": {"type": "integer", "description": "Gap between frames (default 400)"},
+        },
+        "required": [],
+    },
+    handler=capture,
     parallel_safe=True,
 ))
 

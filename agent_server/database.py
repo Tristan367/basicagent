@@ -109,6 +109,9 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("messages", "code", "TEXT"),
     ("messages", "code_start", "INTEGER DEFAULT 1"),
     ("messages", "open_session", "TEXT"),
+    # JSON list of paths to pictures that belong to this message: what the
+    # user attached, or what a tool captured. Sent as pictures, not as text.
+    ("messages", "images", "TEXT"),
     # Discovered by asking the endpoint, never typed. See save_custom_endpoint.
     ("custom_endpoints", "model_id", "TEXT NOT NULL DEFAULT ''"),
     ("custom_endpoints", "models", "TEXT NOT NULL DEFAULT ''"),
@@ -338,12 +341,13 @@ async def add_message(
     code: str = "",
     code_start: int = 1,
     open_session: str = "",
+    images: list[str] | None = None,
 ) -> dict:
     msg_id = await _execute(
         "INSERT INTO messages (session_id, role, content, reasoning_content, tool_calls,"
         " tool_call_id, tool_name, is_error, token_count, usage, diff, tool_title,"
-        " duration_ms, file_path, lang, code, code_start, open_session, created_at)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " duration_ms, file_path, lang, code, code_start, open_session, images, created_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             session_id,
             role,
@@ -363,6 +367,7 @@ async def add_message(
             code or None,
             code_start if code_start else 1,
             open_session or None,
+            json.dumps(images) if images else None,
             _now(),
         ),
     )

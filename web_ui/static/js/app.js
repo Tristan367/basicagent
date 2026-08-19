@@ -1484,7 +1484,7 @@
     setStatus('Working\u2026');
   }
 
-  async function sendMessage(text) {
+  async function sendMessage(text, images) {
     text = (text || '').trim();
     if (!text || running) return;
     if (!hasKey) {
@@ -1500,7 +1500,7 @@
       const resp = await fetch('/api/sessions/' + sessionId + '/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, images: images || [] }),
       });
       if (!resp.ok) {
         showError('I could not send that message. Please try again.');
@@ -1534,7 +1534,9 @@
     e.preventDefault();
     hideRecentProjects();
     cancelDictation();
-    sendMessage(messageWithAttachments(textarea.value));
+    // Read before clearAttachments empties the list -- sendMessage does its
+    // fetch a microtask later, by which point there would be nothing left.
+    sendMessage(messageWithAttachments(textarea.value), attachedImagePaths());
     textarea.value = '';
     textarea.style.height = 'auto';
     clearAttachments();
@@ -1923,7 +1925,7 @@
 
       // Spoken, the kind matters and the icon does not carry it. Sighted users
       // read it off the thumbnail, so it costs them no space.
-      const kind = a.isDir ? 'folder' : (a.thumb ? 'image' : 'file');
+      const kind = a.isDir ? 'folder' : (looksLikeImage(a) ? 'image' : 'file');
       const said = 'Number ' + (i + 1) + ' of ' + attachments.length + ', ' + kind + ', ' + a.name;
 
       // The picture and its name open a preview; only images have one to show.
@@ -2006,6 +2008,19 @@
     attachments.forEach((a) => { if (a.thumb && a.thumb.startsWith('blob:')) { try { URL.revokeObjectURL(a.thumb); } catch (e) {} } });
     attachments = [];
     renderAttachments();
+  }
+
+  // By name, not by whether a thumbnail could be made: an image dragged in
+  // from somewhere else on the computer has no thumbnail, because the endpoint
+  // that serves those is confined to the attachments folder. The AI reads the
+  // file itself and is under no such restriction.
+  const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|bmp|tiff?)$/i;
+  function looksLikeImage(a) {
+    return !a.isDir && (!!a.thumb || IMAGE_EXTS.test(a.name || '') || IMAGE_EXTS.test(a.path || ''));
+  }
+
+  function attachedImagePaths() {
+    return attachments.filter(looksLikeImage).map((a) => a.path);
   }
 
   function messageWithAttachments(base) {

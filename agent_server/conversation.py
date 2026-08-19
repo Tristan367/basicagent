@@ -75,10 +75,79 @@ def tool_call_name(tool_call: dict) -> str:
     return tool_call.get("function", {}).get("name", "")
 
 
-def to_api_message(row: dict) -> dict:
-    """Convert one stored message row into a wire message."""
+def stored_images(row: dict) -> list[str]:
+    """The picture paths on a message row, however they were stored."""
+    raw = row.get("images")
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return [str(p) for p in raw] if isinstance(raw, list) else []
+
+
+def image_parts(paths: list[str]) -> list[dict]:
+    """Picture paths as OpenAI content parts, skipping any that cannot be read.
+
+    The OpenAI shape is the one this app stores and speaks; the Anthropic
+    adapter translates these on the way out. Doing it the other way round would
+    mean every provider but one converting on every request.
+    """
+    from agent_server import images as pictures
+
+    parts = []
+    for path in paths:
+        url = pictures.data_url(path)
+        if url:
+            parts.append({"type": "image_url", "image_url": {"url": url}})
+    return parts
+
+
+def describe_unseen(paths: list[str]) -> str:
+    """What goes in place of a picture the model has no way of looking at.
+
+    Written as a fact the model can act on rather than an apology, because the
+    thing it must not do is guess. It sits at the point of use instead of in
+    the system prompt: whether pictures work depends on the model, and the
+    model can be changed halfway through a conversation.
+    """
+    from pathlib import Path as _Path
+
+    names = ", ".join(_Path(p).name for p in paths) or "a picture"
+    plural = "pictures" if len(paths) > 1 else "a picture"
+    return (
+        f"[{plural.capitalize()} here ({names}), which you cannot see: the model "
+        "you are running as does not accept images. Tell the user that plainly "
+        "and ask them to describe it in words. Do not guess at what it shows.]"
+    )
+
+
+def to_api_message(row: dict, sees_images: bool = False) -> dict:
+    """Convert one stored message row into a wire message.
+
+    `sees_images` is the current model's capability, not the message's: a
+    conversation that started on DeepSeek and moved to Claude should show
+    Claude the pictures it can now see.
+    """
     role = row["role"]
     msg: dict[str, Any] = {"role": role, "content": row.get("content") or ""}
+
+    pictures = stored_images(row)
+    if pictures and role in ("user", "tool"):
+        text = msg["content"]
+        if not sees_images:
+            note = describe_unseen(pictures)
+            msg["content"] = f"{text}\n\n{note}" if text else note
+        elif role == "user":
+            # A tool result has to stay a plain string -- the OpenAI-compatible
+            # providers reject parts on a `tool` message -- so those are picked
+            # up by `build_messages` and sent as a user turn just after.
+            parts: list[dict] = [{"type": "text", "text": text}] if text else []
+            parts.extend(image_parts(pictures))
+            if len(parts) > (1 if text else 0):
+                msg["content"] = parts
 
     if role == "assistant":
         tool_calls = normalize_tool_calls(row.get("tool_calls"))
@@ -219,10 +288,27 @@ def elapsed_note(previous: str, current: str) -> str:
     return f"{round(days / 365)} years later"
 
 
+# How many messages carrying pictures keep them. A screenshot is on the order
+# of 1,500 tokens and every one of them is re-sent on every turn, so an agent
+# that checks its own work visually a dozen times would otherwise be paying for
+# twenty thousand tokens of stale screenshots for the rest of the session.
+#
+# Older ones become a line of text saying a picture was there. This does move
+# the cache boundary each time the limit is crossed, which is a real cost --
+# but it is paid once per new picture, against re-sending every old one forever.
+MAX_PICTURES_IN_CONTEXT = 8
+
+_DROPPED = (
+    "[A picture was here. It has scrolled out of what is kept in view -- take it "
+    "again if you still need to look at it.]"
+)
+
+
 def build_messages(
     system_prompt: str,
     compactions: list[dict],
     rows: list[dict],
+    sees_images: bool = False,
 ) -> list[dict]:
     """Assemble the full request payload for a turn."""
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
@@ -232,9 +318,38 @@ def build_messages(
             "content": f"[Summary of earlier conversation]\n{c['summary_text']}",
         })
 
+    keep = _recent_picture_rows(rows) if sees_images else set()
+
+    # A tool result cannot carry a picture: the OpenAI-compatible providers take
+    # a plain string on a `tool` message and nothing else. So captured frames
+    # follow as a user turn instead -- but only once the whole run of tool
+    # results is out, because `sanitize` requires them to be consecutive and
+    # would drop the second of two parallel calls if a user turn split them.
+    pending: list[str] = []
+
+    def flush():
+        if not pending:
+            return
+        parts = image_parts(pending)
+        pending.clear()
+        if not parts:
+            return
+        label = "Here is what that captured." if len(parts) == 1 else \
+            f"Here are the {len(parts)} frames that were captured."
+        messages.append({"role": "user", "content": [{"type": "text", "text": label}, *parts]})
+
     previous_at = ""
-    for row in rows:
-        message = to_api_message(row)
+    for index, row in enumerate(rows):
+        pictures = stored_images(row)
+        if pictures and index not in keep:
+            row = {**row, "images": None,
+                   "content": f"{row.get('content') or ''}\n\n{_DROPPED}".strip()}
+            pictures = []
+
+        if row.get("role") != "tool":
+            flush()
+
+        message = to_api_message(row, sees_images)
         # Marked on the wire only; the stored message is untouched, so the note
         # never appears in the user's own bubble as though they had typed it.
         if row.get("role") == "user" and previous_at:
@@ -243,4 +358,14 @@ def build_messages(
                 message = {**message, "content": f"({note})\n{message['content']}"}
         previous_at = row.get("created_at") or previous_at
         messages.append(message)
+
+        if pictures and sees_images and row.get("role") == "tool":
+            pending.extend(pictures)
+    flush()
     return sanitize(messages)
+
+
+def _recent_picture_rows(rows: list[dict]) -> set[int]:
+    """Indexes of the last `MAX_PICTURES_IN_CONTEXT` rows that carry pictures."""
+    found = [i for i, row in enumerate(rows) if stored_images(row)]
+    return set(found[-MAX_PICTURES_IN_CONTEXT:])

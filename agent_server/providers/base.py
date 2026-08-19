@@ -148,6 +148,15 @@ def chars_per_token(model: str = "") -> float:
     return _ratios.get(model, _DEFAULT_RATIO)
 
 
+# What one picture costs, in the character units this function counts.
+# Providers charge roughly width*height/750 tokens, and `images.MAX_PIXELS`
+# caps that at about 1,500 -- so this is the ceiling rather than the average,
+# deliberately. Counting a picture as nothing (which is what happened before
+# pictures were sent at all) hides ~12,000 tokens from the compaction trigger,
+# and the symptom is a context-length error the app said was not coming.
+IMAGE_CHARS = 1_500 * 4
+
+
 def message_chars(messages: list[dict]) -> int:
     """Characters the model will actually be billed for, near enough."""
     total = 0
@@ -157,8 +166,12 @@ def message_chars(messages: list[dict]) -> int:
             total += len(content)
         elif isinstance(content, list):
             for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "text":
                     total += len(part.get("text", ""))
+                elif part.get("type") in ("image_url", "image"):
+                    total += IMAGE_CHARS
         total += len(m.get("reasoning_content") or "")
         for tc in m.get("tool_calls") or []:
             fn = tc.get("function", {})
