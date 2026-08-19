@@ -208,8 +208,8 @@
                                 title="Take a photo — hold something up to the camera and show it to the assistant">
                             <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
                                 <path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"
-                                      d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.7l1.2-2h6.2l1.2 2h2.7A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"/>
-                                <circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/>
+                                      d="M3 9a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                                <circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/>
                             </svg>
                         </button>
                         {% if tts.available %}
@@ -262,6 +262,17 @@
       Deliberately one big target: the whole picture is the shutter, so there is
       nothing to aim at while you are holding something up with the other hand.
     #}
+    {# Seeing an attached picture before sending it. Clicking the picture is the
+       obvious thing to try, and there is nowhere else to check what you got. #}
+    <div class="modal-backdrop" id="image-preview" role="dialog" aria-modal="true"
+         aria-label="Picture preview" hidden>
+        <div class="preview-card">
+            <p class="preview-name"></p>
+            <img alt="">
+            <button type="button" class="btn-primary preview-close">Close</button>
+        </div>
+    </div>
+
     <div class="modal-backdrop camera-modal" id="camera-modal" role="dialog" aria-modal="true"
          aria-label="Take a photo" hidden>
         <div class="camera-card">

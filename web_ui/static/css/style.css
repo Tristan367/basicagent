@@ -179,16 +179,18 @@ body {
 }
 .app-bar-btn:disabled:hover { background: transparent; }
 
-/* The quit X — a small square button with a thicker mark. */
+/* The quit X. Stretched to the full height of the bar and flush to its right
+   edge, so the hover fill meets the borders instead of leaving a thin gap of
+   background showing around it. */
 .quit-x {
-    align-self: center;
-    width: 38px;
-    height: 38px;
+    align-self: stretch;
+    width: 46px;
+    height: auto;
     justify-content: center;
     padding: 0;
     border: none;
     border-radius: 0;
-    margin-right: 3px;
+    margin: 0;
     color: var(--text-dim);
 }
 .quit-x:hover { color: var(--danger); background: var(--accent-dim); }
@@ -418,6 +420,9 @@ html[data-theme="dark"] .setup-banner {
     margin: 0;
     border-radius: 0;
     background: transparent;
+    /* Tightened on the left because the line-number gutter supplies its own
+       inset; the usual padding on top of it left a wide empty column. */
+    padding-left: 10px;
 }
 
 /* Line numbers.
@@ -429,21 +434,25 @@ html[data-theme="dark"] .setup-banner {
 .code-row {
     display: block;
     position: relative;
-    padding-left: 3.6em;
-    min-height: 1.35em;
+    /* Just enough room for the gutter plus a small gap. */
+    padding-left: 2.9em;
+    /* A blank line in the source is an empty block, which collapses to no
+       height at all -- the line vanishes and its number lands on top of the
+       next one. One line's worth keeps it. */
+    min-height: 1lh;
 }
 .code-row::before {
     content: attr(data-line);
     position: absolute;
     left: 0;
-    width: 2.8em;
+    width: 2.1em;
     text-align: right;
     color: var(--text-dim);
-    opacity: 0.55;
+    opacity: 0.5;
     user-select: none;
     -webkit-user-select: none;
 }
-.code-row:hover::before { opacity: 0.95; }
+.code-row:hover::before { opacity: 0.9; }
 
 /* A path the assistant mentioned. Looks like inline code, behaves like a
    button: it opens the user's own file manager on that file. */
@@ -523,6 +532,22 @@ html[data-theme="dark"] .setup-banner {
     transform: scaleX(-1);
 }
 .camera-error { color: var(--danger); margin: 0; }
+
+/* While the camera is starting. Without this the dialog is a black rectangle
+   for a second or two and it is not obvious anything is happening. */
+.camera-starting .camera-shot { position: relative; min-height: 240px; }
+.camera-starting .camera-shot::after {
+    content: "Starting your camera\00a0\2026";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--text-dim);
+    font-family: var(--font);
+    font-size: 1rem;
+    line-height: 1.4;
+    background: #000;
+}
 
 /* A brief white flash on capture, so it is obvious the photo was taken even
    with the sound off. Skipped when the user asked for less motion. */
@@ -738,8 +763,10 @@ html[data-theme="dark"] .setup-banner {
 .icon-btn:hover { background: var(--accent-dim); }
 .icon-btn.mic-off, .icon-btn.tts-off { color: var(--text-dim); }
 .icon-btn.recording { color: var(--danger); }
-/* The paperclip stays muted so it reads as a tool, not an accent action. */
-#attach-btn { color: var(--text-dim); }
+/* The paperclip and the camera stay muted so they read as tools, not accent
+   actions. Green on a camera in particular suggests it is live and recording,
+   which it is not until the dialog is open. */
+#attach-btn, #camera-btn { color: var(--text-dim); }
 /* The "read my draft" play button is muted too, and turns green while reading. */
 #read-draft-btn { color: var(--text-dim); }
 #read-draft-btn.playing { color: var(--accent); }
@@ -1356,4 +1383,87 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     html { font-size: 17px; }
     .bubble { max-width: 95%; }
     .inline-form input[type="text"], .inline-form input[type="password"] { min-width: 100%; }
+}
+
+/* ── Attachment chips ────────────────────────────────────────────────────── */
+
+/* The picture and name are one button: clicking either previews the image.
+   Disabled for a non-image, where there would be nothing to show. */
+.attachment-face {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.attachment-face:disabled { cursor: default; }
+.attachment-face:not(:disabled):hover .attachment-name { color: var(--accent); }
+
+/* Reorder arrows. The user refers to attachments by position, so being able to
+   put them in the order they are about to describe matters. */
+.attachment-chip .move {
+    flex: none;
+    width: 24px;
+    min-height: 24px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.attachment-chip .move:hover:not(:disabled) { color: var(--accent); background: var(--accent-dim); }
+.attachment-chip .move:disabled { opacity: 0.3; cursor: default; }
+
+.attachment-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    min-height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font);
+    font-size: 0.85rem;
+    cursor: pointer;
+    align-self: center;
+}
+.attachment-clear:hover { color: var(--danger); border-color: var(--danger); }
+
+/* ── Picture preview ─────────────────────────────────────────────────────── */
+
+.preview-card {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 16px;
+    max-width: 92vw;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+.preview-card img {
+    max-width: min(1000px, 88vw);
+    max-height: 74vh;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #000;
+}
+.preview-name {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--text-dim);
+    max-width: 88vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

@@ -8,8 +8,9 @@ deliberate. But two things still need to reach across:
 * a user who *does* want the file should be able to click that path and have
   their own file manager open on it.
 
-Both are scoped to the session's project directory. Nothing outside it can be
-read or revealed, whatever path arrives.
+Reading is confined to the project folder: it happens automatically, from a
+path a model wrote, with nobody looking. Revealing is not, because that is a
+person clicking a link about their own computer.
 """
 
 import asyncio
@@ -43,12 +44,18 @@ EXT_LANG = {
 }
 
 
-async def _resolve(session_id: str, raw: str) -> Path:
-    """Turn a path from a chat message into a real path inside the project.
+async def _resolve(session_id: str, raw: str, confine: bool = True) -> Path:
+    """Turn a path from a chat message into a real path.
 
-    The path comes from model output, so it is untrusted: it is resolved and
-    then checked to be inside the project directory, which stops `../../` and a
-    symlink pointing out of the tree alike.
+    A relative path is taken against the project folder, which is where the
+    assistant is working and so what it means when it writes `src/app.js`.
+
+    `confine` is the difference between the two things this module does.
+    Reading a slice of a file happens automatically, from text a model wrote,
+    with no one looking — so it stays inside the project. Opening a file
+    manager is a person clicking a link about their own computer, and confining
+    that would be this app deciding which of the user's files they are allowed
+    to look at. It has no business doing that.
     """
     session = await db.get_session(session_id)
     if session is None:
@@ -62,7 +69,7 @@ async def _resolve(session_id: str, raw: str) -> Path:
     except OSError as e:
         raise HTTPException(400, "That path cannot be read") from e
 
-    if target != root and root not in target.parents:
+    if confine and target != root and root not in target.parents:
         raise HTTPException(403, "That file is outside this project")
     return target
 
@@ -130,7 +137,8 @@ async def reveal(payload: dict):
     if not session_id or not raw:
         raise HTTPException(400, "session_id and path are required")
 
-    target = await _resolve(session_id, raw)
+    # Not confined: it is the user's own computer and their own file manager.
+    target = await _resolve(session_id, raw, confine=False)
     if not target.exists():
         raise HTTPException(404, "No such file or folder")
 

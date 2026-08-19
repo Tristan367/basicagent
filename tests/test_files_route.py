@@ -1,8 +1,9 @@
 """Reading a slice of a file, and the boundary around it.
 
 The path arrives in a chat message written by a model, so it is untrusted
-input. Everything here is about the one rule that matters: a peek or a reveal
-can only ever touch something inside that session's own project folder.
+input. Reading a slice is therefore confined to the session's own project
+folder. Revealing one in the file manager is not: that is a person clicking a
+link about their own computer.
 """
 
 import pytest
@@ -110,9 +111,22 @@ async def test_an_unknown_session_is_refused(project):
     assert excinfo.value.status_code == 404
 
 
-async def test_reveal_refuses_a_path_outside_the_project(project):
+async def test_reveal_is_not_confined_to_the_project(project, monkeypatch):
+    """Opening a file manager is a person clicking a link about their own
+    computer. Confining it would be this app deciding which of the user's own
+    files they may look at, which is not its place. Reading a slice stays
+    confined -- that happens unattended, from text a model wrote."""
+    monkeypatch.setattr(files, "_reveal_command", lambda t: ["true", str(t)])
+    out = await files.reveal(
+        {"session_id": project["id"], "path": str(project["outside"])}
+    )
+    assert out["ok"] is True
+    assert out["path"] == str(project["outside"])
+
+
+async def test_peek_stays_confined_even_though_reveal_does_not(project):
     with pytest.raises(HTTPException) as excinfo:
-        await files.reveal({"session_id": project["id"], "path": "../secret.txt"})
+        await files.peek(project["id"], str(project["outside"]))
     assert excinfo.value.status_code == 403
 
 

@@ -1448,6 +1448,49 @@
     '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
     '<path fill="none" stroke="currentColor" stroke-width="2" d="M3 6a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
 
+  // Show a full-size image from an attachment chip. Clicking the picture is
+  // the obvious thing to try, and there is nowhere else to see what you
+  // attached before sending it.
+  function openImagePreview(att) {
+    const modal = document.getElementById('image-preview');
+    if (!modal || !att.thumb) return;
+    const img = modal.querySelector('img');
+    img.src = att.thumb;
+    img.alt = att.name;
+    modal.querySelector('.preview-name').textContent = att.name;
+    window.__openModal(modal, modal.querySelector('.preview-close'));
+  }
+
+  function moveAttachment(from, to) {
+    if (to < 0 || to >= attachments.length) return;
+    const [moved] = attachments.splice(from, 1);
+    attachments.splice(to, 0, moved);
+    renderAttachments();
+    // Keep the keyboard on the button that was just used, so a run of moves
+    // does not need the user to find it again each time.
+    const chips = attachmentsBox.querySelectorAll('.attachment-chip');
+    const btn = chips[to] && chips[to].querySelector(to < from ? '.move-left' : '.move-right');
+    if (btn) btn.focus();
+    announce(moved.name + ' moved to position ' + (to + 1) + ' of ' + attachments.length);
+  }
+
+  function removeAttachment(index) {
+    const [gone] = attachments.splice(index, 1);
+    if (gone && gone.thumb) { try { URL.revokeObjectURL(gone.thumb); } catch (e) {} }
+    renderAttachments();
+  }
+
+  function clearAttachments() {
+    const count = attachments.length;
+    attachments.forEach((a) => {
+      if (a.thumb) { try { URL.revokeObjectURL(a.thumb); } catch (e) {} }
+    });
+    attachments.length = 0;
+    renderAttachments();
+    announce(count === 1 ? 'Attachment removed.' : 'All ' + count + ' attachments removed.');
+    if (textarea) textarea.focus();
+  }
+
   function renderAttachments() {
     if (!attachmentsBox) return;
     attachmentsBox.hidden = attachments.length === 0;
@@ -1455,6 +1498,7 @@
     attachments.forEach((a, i) => {
       const chip = document.createElement('span');
       chip.className = 'attachment-chip';
+      const position = ' (' + (i + 1) + ' of ' + attachments.length + ')';
 
       const thumb = document.createElement('span');
       thumb.className = 'attachment-thumb';
@@ -1466,28 +1510,81 @@
       } else {
         thumb.innerHTML = a.isDir ? FOLDER_ICON_SVG : FILE_ICON_SVG;
       }
-      chip.appendChild(thumb);
 
+      // The picture and its name open a preview; only images have one to show.
+      const face = document.createElement('button');
+      face.type = 'button';
+      face.className = 'attachment-face';
+      face.appendChild(thumb);
       const label = document.createElement('span');
       label.className = 'attachment-name';
       label.textContent = a.name;
-      chip.appendChild(label);
+      face.appendChild(label);
+      // The chip truncates the name, so the whole one lives in the tooltip.
+      face.title = a.name;
+      if (a.thumb) {
+        face.setAttribute('aria-label', 'Preview ' + a.name + position);
+        face.addEventListener('click', () => openImagePreview(a));
+      } else {
+        face.setAttribute('aria-label', a.name + position);
+        face.disabled = true;
+      }
+      chip.appendChild(face);
+
+      // Reordering, because the user refers to attachments by position --
+      // "the first picture is the error, the second is what I wanted".
+      if (attachments.length > 1) {
+        const left = document.createElement('button');
+        left.type = 'button';
+        left.className = 'move move-left';
+        left.innerHTML = '&#8249;';
+        left.title = 'Move earlier';
+        left.setAttribute('aria-label', 'Move ' + a.name + ' earlier');
+        left.disabled = i === 0;
+        left.addEventListener('click', () => moveAttachment(i, i - 1));
+        chip.appendChild(left);
+
+        const right = document.createElement('button');
+        right.type = 'button';
+        right.className = 'move move-right';
+        right.innerHTML = '&#8250;';
+        right.title = 'Move later';
+        right.setAttribute('aria-label', 'Move ' + a.name + ' later');
+        right.disabled = i === attachments.length - 1;
+        right.addEventListener('click', () => moveAttachment(i, i + 1));
+        chip.appendChild(right);
+      }
 
       const rm = document.createElement('button');
       rm.type = 'button';
       rm.className = 'rm';
+      rm.title = 'Remove ' + a.name;
       rm.setAttribute('aria-label', 'Remove ' + a.name);
       rm.textContent = '\u00d7';
-      rm.addEventListener('click', () => {
-        if (a.thumb) { try { URL.revokeObjectURL(a.thumb); } catch (e) {} }
-        attachments.splice(i, 1);
-        renderAttachments();
-      });
+      rm.addEventListener('click', () => removeAttachment(i));
       chip.appendChild(rm);
 
       attachmentsBox.appendChild(chip);
     });
+
+    // One button to undo a mistaken drag of a whole folder, rather than
+    // clicking a hundred crosses.
+    if (attachments.length > 1) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'attachment-clear';
+      clear.title = 'Remove all attachments';
+      clear.setAttribute('aria-label', 'Remove all ' + attachments.length + ' attachments');
+      clear.innerHTML =
+        '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">' +
+        '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+        'd="M4 7h16M10 7V5h4v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>' +
+        '<span>Clear all</span>';
+      clear.addEventListener('click', clearAttachments);
+      attachmentsBox.appendChild(clear);
+    }
   }
+
 
   function clearAttachments() {
     attachments.forEach((a) => { if (a.thumb) { try { URL.revokeObjectURL(a.thumb); } catch (e) {} } });
@@ -1601,6 +1698,9 @@
   async function openCamera() {
     if (!cameraModal) return;
     cameraError.hidden = true;
+    // Starting a camera takes a second or two. Without this the dialog is just
+    // a black rectangle and it is not obvious anything is happening.
+    cameraModal.classList.add('camera-starting');
     window.__openModal(cameraModal, cameraShot);
     try {
       cameraStream = await navigator.mediaDevices.getUserMedia({
@@ -1609,6 +1709,15 @@
       });
       cameraVideo.srcObject = cameraStream;
       await cameraVideo.play().catch(() => {});
+      // Wait for a real frame, not just the play() promise: the element can be
+      // playing and still be showing nothing.
+      if (!cameraVideo.videoWidth) {
+        await new Promise((resolve) => {
+          cameraVideo.addEventListener('loadeddata', resolve, { once: true });
+          setTimeout(resolve, 3000);
+        });
+      }
+      cameraModal.classList.remove('camera-starting');
       announce('Camera ready. Press Space to take the photo.');
     } catch (e) {
       // Denied, in use, or unplugged since the button appeared. Say which in
@@ -1618,6 +1727,7 @@
         ? 'This app needs permission to use your camera. Allow it in your browser, then try again.'
         : 'No camera was available. It may be unplugged, or another program may be using it.';
       cameraError.hidden = false;
+      cameraModal.classList.remove('camera-starting');
       announce(cameraError.textContent);
     }
   }
@@ -1649,8 +1759,27 @@
     }, 'image/jpeg', 0.92);
   }
 
+  // Clicking the backdrop, or the Close button, dismisses the picture preview.
+  const imagePreview = document.getElementById('image-preview');
+  if (imagePreview) {
+    imagePreview.querySelector('.preview-close')
+      .addEventListener('click', () => window.__closeModal());
+    imagePreview.addEventListener('click', (e) => {
+      if (e.target === imagePreview) window.__closeModal();
+    });
+  }
+
   if (cameraBtn && cameraModal) {
-    hasCamera().then((present) => { if (present) cameraBtn.hidden = false; });
+    const refreshCameraBtn = () => hasCamera().then((present) => {
+      cameraBtn.hidden = !present;
+    });
+    refreshCameraBtn();
+    // Checking once at load meant plugging a webcam in after opening the app
+    // did nothing until a reload. The browser fires this whenever the device
+    // list changes, which covers both plugging in and unplugging.
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', refreshCameraBtn);
+    }
     cameraBtn.addEventListener('click', openCamera);
     cameraShot.addEventListener('click', takePhoto);
     document.getElementById('camera-take').addEventListener('click', takePhoto);
