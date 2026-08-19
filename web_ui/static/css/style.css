@@ -448,18 +448,18 @@ html[data-theme="dark"] .setup-banner {
  * "one, two, three" before every line would be unbearable. */
 .code-lines {
     /* Space either side of the digits, and the gap between the rule and the
-       code. Equal on both sides of the number so it is not shoved against the
-       line with a void to its left. */
-    --gutter-pad: 0.75em;
-    --code-gap: 1em;
-    /* Sized to the widest number present; `ch` is one digit in a monospace
-       face, so the column is exactly as wide as it needs to be. */
-    --gutter-w: calc(var(--digits, 2) * 1ch + var(--gutter-pad) * 2);
+       code. */
+    --gutter-pad: 0.6em;
+    --code-gap: 0.85em;
+    /* The full width of the gutter including its padding and its 1px rule.
+       `ch` is one digit in a monospace face, so the column is exactly as wide
+       as the widest number it has to hold and no wider. */
+    --gutter-w: calc(var(--digits, 2) * 1ch + var(--gutter-pad) * 2 + 1px);
 }
 .code-row {
     display: block;
     position: relative;
-    padding-left: calc(var(--gutter-w) + 1px + var(--code-gap));
+    padding-left: calc(var(--gutter-w) + var(--code-gap));
     /* A blank line in the source is an empty block, which collapses to no
        height at all -- the line vanishes and its number lands on top of the
        next one. One line's worth keeps it. */
@@ -467,6 +467,12 @@ html[data-theme="dark"] .setup-banner {
 }
 .code-row::before {
     content: attr(data-line);
+    /* Explicit, and load-bearing. The global `* { box-sizing: border-box }`
+       does not match pseudo-elements, so this box was content-box: the padding
+       and rule were added *outside* the declared width, which pushed the rule
+       several pixels past where the code starts (it drew straight through the
+       first characters) and left the digits floating far from the divider. */
+    box-sizing: border-box;
     position: absolute;
     left: 0;
     /* Full row height so consecutive rules butt together into one continuous
@@ -512,7 +518,7 @@ html[data-theme="dark"] .setup-banner {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.file-peek .peek-open {
+.peek-open {
     flex: none;
     background: transparent;
     border: 1px solid var(--border);
@@ -523,7 +529,7 @@ html[data-theme="dark"] .setup-banner {
     min-height: 24px;
     cursor: pointer;
 }
-.file-peek .peek-open:hover { color: var(--accent); border-color: var(--accent); }
+.peek-open:hover { color: var(--accent); border-color: var(--accent); }
 .file-peek.peek-error .peek-path { color: var(--danger); }
 
 /* ── Camera ──────────────────────────────────────────────────────────────── */
@@ -563,10 +569,20 @@ html[data-theme="dark"] .setup-banner {
     width: 100%;
     height: 100%;
     object-fit: contain;
+    /* Eased up from black rather than snapped on. Going from an unlit
+       rectangle to a full-brightness colour image in one frame is a hard
+       luminance jump; a slow ramp is gentler and is nowhere near the
+       frequencies that provoke photosensitive seizures. Deliberately not
+       disabled under prefers-reduced-motion: that setting is about movement,
+       and removing this would put the abrupt change back. */
+    opacity: 0;
+    transition: opacity 900ms ease-out;
     /* Mirrored, because an unmirrored preview makes holding a page up to the
        lens a guessing game. The saved photo is not mirrored. */
     transform: scaleX(-1);
 }
+.camera-ready .camera-shot video { opacity: 1; }
+
 .camera-error { color: var(--danger); margin: 0; }
 
 /* While the camera is starting. Without this the dialog is a black rectangle
@@ -1536,3 +1552,64 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 .btn-primary:disabled:hover, .btn-neutral:disabled:hover, .btn-stop:disabled:hover {
     background: transparent;
 }
+
+/* An image the assistant referenced, shown in the conversation. */
+.file-image { margin: 0.85em 0; }
+.file-image img {
+    display: block;
+    max-width: 100%;
+    max-height: 60vh;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    cursor: zoom-in;
+    background: var(--code-bg);
+}
+.file-image figcaption {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    font-size: 0.9rem;
+    color: var(--text-dim);
+}
+.file-image.image-missing figcaption { color: var(--danger); }
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+
+/* The renderer emits a plain <table>, which browsers draw with no padding and
+   no rules at all -- columns run into each other and it reads as a jumble.
+   A table is one of the few things here whose meaning is carried by its
+   layout, so it has to be legible. */
+.bubble .table-wrap, .file-peek .table-wrap {
+    /* The wrapper scrolls; the table inside stays a normal table so its rows
+       fill the full width and the header tint reaches the right edge. */
+    overflow-x: auto;
+    margin: 0.9em 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+.bubble table, .file-peek table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0;
+    font-size: 0.97rem;
+}
+.bubble th, .bubble td {
+    padding: 9px 14px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+}
+.bubble th {
+    font-weight: 600;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    white-space: nowrap;
+}
+/* Zebra striping, so the eye can follow a row across a wide table. Kept very
+   faint: it is a reading aid, not decoration. */
+.bubble tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.bubble tbody tr:last-child td { border-bottom: none; }
+.bubble table code { white-space: nowrap; }

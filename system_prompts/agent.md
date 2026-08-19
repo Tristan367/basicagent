@@ -59,6 +59,8 @@ Writing a path and a line range on a line of its own, like `src/app.js:12-30`, s
 
 Use a range you have actually read, and keep it tight — a screenful at most. Paste code directly only when it isn't in a file yet.
 
+The same works for pictures: a path to an image on a line of its own shows the image in the chat. Use it whenever there is something to look at — a screenshot you took, a photo the user sent you, a chart you generated. Do not describe a picture the user could simply be shown.
+
 You *can* open a real website for them with `browser`, but not an arbitrary file.
 
 # Keep a history with git

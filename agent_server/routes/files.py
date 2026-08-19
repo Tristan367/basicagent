@@ -33,6 +33,12 @@ MAX_PEEK_LINES = 200
 # Guards against a "text" file that is really a 2GB log or a binary.
 MAX_PEEK_BYTES = 2_000_000
 
+IMAGE_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+}
+
 EXT_LANG = {
     ".py": "python", ".js": "javascript", ".mjs": "javascript", ".ts": "typescript",
     ".tsx": "typescript", ".jsx": "javascript", ".html": "xml", ".htm": "xml",
@@ -179,13 +185,6 @@ async def export_project(session_id: str):
     )
 
 
-IMAGE_TYPES = {
-    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
-    ".svg": "image/svg+xml",
-}
-
-
 @router.get("/attachment")
 async def attachment(path: str):
     """Serve a file the user attached, so its thumbnail survives a reload.
@@ -209,6 +208,24 @@ async def attachment(path: str):
     media = IMAGE_TYPES.get(target.suffix.lower())
     if not media:
         raise HTTPException(415, "Not an image")
+    return FileResponse(target, media_type=media)
+
+
+@router.get("/image")
+async def project_image(session_id: str, path: str):
+    """Serve an image from inside the project, so the assistant can show one.
+
+    Confined to the project folder, like `peek` and for the same reason: the
+    path comes from model output and is followed without anyone looking at it.
+    """
+    from fastapi.responses import FileResponse
+
+    target = await _resolve(session_id, path)
+    media = IMAGE_TYPES.get(target.suffix.lower())
+    if not media:
+        raise HTTPException(415, "Not an image")
+    if not target.is_file():
+        raise HTTPException(404, "No such image")
     return FileResponse(target, media_type=media)
 
 

@@ -72,17 +72,21 @@
    *
    * A path with a slash in it, anywhere. And -- because the file the assistant
    * most often means is in the top of the project and so has no slash at all
-   * ("app.js:3-7") -- a bare filename, but only when it carries a line
-   * reference. Requiring the line number there is what keeps ordinary prose
-   * out: "Node.js" and "version 1.2" are not paths, and without that rule both
-   * would become clickable.
+   * ("app.js:3-7") -- a bare filename carrying a line reference. Requiring the
+   * line number there is what keeps ordinary prose out: "Node.js" and
+   * "version 1.2" are not paths, and without that rule both would become
+   * clickable.
+   *
+   * A bare image filename is the exception, and needs no line number: nobody
+   * writes "chart.png" in a sentence meaning anything other than that file,
+   * and an image is the one thing worth showing rather than linking.
    *
    * A path starts with /, ~/, ./, ../, or a directory segment, then runs to the
    * next whitespace/quote/angle. The negative lookbehind stops the pass from
    * re-linkifying a href value the link pass just wrote. Trailing sentence
    * punctuation is split back out so it is not swallowed by the link. The line
    * (and optional range) ride in data attributes the app reads on click. */
-  const FILE_REF_TOKEN = /(?<![=">])(^|[\s(["'`])((?:\/|~\/|\.{1,2}\/|[\w@.~\-]+\/)[^\s<>"'`]+|[\w@.~\-]+\.[A-Za-z][\w]{0,5}:\d+(?:-\d+)?)/g;
+  const FILE_REF_TOKEN = /(?<![=">])(^|[\s(["'`])((?:\/|~\/|\.{1,2}\/|[\w@.~\-]+\/)[^\s<>"'`]+|[\w@.~\-]+\.[A-Za-z][\w]{0,5}:\d+(?:-\d+)?|[\w@.~\-]+\.(?:png|jpe?g|gif|webp|bmp|svg))/gi;
 
   /* "n/a", "and/or", "AC/DC" are prose, not paths. A path is absolute or
    * explicitly relative, nested, or ends in a filename extension. */
@@ -232,7 +236,11 @@
       if (/\|/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1])) {
         closeLists(0);
         const cells = (row) => row.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|');
-        html.push('<table><thead><tr>' +
+        // Wrapped so the *wrapper* scrolls when the table is too wide. Making
+        // the table itself `display: block` also works for scrolling, but it
+        // makes the row group shrink-wrap, so the header tint and the row
+        // rules stop short of the right edge.
+        html.push('<div class="table-wrap"><table><thead><tr>' +
           cells(line).map((c) => `<th>${inline(c.trim())}</th>`).join('') +
           '</tr></thead><tbody>');
         i += 2;
@@ -240,7 +248,7 @@
           html.push('<tr>' + cells(lines[i]).map((c) => `<td>${inline(c.trim())}</td>`).join('') + '</tr>');
           i++;
         }
-        html.push('</tbody></table>');
+        html.push('</tbody></table></div>');
         continue;
       }
 

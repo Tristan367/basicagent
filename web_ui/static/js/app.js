@@ -644,12 +644,47 @@
     return wrap;
   }
 
+  const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+
+  // An image the assistant mentions on its own line is shown, not linked. It
+  // has no other way to put a picture in the conversation, and describing a
+  // screenshot in words to someone who could just look at it is absurd.
+  function imageBlock(ref) {
+    const path = ref.dataset.path;
+    const wrap = document.createElement('figure');
+    wrap.className = 'file-image';
+    const img = document.createElement('img');
+    img.src = '/api/files/image?session_id=' + encodeURIComponent(sessionId) +
+              '&path=' + encodeURIComponent(path);
+    img.alt = path.split(/[\\/]/).pop();
+    img.loading = 'lazy';
+    const caption = document.createElement('figcaption');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'peek-open';
+    open.textContent = 'Show in folder';
+    open.addEventListener('click', () => revealFile(path));
+    caption.append(document.createTextNode(img.alt + ' '), open);
+    img.addEventListener('click', () => openImagePreview({ thumb: img.src, name: img.alt }));
+    img.addEventListener('error', () => {
+      wrap.classList.add('image-missing');
+      img.remove();
+      caption.prepend(document.createTextNode('Could not show '));
+    });
+    wrap.append(img, caption);
+    return wrap;
+  }
+
   function upgradeFileRefs(el) {
     el.querySelectorAll('button.file-ref').forEach((ref) => {
       const parent = ref.parentElement;
       // "Alone on its own line" means it is the only thing in its paragraph.
       const alone = parent && parent.tagName === 'P' &&
         parent.textContent.trim() === ref.textContent.trim();
+      if (alone && IMAGE_EXT.test(ref.dataset.path || '')) {
+        parent.replaceWith(imageBlock(ref));
+        return;
+      }
       if (alone && ref.dataset.line) {
         parent.replaceWith(peekBlock(ref));
         return;
@@ -1792,6 +1827,7 @@
   }
 
   function closeCamera() {
+    cameraModal.classList.remove('camera-ready');
     stopCamera();
     if (window.__modalEl === cameraModal) window.__closeModal();
   }
@@ -1802,6 +1838,7 @@
     // Starting a camera takes a second or two. Without this the dialog is just
     // a black rectangle and it is not obvious anything is happening.
     cameraModal.classList.add('camera-starting');
+    cameraModal.classList.remove('camera-ready');
     // Nothing to take a picture of yet. Enabled once a real frame arrives, so
     // pressing it early cannot produce an empty photo.
     setCameraReady(false);
@@ -1822,6 +1859,7 @@
         });
       }
       cameraModal.classList.remove('camera-starting');
+      cameraModal.classList.add('camera-ready');
       setCameraReady(true);
       announce('Camera ready. Press Space to take the photo.');
     } catch (e) {
