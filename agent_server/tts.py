@@ -102,7 +102,29 @@ _HEADING = re.compile(r"^[ \t]*#{1,6}[ \t]*", re.M)
 _QUOTE = re.compile(r"^[ \t]*>[ \t]?", re.M)
 _BULLET = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+")
 _IS_HEADING = re.compile(r"^[ \t]*#{1,6}[ \t]+")
-_EMPHASIS = re.compile(r"(\*\*|__|\*|_|~~)(?=\S)(.+?)(?<=\S)\1", re.S)
+# `*` and `~~` emphasis is unambiguous. `_` is not: it is also the joint in
+# every snake_case name a coding assistant writes, and treating those as
+# italics silently deleted them -- "agent_server/tts.py and web_ui/app.js" was
+# read out as "agentserver/tts.py and webui/app.js", and MAX_RETRY_COUNT as
+# MAXRETRYCOUNT. Underscore emphasis therefore requires a non-word character on
+# each side, which is what CommonMark says anyway.
+_EMPHASIS = re.compile(r"(\*\*|\*|~~)(?=\S)(.+?)(?<=\S)\1", re.S)
+_EMPHASIS_UNDER = re.compile(r"(?<![\w`])(__|_)(?=\S)(.+?)(?<=\S)\1(?![\w`])", re.S)
+
+# Anything whose only job is to be looked at. Pictographs, dingbats, flags,
+# skin tones, the joiners that glue them together, and the variation selector
+# that turns a plain glyph into a coloured one. A screen reader announces these
+# by name, at length, which is its own decision to make; read aloud in the
+# middle of a sentence they are just noise.
+_EMOJI = re.compile(
+    "[\U0001F000-\U0001FAFF"     # pictographs, emoticons, transport, symbols
+    "\U0001F1E6-\U0001F1FF"      # regional indicators (flags)
+    "\u2600-\u27BF"             # misc symbols and dingbats: ✅ ✨ ✔ ➜
+    "\u2B00-\u2BFF"             # arrows and stars used as emoji
+    "\uFE00-\uFE0F"             # variation selectors
+    "\u200D"                     # zero-width joiner
+    "\u20E3]+"                   # keycap combiner
+)
 _INLINE_CODE = re.compile(r"`([^`]+)`")
 _BARE_URL = re.compile(r"<?https?://\S+>?")
 _BLANKS = re.compile(r"\n{3,}")
@@ -128,11 +150,29 @@ def _blocks(text: str) -> list[str]:
         if fresh or starts_block or not out:
             out.append(line.strip())
         else:
-            if not out[-1].rstrip().endswith((".", "!", "?")):
-                out[-1] += "."
-            out[-1] += " " + line.strip()
+            out[-1] = _ended(out[-1]) + " " + line.strip()
         fresh = False
-    return out
+    # And the last line of every block, for the same reason: a bullet or a
+    # heading that stops without punctuation is read with the intonation of a
+    # sentence still going, straight into the next one.
+    return [_ended(b) for b in out]
+
+
+# Everything that already tells a reader to pause. A colon and a semicolon
+# count -- they become full stops further down the pipeline -- and so does a
+# comma, which is a breath rather than a stop but is a mark the writer chose.
+_PAUSE_MARKS = (".", "!", "?", ":", ";", ",")
+
+
+def _ended(line: str) -> str:
+    """The line with a full stop added, unless it already pauses."""
+    stripped = line.rstrip()
+    if not stripped or stripped.endswith(_PAUSE_MARKS):
+        return stripped
+    # A closing quote or bracket after the mark still counts: `("like this.")`
+    if stripped.rstrip("\"')]\u201d\u2019").endswith(_PAUSE_MARKS):
+        return stripped
+    return stripped + "."
 
 
 def to_prose(text: str) -> str:
@@ -150,7 +190,9 @@ def to_prose(text: str) -> str:
     text = _LINK.sub(r"\1", text)
     text = _BARE_URL.sub("a link", text)
     text = _QUOTE.sub("", text)
+    text = _EMOJI.sub("", text)
     text = _EMPHASIS.sub(r"\2", text)
+    text = _EMPHASIS_UNDER.sub(r"\2", text)
     text = _INLINE_CODE.sub(r"\1", text)
     text = "\n\n".join(_blocks(text))
     text = _HEADING.sub("", text)
@@ -164,6 +206,27 @@ def to_prose(text: str) -> str:
 # out as "three. three" with a full stop in the middle, "vs" was spelled V-S,
 # and "~" was pronounced "tilde".
 _UNITS = r"(?:day|week|month|year|hour|minute|second|turn|round|level|cast|use|kill|rest)"
+
+# How a file extension is actually said out loud, which is not a rule you can
+# derive -- ".py" is "pie" but ".js" is "J S", and both are simply what people
+# say. Without this the phonemiser guesses, and it guesses badly: ".js" comes
+# out "jiss".
+#
+# Only the ones that are said as letters, or as a word other than they look,
+# are listed. Anything absent falls through to the generic rule below and is
+# read as written, which is already right for ".json" and ".java".
+_EXTENSIONS = {
+    "js": "J S", "jsx": "J S X", "ts": "T S", "tsx": "T S X", "mjs": "M J S",
+    "py": "pie", "rb": "R B", "rs": "R S", "go": "go", "php": "P H P",
+    "cs": "C sharp", "cpp": "C plus plus", "cc": "C C", "hpp": "H P P",
+    "sh": "S H", "bash": "bash", "ps1": "P S 1",
+    "md": "M D", "rst": "R S T", "txt": "text", "csv": "C S V", "tsv": "T S V",
+    "html": "H T M L", "htm": "H T M", "css": "C S S", "scss": "S C S S",
+    "xml": "X M L", "yml": "yaml", "sql": "sequel", "ini": "I N I",
+    "png": "P N G", "jpg": "J peg", "jpeg": "J peg", "gif": "gif", "svg": "S V G",
+    "pdf": "P D F", "zip": "zip", "wav": "wav", "mp3": "M P 3", "mp4": "M P 4",
+    "db": "D B", "log": "log", "env": "env", "cfg": "config", "conf": "config",
+}
 
 _SPOKEN = [
     # Abbreviations first: they contain the dots the decimal rule looks for.
@@ -180,28 +243,91 @@ _SPOKEN = [
     # "3.3" is two numbers to espeak unless the dot is spoken.
     (re.compile(r"(\d)\.(\d)"), r"\1 point \2"),
 
+    # A dot between two words is part of a name, and a name is what most of a
+    # reply in this app is about: main.py, app.js, example.com. Left alone the
+    # phonemiser runs the two halves together into one unsayable word.
+    #
+    # After the decimal rule, which has already spent the dots between digits,
+    # and after the abbreviations, which are the other dots that are not this.
+    (re.compile(r"\.(" + "|".join(sorted(_EXTENSIONS, key=len, reverse=True)) + r")\b", re.I),
+     lambda m: " dot " + _EXTENSIONS[m.group(1).lower()]),
+    (re.compile(r"(?<=\w)\.(?=[A-Za-z][\w-]{0,11}\b)"), " dot "),
+
     (re.compile(r"~\s*(?=\d)"), "about "),
     (re.compile(r"#(?=\d)"), "number "),
     (re.compile(r"(\d)\s*[x\u00d7]\b"), r"\1 times"),
     (re.compile(r"\b(\d+)\s*/\s*(" + _UNITS + r")s?\b", re.I), r"\1 per \2"),
     (re.compile(r"(\d)\s*/\s*(\d)"), r"\1 \2"),
     (re.compile(r"(\d)\s*-\s*(?=\d)"), r"\1 to "),
+    (re.compile(r"(\d)\s*%"), r"\1 percent"),
+    (re.compile(r"(?<=[\ds])/M\b"), " per million"),
+
+    # A file reference the way this app writes them: `src/app.js:120-140`. The
+    # colon is the one below that would otherwise become a full stop, so it is
+    # spent here on something more useful.
+    (re.compile(r"(?<=[A-Za-z]):\s*(\d+ to \d+)\b"), r", lines \1"),
+    (re.compile(r"(?<=[A-Za-z]):\s*(\d+)\b"), r", line \1"),
+
+    # Identifiers. An underscore is a word joint, not a thing to say, and a
+    # camelCase hump is a word boundary nobody can hear.
+    (re.compile(r"(?<=\w)_(?=\w)"), " "),
+    (re.compile(r"(?<=[a-z0-9])(?=[A-Z][a-z])"), " "),
+
+    # Paths. Said aloud, a separator is "slash" -- dropping it turns
+    # "src/app.js" into something indistinguishable from ordinary prose.
+    (re.compile(r"/\.(?=[A-Za-z])"), "/dot "),
+    (re.compile(r"~/"), "home/"),
+    (re.compile(r"(?<=[\w.])/(?=[\w.])"), " slash "),
+
+    (re.compile(r"(?<=\w)@(?=\w)"), " at "),
+    (re.compile(r"[^\S\n]*!=[^\S\n]*"), " is not "),
+    (re.compile(r"[^\S\n]*<=[^\S\n]*"), " is at most "),
+    (re.compile(r"[^\S\n]*>=[^\S\n]*"), " is at least "),
+    (re.compile(r"[^\S\n]*(?:->|=>)[^\S\n]*"), " becomes "),
+    (re.compile(r"(?<![!<>=])[^\S\n]*={1,2}[^\S\n]*(?=[\w\"'])"), " equals "),
+    (re.compile(r"\s*&&\s*"), " and "),
+    (re.compile(r"\s*\|\|\s*"), " or "),
+
+    # A hash, a token, a commit id. Forty characters read out one at a time is
+    # a minute of someone's life and tells them nothing.
+    (re.compile(r"\b(?=[0-9a-f]{12,}\b)[0-9a-f]*[0-9][0-9a-f]*\b", re.I), "a long code"),
+
     # Horizontal whitespace only in these: \s would swallow the blank lines
     # that separate one list item from the next, welding the whole reply into
     # a single breathless block.
-    (re.compile(r"[^\S\n]*[\u2014\u2013][^\S\n]*"), ", "),   # em/en dash -> a pause
-    (re.compile(r"[^\S\n]*--[^\S\n]*"), ", "),
+    #
+    # A dash between clauses gets a full stop rather than a comma. It is doing
+    # the job of one -- the sentence restarts after it -- and a comma there is
+    # read as a breath rather than a stop.
+    (re.compile(r"[^\S\n]*[\u2014\u2013][^\S\n]*"), ". "),
+    (re.compile(r"[^\S\n]*--[^\S\n]*"), ". "),
     (re.compile(r"[^\S\n]*\u2192[^\S\n]*"), " becomes "),
     (re.compile(r"[^\S\n]*&[^\S\n]*"), " and "),
+
+    # A colon and a semicolon are both full stops to the ear: what follows is
+    # a new thought, and neither mark produces any pause on its own. Not
+    # between digits, which is a time.
+    (re.compile(r"(?<!\d):+(?!\d)[^\S\n]*"), ". "),
+    (re.compile(r"[^\S\n]*;[^\S\n]*"), ". "),
+    (re.compile(r"\u2026|\.\.\."), "."),
+    (re.compile(r"([.!?])\1+"), r"\1"),
     (re.compile(r"[^\S\n]{2,}"), " "),
 ]
+
+
+_AFTER_STOP = re.compile(r"([.!?]\s+)([a-z])")
 
 
 def normalise(text: str) -> str:
     """Rewrite symbols and shorthand into what they are meant to sound like."""
     for pattern, repl in _SPOKEN:
         text = pattern.sub(repl, text)
-    return text
+    # The full stops added above land mid-sentence, where the next word is
+    # lowercase -- "here's the thing: it works" becomes "the thing. it works".
+    # The splitter below only recognises a sentence that starts like one, so
+    # without this the two halves stay welded into a single utterance and the
+    # pause that was just bought is never spent.
+    return _AFTER_STOP.sub(lambda m: m.group(1) + m.group(2).upper(), text)
 
 
 # Splitting on every full stop mangles these. Python's lookbehind must be
