@@ -478,15 +478,26 @@ MANAGER_TOOLS = frozenset({
     "delete_project", "set_theme",
 })
 
-# Tools the home session may use in addition to the manager tools, so it can
-# answer questions and look inside projects.
-MANAGER_READ_TOOLS = frozenset({"read", "glob", "grep", "webfetch", "websearch", "bash"})
+# Tools the home session may use in addition to the manager tools: enough to
+# answer a question, look inside a project, and write a file into one.
+#
+# `write` and `edit` were withheld at first, which was not a boundary -- `bash`
+# was already there, so the manager could write a file with `cat` and simply
+# did it badly. What it could not do was the thing a parent actually wants:
+# sit here and draft a lesson plan into the project, editing it in conversation
+# until it says what they meant.
+#
+# `preview` is deliberately absent. Running a project is the project's own job,
+# and the manager has no business starting one from the home screen.
+MANAGER_EXTRA_TOOLS = frozenset({
+    "read", "glob", "grep", "webfetch", "websearch", "bash", "write", "edit",
+})
 
 
 def allowed_tool_names(session: dict) -> list[str]:
     """The tools a session may call, based on whether it is the home manager."""
     if (session.get("kind") or "project") == "manager":
-        return [n for n in TOOLS if n in MANAGER_TOOLS or n in MANAGER_READ_TOOLS]
+        return [n for n in TOOLS if n in MANAGER_TOOLS or n in MANAGER_EXTRA_TOOLS]
     return [n for n in TOOLS if n not in MANAGER_TOOLS]
 
 

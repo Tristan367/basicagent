@@ -175,13 +175,17 @@ def _is_local(url: str) -> bool:
 
 
 async def _launch(session_id: str, url: str, confine: bool):
-    """A window showing one address, with no way to type another into it.
+    """An ordinary browser window, pointed at the project.
 
-    `--app` is the whole point: Chromium opens a frame with no address bar, no
-    tab strip and no bookmarks, so what the user gets is their project rather
-    than a web browser that happens to have their project in it. Before this
-    the preview window had a URL bar, which in child mode is a hole straight
-    out of the app.
+    Ordinary on purpose. A chromeless `--app` frame was tried and reverted:
+    testing a web app means using it the way a visitor would, and that needs
+    the back and forward buttons, the history and the bookmarks. Taking the
+    whole browser away to stop a child wandering off took those from everyone.
+
+    What stops the wandering is `_confine` instead, which refuses to load a
+    page from anywhere but this machine -- and refuses it however the address
+    arrived, typed into the bar included. The restriction belongs on where the
+    window may go, not on whether it has buttons.
     """
     from playwright.async_api import async_playwright
 
@@ -195,7 +199,7 @@ async def _launch(session_id: str, url: str, confine: bool):
         str(directory),
         headless=False,
         no_viewport=True,
-        args=[f"--app={url}", "--disable-features=Translate"],
+        args=["--disable-features=Translate"],
     )
     _contexts[session_id] = context
 
@@ -226,16 +230,14 @@ async def _confine(context):
 
     await context.route("**/*", guard)
 
-    # A popup opens as an ordinary window, address bar and all, which would
-    # undo everything above.
-    def on_page(page):
-        async def close():
-            with contextlib.suppress(Exception):
-                await page.close()
+    # A popup is a new page, and a new page needs the same guard or it is a way
+    # around it. Routed rather than closed: a sign-in that opens in a second
+    # window is a normal thing for a project to do, and it is still confined.
+    async def on_page(page):
+        with contextlib.suppress(Exception):
+            await page.route("**/*", guard)
 
-        asyncio.get_running_loop().create_task(close())
-
-    context.on("page", on_page)
+    context.on("page", lambda page: asyncio.get_running_loop().create_task(on_page(page)))
 
 
 async def _show(session_id: str, url: str, confine: bool = False):
@@ -270,10 +272,7 @@ async def _show(session_id: str, url: str, confine: bool = False):
     page = _live_page(context)
     if page is not None:
         with contextlib.suppress(Exception):
-            # `--app` already navigated here; this only matters if it was still
-            # loading when the window appeared.
-            if page.url.rstrip("/") != url.rstrip("/"):
-                await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             await page.bring_to_front()
 
 
