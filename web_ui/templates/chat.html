@@ -73,7 +73,7 @@
                 an AI you already pay for, which is cheaper and gives you choices. It takes
                 about two minutes, one time only.</p>
             </div>
-            {% if not has_key %}<a class="btn-primary welcome-cta" href="/settings">Set up your AI key</a>{% endif %}
+            {% if not has_key %}<button type="button" class="btn-primary welcome-cta" data-nav="/settings">Set up your AI key</button>{% endif %}
             <div class="welcome-step">
                 <span class="welcome-num">3</span>
                 <p>Pick your microphone, so I can hear you. You can change this later.</p>
@@ -115,7 +115,7 @@
                 <p><strong>Before we can start, I need to be connected to an AI.</strong></p>
                 <p>This app plugs into an AI you already pay for — it takes about two minutes,
                 one time only, and it's cheaper than a subscription.</p>
-                <a class="btn-primary" href="/settings">Set up your AI key</a>
+                <button type="button" class="btn-primary" data-nav="/settings">Set up your AI key</button>
             </div>
             {% endif %}
 
@@ -145,11 +145,11 @@
                 <h2>Jump back in</h2>
                 <p class="hint">Your most recent projects. Ask me to open one, or tap it.</p>
                 {% for p in recent_projects %}
-                <a class="project-card" href="/sessions/{{ p.id }}" aria-label="Open project {{ p.name }}">
+                <button type="button" class="project-card" data-nav="/sessions/{{ p.id }}" aria-label="Open project {{ p.name }}">
                     <span class="project-name">{{ p.name }}</span>
                     {% if p.description %}<span class="project-desc">{{ p.description }}</span>{% endif %}
                     <span class="project-when">{{ p.last_active_at | humantime }}</span>
-                </a>
+                </button>
                 {% endfor %}
                 <p class="hint recent-note">You can open any past project at the bottom of the Settings page.</p>
             </div>

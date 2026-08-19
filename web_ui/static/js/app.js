@@ -17,7 +17,7 @@
     if (!theme || root.dataset.theme === theme) return;
     root.classList.add('theme-shifting');
     root.dataset.theme = theme;
-    setTimeout(() => root.classList.remove('theme-shifting'), 320);
+    setTimeout(() => root.classList.remove('theme-shifting'), 1100);
   };
 
   async function refreshTheme() {
@@ -199,6 +199,24 @@
     if (root.scrollLeft) root.scrollLeft = 0;
   }, true);
 
+  /* Internal navigation is buttons, not links.
+   *
+   * Hovering or focusing an <a href> makes the browser park its URL bubble in
+   * the corner of the window, which sits there the whole time you are on the
+   * control and looks like a website rather than an application. A button
+   * shows nothing. Nothing is lost: this runs in its own window with no tabs,
+   * and middle-clicking an internal link here would have opened it in the
+   * user's real browser, which was never wanted.
+   *
+   * Links that leave the app stay links -- seeing where an external link goes
+   * before you follow it is worth having. */
+  document.addEventListener('click', (e) => {
+    const nav = e.target.closest('[data-nav]');
+    if (!nav) return;
+    e.preventDefault();
+    window.location.href = nav.dataset.nav;
+  });
+
   const firstFocusable = (root) => focusableIn(root)[0] || null;
 
   /* Every skip link moves focus itself rather than letting the browser follow
@@ -368,7 +386,7 @@
     const byId = {};
     data.forEach((s) => { byId[s.id] = s; });
 
-    document.querySelectorAll('#sessions-menu a[data-session-id]').forEach((a) => {
+    document.querySelectorAll('#sessions-menu [data-session-id]').forEach((a) => {
       const id = a.dataset.sessionId;
       const s = byId[id];
       const dot = a.querySelector('.session-dot');
@@ -2178,8 +2196,26 @@
 
   async function stopDictation() {
     if (sttStreaming && ws && ws.readyState === 1) {
+      /* Stop capturing before waiting for anything.
+       *
+       * This used to await the final transcript with the microphone still
+       * live, and the worklet kept posting audio down the socket the whole
+       * time. So pressing Stop did nothing visible, the server's buffer grew
+       * faster than it could transcribe it, and the wait ran to its timeout
+       * with the CPU pinned -- the button stuck on "Stop" and the machine
+       * roaring. Everything the user can see reacts on the first frame now,
+       * and the audio the server still has to chew through is fixed at the
+       * moment they pressed the button. */
+      listening = false;
+      teardownAudio();
+      if (micBtn) micBtn.classList.remove('recording');
+      if (micLabel) micLabel.textContent = 'Talk';
+      textarea.placeholder = 'Finishing what you said\u2026';
+
       const final = await new Promise((resolve) => {
-        const timeout = setTimeout(() => resolve(null), 8000);
+        // Generous, because it is bounded work now: the last few seconds of
+        // audio, transcribed once. It should never be reached.
+        const timeout = setTimeout(() => resolve(null), 20000);
         ws.onmessage = (e) => {
           let d; try { d = JSON.parse(e.data); } catch (_) { return; }
           if (d.partial === false) {
@@ -2187,9 +2223,16 @@
             resolve((d.text || '').trim());
           }
         };
-        try { ws.send('end'); } catch (_) { resolve(null); }
+        try { ws.send('end'); } catch (_) { clearTimeout(timeout); resolve(null); }
       });
-      if (final) setComposerText(final);
+      // setComposerText only writes while `listening`, and we just cleared it.
+      if (final) {
+        writingFromDictation = true;
+        textarea.value = (anchor ? anchor + ' ' : '') + final;
+        textarea.dispatchEvent(new Event('input'));
+        writingFromDictation = false;
+        textarea.scrollTop = textarea.scrollHeight;
+      }
       finishDictation();
       return;
     }

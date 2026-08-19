@@ -1621,8 +1621,8 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
    The transition is applied only while the switch happens, so it never slows
    ordinary interaction or animates during the first paint of a page. */
 .theme-shifting, .theme-shifting * {
-    transition: background-color 260ms ease, color 260ms ease,
-                border-color 260ms ease !important;
+    transition: background-color 1000ms ease, color 1000ms ease,
+                border-color 1000ms ease !important;
 }
 
 /* A dialog drops a near-opaque cover over the page. Easing it in is gentler
@@ -1633,6 +1633,38 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 @media (prefers-reduced-motion: reduce) {
     /* These are luminance ramps, not movement, so they stay -- removing them
        would put the abrupt change back. Shortened, not disabled. */
-    .theme-shifting, .theme-shifting * { transition-duration: 120ms !important; }
+    .theme-shifting, .theme-shifting * { transition-duration: 400ms !important; }
     .modal-backdrop { transition-duration: 90ms; }
 }
+
+/* Internal navigation is <button>, so these need the font and reset that an
+   <a> got for free. Appearance is unchanged; only the element differs. */
+.app-bar-btn, .project-card, .session-name, .open-project-btn,
+.sessions-menu button, .welcome-cta {
+    font-family: var(--font);
+}
+.sessions-menu button {
+    width: 100%;
+    background: transparent;
+    border: none;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+}
+.sessions-menu button:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.session-name {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 1rem;
+    text-align: left;
+    cursor: pointer;
+}
+.session-name:hover { text-decoration: underline; }

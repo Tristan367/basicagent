@@ -22,20 +22,20 @@
             <button type="button" class="app-bar-btn nav-btn" id="back-btn" title="Back" aria-label="Back">&#8592;</button>
             <button type="button" class="app-bar-btn nav-btn" id="forward-btn" title="Forward" aria-label="Forward">&#8594;</button>
             {% if not is_home %}
-            <a href="/" class="app-bar-btn">Project Manager</a>
+            <button type="button" class="app-bar-btn" data-nav="/">Project Manager</button>
             {% endif %}
             {% if not is_settings %}
-            <a href="/settings" class="app-bar-btn">Settings</a>
+            <button type="button" class="app-bar-btn" data-nav="/settings">Settings</button>
             {% endif %}
             <div class="sessions-wrap">
                 <button type="button" class="app-bar-btn" id="sessions-btn" aria-haspopup="true" aria-expanded="false">Projects <span class="chevron">&#9660;</span></button>
                 <div id="sessions-menu" class="sessions-menu" hidden>
                     {% for s in nav_sessions %}
-                    <a href="/sessions/{{ s.id }}" data-session-id="{{ s.id }}">
+                    <button type="button" data-nav="/sessions/{{ s.id }}" data-session-id="{{ s.id }}">
                         <span class="session-dot" aria-hidden="true" hidden></span>
                         <span class="session-label">{{ s.name }}</span>
                         <span class="sr-only session-status"></span>
-                    </a>
+                    </button>
                     {% else %}
                     <span class="sessions-empty">No projects yet</span>
                     {% endfor %}

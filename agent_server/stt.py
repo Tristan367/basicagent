@@ -51,41 +51,52 @@ def availability() -> dict:
         "model_name": next(
             (m["name"] for m in WHISPER_MODEL_CHOICES if m["id"] == size), size
         ),
-        "loaded": _model is not None,
+        "loaded": bool(_models),
+        "partial_model": partial_size(),
     }
 
 
 # ── The model ────────────────────────────────────────────────────────────────
 
-_model = None
-_model_size = ""
+# Loaded models, keyed by size. Two at most in practice: the one the user
+# chose, and a quick one for live partials when their choice is slower than
+# speech.
+_models: dict[str, object] = {}
 _lock = asyncio.Lock()
 
+# Live dictation re-transcribes about once a second. "small" needs more like
+# 1.6s a pass, so using it for the words that appear as you speak means they
+# always trail you. Partials are throwaway feedback -- what matters is the text
+# left in the box at the end -- so they are produced by something fast and the
+# final pass uses the model the user actually chose.
+PARTIAL_MODEL = "base.en"
 
-async def get_model():
-    """The loaded model, loading (and on first run downloading) it if needed.
 
-    Shared with `whisper_streaming`: a second copy would double the memory for
-    no benefit, and the two are never used for different sizes at once.
-    """
-    global _model, _model_size
-    size = whisper_size()
-    if _model is not None and _model_size == size:
-        return _model
+def partial_size() -> str:
+    """The model for words-as-you-speak. The chosen one if it can keep up."""
+    chosen = whisper_size()
+    return chosen if chosen in ("tiny.en", "base.en") else PARTIAL_MODEL
+
+
+async def get_model(size: str = ""):
+    """A loaded model, loading (and on first run downloading) it if needed."""
+    size = size or whisper_size()
+    cached = _models.get(size)
+    if cached is not None:
+        return cached
     async with _lock:
-        if _model is None or _model_size != size:
+        if size not in _models:
             if not stt_available():
                 raise STTError(
                     "Dictation is not installed. Run: pip install faster-whisper"
                 )
             from faster_whisper import WhisperModel
 
-            _model = await asyncio.to_thread(
+            _models[size] = await asyncio.to_thread(
                 WhisperModel, size, device="cpu", compute_type=FASTER_WHISPER_COMPUTE
             )
-            _model_size = size
             log.info("dictation model ready (%s)", size)
-    return _model
+    return _models[size]
 
 
 async def warmup() -> None:
@@ -96,18 +107,17 @@ async def warmup() -> None:
     """
     if not stt_available():
         return
-    try:
-        await get_model()
-    except Exception:
-        log.warning("dictation warm-up failed", exc_info=True)
+    for size in dict.fromkeys((whisper_size(), partial_size())):
+        try:
+            await get_model(size)
+        except Exception:
+            log.warning("dictation warm-up failed for %s", size, exc_info=True)
 
 
 async def reload_model() -> None:
-    """Drop the loaded model so the next use picks up a newly chosen size."""
-    global _model, _model_size
+    """Drop loaded models so the next use picks up a newly chosen size."""
     async with _lock:
-        _model = None
-        _model_size = ""
+        _models.clear()
 
 
 # ── Transcription ────────────────────────────────────────────────────────────

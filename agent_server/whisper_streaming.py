@@ -37,6 +37,11 @@ PAUSE_SECONDS = float(os.getenv("CODEAGENT_DICTATION_PAUSE", "10"))
 # review, since whisper sometimes revises them when more context arrives. Ten
 # seconds matches whisper.cpp's own stream example window (--length 10000).
 COMMIT_DELAY_SEC = float(os.getenv("CODEAGENT_DICTATION_COMMIT_DELAY", "10"))
+# The whole utterance is kept so the final pass can re-read it in one go. Capped
+# so a dictation left running for a very long time cannot grow without bound, or
+# end with a wait nobody would sit through. 4 minutes is about 15MB.
+MAX_FINAL_SECONDS = float(os.getenv("CODEAGENT_DICTATION_MAX_FINAL", "240"))
+MAX_FINAL_BYTES = int(MAX_FINAL_SECONDS * SAMPLE_RATE * 4)
 
 # whisper emits these for silence/background noise; they read as garbage in the
 # transcript. The first arm catches the special-event tokens ([BLANK_AUDIO],
@@ -82,7 +87,7 @@ class WhisperServer:
             raise WhisperStreamingError(
                 "Dictation is not installed. Run: pip install faster-whisper"
             )
-        await stt_service.get_model()
+        await stt_service.get_model(stt_service.partial_size())
 
     @staticmethod
     def _transcribe(model, wav_bytes: bytes) -> tuple[str, list[dict]]:
@@ -98,15 +103,21 @@ class WhisperServer:
                 parts.append(text)
         return _clean(" ".join(parts)), rows
 
-    async def transcribe(self, wav_bytes: bytes) -> tuple[str, list[dict]]:
+    async def transcribe(self, wav_bytes: bytes, accurate: bool = False) -> tuple[str, list[dict]]:
         """Return ``(cleaned_text, segments)`` for one wav.
 
         ``segments`` is a list of ``{"start", "end", "text"}`` with times in
         seconds, used to cut the audio buffer at a sentence boundary when
         committing.
+
+        `accurate` selects the model the user actually chose, for the one pass
+        whose output they keep. Everything else uses the quick model, because a
+        partial that arrives after you have already said the next sentence is
+        worse than a rough one that keeps up.
         """
+        size = "" if accurate else stt_service.partial_size()
         try:
-            model = await stt_service.get_model()
+            model = await stt_service.get_model(size)
             return await asyncio.to_thread(self._transcribe, model, wav_bytes)
         except stt_service.STTError as e:
             raise WhisperStreamingError(str(e)) from e
@@ -155,6 +166,7 @@ class WhisperSession:
     def __init__(self, server: WhisperServer) -> None:
         self.server = server
         self._buf = bytearray()          # audio since the last committed sentence
+        self._all = bytearray()          # the whole utterance, for the final pass
         self._finalized: list[str] = []  # committed sentences
         self._silence = 0.0              # seconds of trailing silence
         self._speech = False             # whether the current buffer has speech
@@ -163,7 +175,10 @@ class WhisperSession:
         self.busy = False
 
     def append(self, samples: np.ndarray) -> None:
-        self._buf.extend(samples.astype(np.float32).tobytes())
+        raw = samples.astype(np.float32).tobytes()
+        self._buf.extend(raw)
+        if len(self._all) <= MAX_FINAL_BYTES:
+            self._all.extend(raw)
         if not samples.size:
             return
         rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
@@ -187,8 +202,8 @@ class WhisperSession:
     def finalized_text(self) -> str:
         return " ".join(self._finalized)
 
-    def _to_wav(self) -> bytes:
-        samples = np.frombuffer(self._buf, dtype=np.float32)
+    def _to_wav(self, source: bytearray | None = None) -> bytes:
+        samples = np.frombuffer(source if source is not None else self._buf, dtype=np.float32)
         pcm16 = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16)
         out = io.BytesIO()
         with wave.open(out, "wb") as w:
@@ -245,11 +260,34 @@ class WhisperSession:
         return bool(text)
 
     async def finalize(self) -> str:
-        """Commit whatever remains and return the whole utterance."""
+        """The text the user keeps, transcribed once with their chosen model.
+
+        Everything up to here was produced by the quick model so the words
+        could keep up with speech. This is the one pass whose output survives,
+        so it re-reads the whole utterance with the accurate model rather than
+        stitching together partials -- which also lets it punctuate and correct
+        across the sentence boundaries the sliding window cut through.
+
+        Falls back to the stitched-together partials for a very long dictation,
+        where re-reading everything would take longer than the user will wait.
+        """
+        whole = bytes(self._all)
+        if whole and len(whole) <= MAX_FINAL_BYTES:
+            try:
+                text, _ = await self.server.transcribe(self._to_wav(bytearray(whole)),
+                                                       accurate=True)
+                self._reset()
+                self._all = bytearray()
+                if text.strip():
+                    return self._ensure_period(text)
+            except WhisperStreamingError:
+                pass  # fall through to the incremental text below
+
         text = self._ensure_period(await self.current_partial())
         if text:
             self._finalized.append(text)
         self._reset()
+        self._all = bytearray()
         return self.finalized_text()
 
     def _reset(self) -> None:
