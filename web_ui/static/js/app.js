@@ -1608,32 +1608,31 @@
   const PREVIEW_MIN = 1;
   const PREVIEW_MAX = 8;
   const PREVIEW_STEP = 1.35;
-  let pvScale = 1, pvX = 0, pvY = 0;
+  let pvScale = 1;
 
-  // The size `object-fit: contain` actually paints the picture at.
-  function pvDrawnSize(stage, img) {
-    const nw = img.naturalWidth, nh = img.naturalHeight;
-    if (!nw || !nh) return { w: stage.clientWidth, h: stage.clientHeight };
-    const fit = Math.min(stage.clientWidth / nw, stage.clientHeight / nh);
-    return { w: nw * fit, h: nh * fit };
+  // The width the picture fits the screen at. Everything else is a multiple
+  // of it, so "100%" means "as big as the screen allows" rather than the
+  // picture's own pixel count, which is not a number anyone is thinking about.
+  let pvFitW = 0;
+
+  function pvMeasure() {
+    const stage = document.getElementById('preview-stage');
+    const img = stage && stage.querySelector('img');
+    if (!img || !img.naturalWidth) return;
+    pvFitW = Math.min(stage.clientWidth / img.naturalWidth,
+                      stage.clientHeight / img.naturalHeight) * img.naturalWidth;
   }
 
   function pvApply(announceIt) {
     const stage = document.getElementById('preview-stage');
     const img = stage && stage.querySelector('img');
     if (!img) return;
-    // Panning is bounded by however much of the picture is off-screen, so it
-    // can never be dragged out of the window and lost. Measured from what is
-    // actually drawn, not from the element: the element now fills the window
-    // and the picture is letterboxed inside it, so the element's size would
-    // allow panning into the empty bars at the sides.
-    const drawn = pvDrawnSize(stage, img);
-    const slackX = Math.max(0, (drawn.w * pvScale - stage.clientWidth) / 2);
-    const slackY = Math.max(0, (drawn.h * pvScale - stage.clientHeight) / 2);
-    pvX = Math.min(slackX, Math.max(-slackX, pvX));
-    pvY = Math.min(slackY, Math.max(-slackY, pvY));
-    img.style.transform =
-      'translate(' + pvX + 'px,' + pvY + 'px) scale(' + pvScale + ')';
+    if (!pvFitW) pvMeasure();
+    // The picture's own size changes. Scaling it with a transform left the
+    // layout box the size it started at, so the window never grew and zooming
+    // in only slid a magnified crop about inside it.
+    img.style.width = Math.round(pvFitW * pvScale) + 'px';
+    img.style.height = 'auto';
     stage.classList.toggle('zoomed', pvScale > 1);
     const label = Math.round(pvScale * 100) + '%';
     const out = document.getElementById('preview-zoom-value');
@@ -1645,26 +1644,31 @@
     if (announceIt) announce('Zoom ' + label);
   }
 
-  function pvZoom(factor, originX, originY) {
+  // `atX`/`atY` are where in the window to hold still, from its top left.
+  // Without holding something still, zooming walks away from the thing you
+  // were trying to look at.
+  function pvZoom(factor, atX, atY) {
+    const stage = document.getElementById('preview-stage');
+    if (!stage) return;
     const before = pvScale;
     pvScale = Math.min(PREVIEW_MAX, Math.max(PREVIEW_MIN, pvScale * factor));
     if (pvScale === before) return;
-    if (pvScale === PREVIEW_MIN) {
-      pvX = pvY = 0;
-    } else if (originX !== undefined) {
-      // Keep whatever is under the pointer under the pointer. Without this,
-      // zooming walks away from the thing you were trying to look at.
-      const ratio = pvScale / before;
-      pvX = originX - (originX - pvX) * ratio;
-      pvY = originY - (originY - pvY) * ratio;
-    }
+    const holdX = atX === undefined ? stage.clientWidth / 2 : atX;
+    const holdY = atY === undefined ? stage.clientHeight / 2 : atY;
+    const ratio = pvScale / before;
+    const left = (stage.scrollLeft + holdX) * ratio - holdX;
+    const top = (stage.scrollTop + holdY) * ratio - holdY;
     pvApply(true);
+    stage.scrollLeft = left;
+    stage.scrollTop = top;
   }
 
   function pvReset() {
     pvScale = 1;
-    pvX = pvY = 0;
+    pvMeasure();
     pvApply(false);
+    const stage = document.getElementById('preview-stage');
+    if (stage) { stage.scrollLeft = 0; stage.scrollTop = 0; }
   }
 
   function setUpPreviewZoom() {
@@ -1685,15 +1689,13 @@
       e.preventDefault();
       const box = stage.getBoundingClientRect();
       pvZoom(e.deltaY < 0 ? PREVIEW_STEP : 1 / PREVIEW_STEP,
-             e.clientX - box.left - box.width / 2,
-             e.clientY - box.top - box.height / 2);
+             e.clientX - box.left, e.clientY - box.top);
     }, { passive: false });
 
     stage.addEventListener('dblclick', (e) => {
       if (pvScale > 1) { pvReset(); return; }
       const box = stage.getBoundingClientRect();
-      pvZoom(2.5, e.clientX - box.left - box.width / 2,
-             e.clientY - box.top - box.height / 2);
+      pvZoom(2.5, e.clientX - box.left, e.clientY - box.top);
     });
 
     // Dragging pans. It used to start a native image drag, which the app's own
@@ -1711,11 +1713,13 @@
     });
     stage.addEventListener('pointermove', (e) => {
       if (!panning) return;
-      pvX += e.clientX - lastX;
-      pvY += e.clientY - lastY;
+      // The window scrolls. Nothing here has to clamp the picture inside the
+      // window any more -- a scroll container cannot be scrolled past its own
+      // content, so it is not possible to drag the picture out of sight.
+      stage.scrollLeft -= e.clientX - lastX;
+      stage.scrollTop -= e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
-      pvApply(false);
     });
     const stopPan = () => { panning = false; };
     stage.addEventListener('pointerup', stopPan);
@@ -1729,12 +1733,18 @@
       if (e.key === '+' || e.key === '=') { pvZoom(PREVIEW_STEP); }
       else if (e.key === '-' || e.key === '_') { pvZoom(1 / PREVIEW_STEP); }
       else if (e.key === '0') { pvReset(); announce('Zoom 100%'); }
-      else if (e.key === 'ArrowLeft') { pvX += step; pvApply(false); }
-      else if (e.key === 'ArrowRight') { pvX -= step; pvApply(false); }
-      else if (e.key === 'ArrowUp') { pvY += step; pvApply(false); }
-      else if (e.key === 'ArrowDown') { pvY -= step; pvApply(false); }
+      else if (e.key === 'ArrowLeft') { stage.scrollLeft -= step; }
+      else if (e.key === 'ArrowRight') { stage.scrollLeft += step; }
+      else if (e.key === 'ArrowUp') { stage.scrollTop -= step; }
+      else if (e.key === 'ArrowDown') { stage.scrollTop += step; }
       else return;
       e.preventDefault();
+    });
+
+    window.addEventListener('resize', () => {
+      if (modal.hidden) return;
+      pvMeasure();
+      pvApply(false);
     });
   }
   setUpPreviewZoom();
@@ -1747,6 +1757,9 @@
     img.alt = att.name;
     img.draggable = false;
     modal.querySelector('.preview-name').textContent = att.name;
+    // naturalWidth is 0 until it has loaded, so fit again when it arrives.
+    img.onload = () => { if (!modal.hidden) pvReset(); };
+    pvFitW = 0;
     pvReset();
     window.__openModal(modal, modal.querySelector('.preview-close'));
   }
