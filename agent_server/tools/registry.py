@@ -12,6 +12,7 @@ from agent_server.tools.bash import run_bash
 from agent_server.tools.browser import browser as browser_tool
 from agent_server.tools.capture import capture
 from agent_server.tools.file_ops import edit_file, read_file, write_file
+from agent_server.tools.preview import preview
 from agent_server.tools.search import glob_search, grep_search
 from agent_server.tools.session_manager import (
     create_project,
@@ -243,6 +244,40 @@ register(Tool(
     },
     handler=run_task,
     parallel_safe=True,
+))
+
+register(Tool(
+    name="preview",
+    description=(
+        "Run the project so the USER can see and use it -- the only thing here they "
+        "actually look at. `browser` is headless and is for your own checking; this "
+        "is different. Give `command` (how the project runs: 'npm run dev', "
+        "'python -m http.server 8000', 'python game.py', './build/game') and `url` "
+        "when it serves a page, and its window is opened for them.\n"
+        "There is ONE running thing per project: starting again stops the old one "
+        "and reuses the same window, so the user never accumulates stale tabs. Call "
+        "this again after every change you want them to see. Not web-specific -- "
+        "omit `url` for anything that draws its own window, then use `capture` to "
+        "look at it yourself."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["start", "stop", "status"],
+                "description": "Default start. `start` replaces whatever was running.",
+            },
+            "command": {"type": "string", "description": "How to run it, from the project directory"},
+            "url": {"type": "string", "description": "Address it serves, e.g. http://localhost:3000"},
+            "wait_ms": {
+                "type": "integer",
+                "description": "How long to wait for the address to answer (default 20000)",
+            },
+        },
+        "required": [],
+    },
+    handler=preview,
 ))
 
 register(Tool(

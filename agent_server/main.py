@@ -163,12 +163,13 @@ async def lifespan(app: FastAPI):
     reaper.cancel()
     whisper_warmup.cancel()
     tts_warmup.cancel()
-    from agent_server import whisper_streaming
+    from agent_server import preview, whisper_streaming
     from agent_server.tools import browser
 
     await agent.shutdown()
     await whisper_streaming.shutdown()
     await browser.close_browser()
+    await preview.close_all()
     await close_db()
 
 
