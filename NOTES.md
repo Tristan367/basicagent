@@ -174,6 +174,132 @@ loud.
   "was she engaged" into "did she get there". These two are one feature and
   should be designed together.
 
+## Buttons the assistant can put in the chat
+
+**Status: designed, not built. Wanted, with one change from the original idea.**
+
+The idea: the assistant offers a button in the chat, the user clicks it, and
+something happens. "How do I turn on dark mode?" -- rather than describing where
+the control is, it hands them a button that takes them there.
+
+That is worth building, and it is the missing half of a voice-first app: a
+person who cannot navigate a settings page can still be *taken* to the right
+part of it.
+
+**The change: a button goes somewhere, it does not do something.** The original
+idea was a button that runs whatever the assistant wants, behind a confirmation
+dialog. That is the wrong shape, for a specific reason -- the user trusts the
+button because of the label, and the label and the action are written by the
+same fallible thing. A model that has misunderstood, or that has read a file
+with instructions in it, produces "Click here to see your photos" over a
+different action entirely, and the confirmation dialog only repeats the label
+back. A destination cannot lie in the same way: the user arrives somewhere and
+can see what it is before doing anything.
+
+So: `show_button(label, goes_to)`, where `goes_to` comes from a fixed list the
+app knows -- a named section of Settings, a project, the lesson handoff below.
+Landing there should focus the actual control and scroll it to the middle, so
+what happens next is obvious.
+
+Nothing is lost by this. When the assistant should *do* something, it should
+just do it -- it already has tools -- and a button that only navigates needs no
+confirmation dialog at all.
+
+## Working the app by voice alone
+
+**Status: partly built (`set_theme`), the rest designed.**
+
+The goal that makes this app what it claims to be: every setting reachable by
+asking. Light and dark, accent colour, zoom, read-aloud on and off, which voice,
+volume and speed, microphone, renaming and deleting projects.
+
+One tool rather than a dozen -- `change_setting(name, value)` over the same
+named settings the manager prompt already lists -- because a dozen schemas cost
+context on every single request for something used once a week.
+
+**The trap, and it is the important part.** Settings tools must respect the
+parental lock, or they *are* the way around it. A child asking the assistant to
+turn child mode off, switch the model, or reveal a key has to be refused exactly
+as the Settings page refuses it. The gate already exists; the tool has to be
+routed through the same one rather than reaching for `set_setting` itself.
+
+There is also a hole worth naming: **the Settings page has no assistant on it.**
+Someone who navigates there by voice arrives somewhere they cannot talk, which
+is the one screen in this app where that is true.
+
+## Handing a lesson to a child
+
+**Status: designed, follows the lesson notes above.**
+
+The flow, end to end: the parent talks to the home assistant about what they
+want taught. It creates the project, writes `LESSON.md`, and edits it in
+conversation -- attach a picture to use, a video, a folder; say to keep off the
+internet; say that spiders are not to come up. When the parent says it is ready,
+it offers a button. The button turns child mode on and opens the lesson
+*session* directly, not the child's home screen.
+
+Two things this needs that do not exist yet:
+
+- **A project can be created for the child.** Today the manager creates into the
+  profile it is running as. A parent's manager needs to be able to make one that
+  lands in the child's list, under the child's folder and profile.
+- **Turning child mode on needs no password**, and should not ask for one --
+  the password is for coming *out*. Setting one if there is none is the only
+  thing worth prompting for, and only once.
+
+### Should the child be locked into the lesson?
+
+**Recommendation: no, and this is a real recommendation rather than a deferral.**
+
+The worry is fair -- a child opens yesterday's racing game instead of the lesson.
+But a lock needs an unlock, an unlock needs the parent, and the parent is the
+one resource a homeschooling household has least of. The failure it creates is
+worse than the one it prevents: a child who has finished, wants to be rewarded
+with their own project, and is stuck behind a password while the person holding
+it is teaching someone else in another room.
+
+The better lever is that the lesson session's assistant *knows the objectives*.
+"We can go back to your racing game once we have done the two questions your mum
+left" is the same outcome, arrives from something that sounds like a person, and
+does not need anybody to come and unlock anything.
+
+If focus is still wanted after trying it, the least-bad version: a flag on the
+child profile that hides the other projects, cleared by the parent password
+**and** cleared automatically when the lesson's objectives are marked done -- so
+the ordinary path out is finishing, not finding an adult.
+
+## Language in child mode
+
+**Status: asked for, not built. One concern to settle first.**
+
+Wanted: in child mode, strip swearing and inappropriate words from everything
+rendered -- what the assistant says, and the child's own dictation as it is
+transcribed.
+
+The concern is the classic one, and it will bite: a naive word list mangles
+ordinary words a child doing schoolwork will absolutely use. Class, pass,
+assignment, assassin, grape, Uranus, cockatoo, Scunthorpe, analysis. Word
+boundaries fix most of it and not all -- "pass" against "ass" is exactly the
+case boundaries do not settle.
+
+So whatever is built needs a curated list with boundary rules and a test file of
+words that must survive, treated as seriously as the list itself.
+
+Two halves, worth separating because they are not equally valuable:
+
+- **What the assistant says** -- worth doing, cheap, and the thing a parent is
+  actually trusting the app about. The model will not swear at a child anyway,
+  so this is a net under a net; the risk is only false positives, which the word
+  list controls.
+- **The child's own dictation** -- less clear. The child already said it, and
+  blanking it teaches nothing while looking like the microphone failed. The
+  value a parent wants is that the app does not say it *back*, which the first
+  half already covers.
+
+The awkward part either way: replies stream in a word at a time, so a filter has
+to buffer across chunk boundaries or it will miss anything split across two.
+The sentence splitter that read-aloud already uses is the natural seam.
+
 ## Built since this file was written
 
 - **Confirmation before switching into a new project** — creating a project no
@@ -186,5 +312,7 @@ loud.
   the model as pictures. Only from disk; nothing is ever fetched from the web.
 - **Running the project for the user** (`preview`) — the app owns one process
   and one window per project, so a rebuild replaces both rather than stacking
-  up. A play button in the UI would call the same thing; it does not exist yet
-  and the assistant does the calling for now.
+  up, with Play and Stop buttons calling the same thing. Confined to this
+  machine in child mode.
+- **The manager can write files**, so a plan can be drafted into a project from
+  the home screen.
