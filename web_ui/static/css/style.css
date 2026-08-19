@@ -1003,7 +1003,8 @@ input.tts-volume {
 
 .inline-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 
-.inline-form input, .inline-form select, .stack input, .stack select {
+.inline-form input, .inline-form select, .stack input, .stack select,
+.endpoint-fields input {
     padding: 11px 12px;
     border: 2px solid var(--border);
     border-radius: 8px;
@@ -1668,3 +1669,51 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     cursor: pointer;
 }
 .session-name:hover { text-decoration: underline; }
+
+/* ── Custom endpoints ────────────────────────────────────────────────────── */
+
+/* One card per endpoint, with labels that stay visible after you have typed.
+   These were unlabelled boxes in a row, butted straight against the "add" row
+   below them, and once filled in there was nothing to say which was which. */
+.endpoint-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 14px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.endpoint-card h3 { margin: 0; font-size: 1.05rem; }
+.endpoint-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.endpoint-head .endpoint-name {
+    font-weight: 600;
+    font-size: 1.05rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.endpoint-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px 16px;
+}
+.endpoint-fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 0.95rem;
+    min-width: 0;
+}
+/* The explanatory note sits under its input rather than beside the label, so
+   a note that wraps cannot push one field's box below its neighbour's. */
+.endpoint-fields .field-note { margin-top: 1px; }
+.endpoint-fields input { width: 100%; }
+.field-note { color: var(--text-dim); font-weight: 400; font-size: 0.85em; }
+.endpoint-new { border-style: dashed; }
+.endpoint-new .btn-primary { align-self: flex-start; }

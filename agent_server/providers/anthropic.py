@@ -82,6 +82,32 @@ class AnthropicProvider(Provider):
     env_key = "ANTHROPIC_API_KEY"
     settings_key = "anthropic_api_key"
 
+    async def fetch_model_ids(self) -> list[str]:
+        """Model ids this account can reach. Empty on any failure.
+
+        Best-effort, like the other providers': the app must start with the
+        network down, and this only widens the set of ids it will accept.
+        """
+        import httpx
+
+        key = self.api_key()
+        if not key:
+            return []
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    "https://api.anthropic.com/v1/models",
+                    headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+                )
+                if resp.status_code != 200:
+                    return []
+                data = resp.json()
+        except Exception:
+            return []
+        rows = data.get("data", []) if isinstance(data, dict) else []
+        return [str(r["id"]) for r in rows if isinstance(r, dict) and r.get("id")]
+
+
     def __init__(self):
         self._client: AsyncAnthropic | None = None
         self._client_key: str = ""

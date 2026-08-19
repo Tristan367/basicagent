@@ -66,6 +66,14 @@ async def save_custom_endpoint(
     base_url = base_url.strip()
     if not name or not base_url:
         return RedirectResponse("/settings?error=endpoint", status_code=303)
+    if not base_url.startswith(("http://", "https://")):
+        return RedirectResponse("/settings?error=endpoint_url", status_code=303)
+    # Catch the address typed into the key box. The two fields sat side by side
+    # with nothing but a placeholder to tell them apart, and a URL saved as a
+    # key fails later as an unexplained 401 from the endpoint rather than
+    # anything pointing back at this form.
+    if api_key.strip().startswith(("http://", "https://")):
+        return RedirectResponse("/settings?error=endpoint_key", status_code=303)
     if api_key and "\u2022" in api_key:
         existing = await db.get_custom_endpoint(name)
         api_key = existing["api_key"] if existing else ""

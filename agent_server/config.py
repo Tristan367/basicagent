@@ -238,7 +238,9 @@ MODELS = [
         "price_out": 15.0,
     },
     {
-        "id": "claude-haiku-4-5",
+        # Dated id, deliberately: unlike the Opus and Sonnet 5 family, Haiku
+        # 4.5 has no undated alias on the API, so the short form 404s.
+        "id": "claude-haiku-4-5-20251001",
         "name": "Claude Haiku 4.5",
         "provider": "anthropic",
         "context": 200_000,

@@ -54,12 +54,24 @@ async def _discover_models():
     from agent_server import config
     from agent_server.providers import get_provider
 
-    for key in ("deepseek", "gemini"):
+    for key in ("deepseek", "gemini", "anthropic"):
         try:
             provider = get_provider(key)
             if not provider.has_credentials():
                 continue
-            config.register_dynamic_models(key, await provider.fetch_model_ids())
+            live = await provider.fetch_model_ids()
+            if not live:
+                continue
+            config.register_dynamic_models(key, live)
+            # A curated id the provider no longer serves is a 404 the user
+            # meets by picking it out of a menu we drew for them. Say so here,
+            # where it is one line in the log, rather than there.
+            gone = [
+                m["id"] for m in config.MODELS
+                if m["provider"] == key and m["id"] not in live
+            ]
+            if gone:
+                log.warning("%s no longer offers: %s", key, ", ".join(gone))
         except Exception:
             log.warning("%s model discovery failed", key, exc_info=True)
 

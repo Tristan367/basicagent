@@ -14,7 +14,7 @@ RECOMMENDED_MODELS = {
     "deepseek-v4-pro",
     "gemini-3.5-flash-lite",
     "gemini-3.7-flash",
-    "claude-haiku-4-5",
+    "claude-haiku-4-5-20251001",
     "claude-sonnet-5",
 }
 

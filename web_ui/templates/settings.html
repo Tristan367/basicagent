@@ -109,27 +109,61 @@
         <h2>Custom endpoint</h2>
         <p class="hint">For connecting to an AI that runs on your own computer, or on a
         company's own private AI. Most people can skip this.</p>
+
         {% for ep in custom_endpoints %}
-        <form method="POST" action="/_settings/custom_endpoint" class="inline-form" data-autosave>
+        {# Each endpoint is its own card with labelled fields. They used to be
+           unlabelled boxes in a row, butted against the "add" row below, and it
+           was genuinely hard to tell which box was which once you had typed in
+           them -- an address pasted into the key box looked identical. #}
+        <form method="POST" action="/_settings/custom_endpoint" class="endpoint-card" data-autosave>
             <input type="hidden" name="name" value="{{ ep.name }}">
-            <span class="endpoint-name">{{ ep.name }}</span>
-            <input type="text" name="base_url" value="{{ ep.base_url }}" placeholder="http://localhost:8888/v1"
-                   aria-label="Address for the {{ ep.name }} endpoint">
-            <input type="password" name="api_key" placeholder="key (optional)" autocomplete="off"
-                   aria-label="Key for the {{ ep.name }} endpoint (optional)"
-                   value="{% if ep.api_key %}&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;{% endif %}">
-            <button type="submit" formaction="/_settings/custom_endpoint/delete" class="btn-danger">Remove</button>
+            <div class="endpoint-head">
+                <span class="endpoint-name">{{ ep.name }}</span>
+                <button type="submit" formaction="/_settings/custom_endpoint/delete"
+                        class="btn-danger btn-sm">Remove</button>
+            </div>
+            <div class="endpoint-fields">
+                <label>Address
+                    <input type="text" name="base_url" value="{{ ep.base_url }}"
+                           placeholder="http://localhost:8888/v1" spellcheck="false">
+                </label>
+                <label>Key
+                    <input type="password" name="api_key" autocomplete="off" spellcheck="false"
+                           placeholder="not set"
+                           value="{% if ep.api_key %}&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;{% endif %}">
+                    <span class="field-note">Leave empty if it does not need one.</span>
+                </label>
+            </div>
         </form>
         {% endfor %}
-        <form method="POST" action="/_settings/custom_endpoint" class="inline-form">
-            <input type="text" name="name" placeholder="name, e.g. my-ai" autocomplete="off"
-                   aria-label="Name for this endpoint">
-            <input type="text" name="base_url" placeholder="http://localhost:8888/v1" autocomplete="off"
-                   aria-label="Address of this endpoint">
-            <input type="password" name="api_key" placeholder="key (optional)" autocomplete="off"
-                   aria-label="Key for this endpoint (optional)">
+
+        <form method="POST" action="/_settings/custom_endpoint" class="endpoint-card endpoint-new">
+            <h3>Add an endpoint</h3>
+            <div class="endpoint-fields">
+                <label>Name
+                    <input type="text" name="name" placeholder="my-ai" autocomplete="off" spellcheck="false">
+                </label>
+                <label>Address
+                    <input type="text" name="base_url" placeholder="http://localhost:8888/v1"
+                           autocomplete="off" spellcheck="false">
+                </label>
+                <label>Key
+                    <input type="password" name="api_key" placeholder="only if it needs one"
+                           autocomplete="off" spellcheck="false">
+                    <span class="field-note">Optional. Many local AIs need none.</span>
+                </label>
+            </div>
             <button type="submit" class="btn-primary">Add</button>
         </form>
+        {% if request.query_params.get('error') == 'endpoint_url' %}
+        <p class="hint" style="color: var(--danger)">That address does not look right. It should
+        start with http:// or https:// — for example <code>http://localhost:8888/v1</code>.</p>
+        {% elif request.query_params.get('error') == 'endpoint_key' %}
+        <p class="hint" style="color: var(--danger)">That looks like an address rather than a key.
+        The address goes in the middle box; leave the key empty if your AI does not need one.</p>
+        {% elif request.query_params.get('error') == 'endpoint' %}
+        <p class="hint" style="color: var(--danger)">An endpoint needs both a name and an address.</p>
+        {% endif %}
     </section>
 
     <section class="panel">
