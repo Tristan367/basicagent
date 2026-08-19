@@ -111,30 +111,54 @@
         company's own private AI. Most people can skip this.</p>
 
         {% for ep in custom_endpoints %}
-        {# Each endpoint is its own card with labelled fields. They used to be
-           unlabelled boxes in a row, butted against the "add" row below, and it
-           was genuinely hard to tell which box was which once you had typed in
-           them -- an address pasted into the key box looked identical. #}
-        <form method="POST" action="/_settings/custom_endpoint" class="endpoint-card" data-autosave>
-            <input type="hidden" name="name" value="{{ ep.name }}">
+        {# Remove is its own form, deliberately.
+
+           It used to be a submit button inside the settings form with
+           formaction pointing at the delete route -- and being the only submit
+           button there, it was the one the browser used when you pressed Enter
+           in a text field. So typing a key and hitting Enter deleted the whole
+           endpoint. Two separate forms means Enter can only ever save. #}
+        <div class="endpoint-card">
             <div class="endpoint-head">
                 <span class="endpoint-name">{{ ep.name }}</span>
-                <button type="submit" formaction="/_settings/custom_endpoint/delete"
-                        class="btn-danger btn-sm">Remove</button>
+                <form method="POST" action="/_settings/custom_endpoint/delete">
+                    <input type="hidden" name="name" value="{{ ep.name }}">
+                    <button type="submit" class="btn-danger btn-sm"
+                            aria-label="Remove the {{ ep.name }} endpoint">Remove</button>
+                </form>
             </div>
-            <div class="endpoint-fields">
-                <label>Address
-                    <input type="text" name="base_url" value="{{ ep.base_url }}"
-                           placeholder="http://localhost:8888/v1" spellcheck="false">
-                </label>
-                <label>Key
-                    <input type="password" name="api_key" autocomplete="off" spellcheck="false"
-                           placeholder="not set"
-                           value="{% if ep.api_key %}&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;{% endif %}">
-                    <span class="field-note">Leave empty if it does not need one.</span>
-                </label>
-            </div>
-        </form>
+            {# Not data-autosave: this form has a Save button, and having both
+               meant every edit posted twice -- once by the autosave fetch and
+               once by the form itself. An endpoint is also the one thing here
+               worth confirming deliberately, since a half-typed address saved
+               on blur just breaks the connection. #}
+            <form method="POST" action="/_settings/custom_endpoint">
+                <input type="hidden" name="name" value="{{ ep.name }}">
+                <div class="endpoint-fields">
+                    <label>Address
+                        <input type="text" name="base_url" value="{{ ep.base_url }}"
+                               placeholder="http://localhost:8888/v1" spellcheck="false"
+                               autocomplete="off">
+                        <span class="field-note">Where the AI is running.</span>
+                    </label>
+                    <label>Key
+                        {# `new-password` rather than `off`: browsers ignore `off`
+                           on password fields and will helpfully refill whatever
+                           they saw here last time -- which, if an address was
+                           ever saved by mistake, is the address. #}
+                        <input type="password" name="api_key" spellcheck="false"
+                               autocomplete="new-password" placeholder="not set"
+                               value="{% if ep.api_key %}&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;{% endif %}">
+                        <span class="field-note">Leave empty if it does not need one.</span>
+                    </label>
+                </div>
+                {# An explicit Save, so pressing Enter has a defined target
+                   rather than depending on the browser's implicit-submission
+                   rules -- and so there is a visible way to commit a change
+                   for anyone who does not trust a field that saves itself. #}
+                <button type="submit" class="btn-neutral btn-sm endpoint-save">Save changes</button>
+            </form>
+        </div>
         {% endfor %}
 
         <form method="POST" action="/_settings/custom_endpoint" class="endpoint-card endpoint-new">
@@ -146,21 +170,24 @@
                 <label>Address
                     <input type="text" name="base_url" placeholder="http://localhost:8888/v1"
                            autocomplete="off" spellcheck="false">
+                    <span class="field-note">Where the AI is running.</span>
                 </label>
                 <label>Key
                     <input type="password" name="api_key" placeholder="only if it needs one"
-                           autocomplete="off" spellcheck="false">
+                           autocomplete="new-password" spellcheck="false">
                     <span class="field-note">Optional. Many local AIs need none.</span>
                 </label>
             </div>
             <button type="submit" class="btn-primary">Add</button>
         </form>
         {% if request.query_params.get('error') == 'endpoint_url' %}
-        <p class="hint" style="color: var(--danger)">That address does not look right. It should
-        start with http:// or https:// — for example <code>http://localhost:8888/v1</code>.</p>
+        <p class="hint" style="color: var(--danger)">The <strong>Address</strong> does not look
+        right. It should start with http:// or https:// — for example
+        <code>http://localhost:8888/v1</code>.</p>
         {% elif request.query_params.get('error') == 'endpoint_key' %}
-        <p class="hint" style="color: var(--danger)">That looks like an address rather than a key.
-        The address goes in the middle box; leave the key empty if your AI does not need one.</p>
+        <p class="hint" style="color: var(--danger)">The <strong>Key</strong> looks like a web
+        address. If your browser filled it in for you, clear it and type the key yourself — or
+        leave it empty, since most AIs running on your own computer do not need one.</p>
         {% elif request.query_params.get('error') == 'endpoint' %}
         <p class="hint" style="color: var(--danger)">An endpoint needs both a name and an address.</p>
         {% endif %}

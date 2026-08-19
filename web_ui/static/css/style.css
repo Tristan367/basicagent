@@ -1684,6 +1684,11 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     flex-direction: column;
     gap: 12px;
 }
+/* The card holds two independent forms (settings, and remove) so that pressing
+   Enter in a field can never reach the delete button. They still need to lay
+   out as one block. */
+.endpoint-card > form { margin: 0; }
+.endpoint-head form { margin: 0; flex: none; }
 .endpoint-card h3 { margin: 0; font-size: 1.05rem; }
 .endpoint-head {
     display: flex;
@@ -1717,3 +1722,6 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 .field-note { color: var(--text-dim); font-weight: 400; font-size: 0.85em; }
 .endpoint-new { border-style: dashed; }
 .endpoint-new .btn-primary { align-self: flex-start; }
+
+.endpoint-save { align-self: flex-start; margin-top: 12px; }
+.endpoint-card > form { display: flex; flex-direction: column; }
