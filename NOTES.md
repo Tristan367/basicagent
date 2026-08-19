@@ -174,40 +174,6 @@ loud.
   "was she engaged" into "did she get there". These two are one feature and
   should be designed together.
 
-## Running the thing for the user
-
-**Status: decided in principle -- the app owns the process, not the agent.**
-
-A "Play" button was considered. The objection to it is real: press play, get a
-tab; the agent works, press play again, get another tab; by the evening there
-are thirty and none of them is obviously the current build.
-
-But the objection applies just as much to the agent launching things, and
-prompting cannot fix it -- **an agent that opened a tab with `xdg-open` has no
-handle on it and physically cannot close it again.** Telling it to "close the
-old tab first" instructs it to do something impossible, which is worse than not
-telling it anything.
-
-So the missing piece is not the button. It is that **the app must own what is
-running**: one slot per project, one process, one window. Starting again means
-killing the old one and replacing it. The agent declares how the project runs --
-a command, and a URL if it serves one -- and the app does the launching. A play
-button, if there is one, calls exactly the same thing and is greyed out while
-the agent is mid-turn.
-
-This app already runs in a Chromium instance it drives itself, which is what
-makes the window half tractable: a window opened through that can also be
-closed through it. A raw `xdg-open` cannot.
-
-Two things fall out of this that are worth keeping straight:
-
-- **`browser` is not the user's window.** It is headless -- an instrument for
-  the agent to verify with. Driving a page in it shows the user nothing. The
-  prompt now says so, because the two were obviously conflatable.
-- **Not everything is a web page.** A pygame window has no tab and no URL, and
-  the same one-slot process supervision covers it. Which is the argument for
-  "declare a command" over anything web-specific.
-
 ## Built since this file was written
 
 - **Confirmation before switching into a new project** — creating a project no
@@ -216,3 +182,9 @@ Two things fall out of this that are worth keeping straight:
 - **Time awareness** — a gap of an hour or more is described in words on the
   outgoing request only ("3 days later"), never written into the stored
   message.
+- **Pictures the model can actually see** — attachments and screenshots reach
+  the model as pictures. Only from disk; nothing is ever fetched from the web.
+- **Running the project for the user** (`preview`) — the app owns one process
+  and one window per project, so a rebuild replaces both rather than stacking
+  up. A play button in the UI would call the same thing; it does not exist yet
+  and the assistant does the calling for now.
