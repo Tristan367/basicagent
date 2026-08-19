@@ -1004,6 +1004,15 @@ input.tts-volume {
 .inline-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 
 .inline-form input, .inline-form select, .stack input, .stack select,
+.endpoint-table input {
+    padding: 11px 12px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: var(--font);
+    background-color: var(--surface);
+    color: var(--text);
+}
 .inline-form input[type="text"], .inline-form input[type="password"] { min-width: 220px; flex: 1; }
 
 /* Dropdowns everywhere use the same triangle as the composer, with padding so
@@ -1026,8 +1035,14 @@ html[data-theme="dark"] select.welcome-mic {
 }
 
 .stack { display: flex; flex-direction: column; gap: 12px; }
-.form-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+/* A row of labelled controls. `align-items: end` rather than `center`, because
+   each label stacks its caption above its control -- centring lined up the
+   whole label block instead, which left a lone button floating half a line
+   above the sliders it sits beside. */
+.form-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
 .form-row label { display: flex; flex-direction: column; gap: 6px; font-size: 0.95rem; }
+/* Buttons in such a row line up with the controls, not with the captions. */
+.form-row > button { margin-bottom: 0; }
 
 /* Padded to clear the 24x24 minimum target size. This app is used by people
    with unsteady hands and by people driving it from a phone, so a link that is
