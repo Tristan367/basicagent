@@ -108,6 +108,110 @@ async def peek(session_id: str, path: str, start: int = 1, end: int = 0):
     }
 
 
+# Skipped when packing up a project: caches and dependency folders that are
+# large, machine-specific, and rebuildable. `.git` is deliberately kept -- it is
+# the project's history, and it is what makes the copy a real project rather
+# than a snapshot.
+EXPORT_SKIP_DIRS = {
+    "node_modules", "__pycache__", ".venv", "venv", ".mypy_cache",
+    ".pytest_cache", ".ruff_cache", "dist", "build", ".next", ".cache",
+    ".DS_Store", ".idea", ".vscode",
+}
+EXPORT_MAX_BYTES = 500 * 1024 * 1024
+
+
+def _safe_name(name: str) -> str:
+    """A project name turned into a filename that is safe to hand to a browser.
+
+    Path separators become dashes, so nothing can traverse; leading dots are
+    dropped as well, since a name like "..-..-etc" is alarming to receive and a
+    leading dot would make it a hidden file on the user's machine.
+    """
+    cleaned = "".join(c if c.isalnum() or c in " ._-" else "-" for c in name)
+    cleaned = cleaned.strip().lstrip(".").strip()
+    return (cleaned or "project")[:60]
+
+
+@router.get("/export/{session_id}")
+async def export_project(session_id: str):
+    """Download the whole project as a zip.
+
+    The user's work should never be trapped inside this app. They may want to
+    put a website on a real server, hand it to someone, or simply keep it --
+    and they cannot go and find the folder themselves, because it is
+    deliberately somewhere they never see.
+    """
+    import io
+    import zipfile
+
+    from fastapi.responses import StreamingResponse
+
+    session = await db.get_session(session_id)
+    if session is None:
+        raise HTTPException(404, "Session not found")
+    root = Path(session["project_dir"]).expanduser().resolve()
+    if not root.is_dir():
+        raise HTTPException(404, "This project has no folder yet")
+
+    buffer = io.BytesIO()
+    total = 0
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        for path in sorted(root.rglob("*")):
+            if any(part in EXPORT_SKIP_DIRS for part in path.relative_to(root).parts):
+                continue
+            if not path.is_file() or path.is_symlink():
+                continue
+            try:
+                total += path.stat().st_size
+                if total > EXPORT_MAX_BYTES:
+                    raise HTTPException(413, "This project is too large to download.")
+                archive.write(path, path.relative_to(root).as_posix())
+            except OSError:
+                # One unreadable file should not lose the user the other 200.
+                log.info("skipped %s while exporting", path, exc_info=True)
+
+    buffer.seek(0)
+    name = _safe_name(session["name"]) + ".zip"
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+IMAGE_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+}
+
+
+@router.get("/attachment")
+async def attachment(path: str):
+    """Serve a file the user attached, so its thumbnail survives a reload.
+
+    Strictly confined to the attachments directory. A blob URL made when the
+    file was dropped dies with the page, so without this a restored attachment
+    would show a generic icon and its preview would be blank.
+    """
+    from fastapi.responses import FileResponse
+
+    from agent_server.config import ATTACH_DIR
+
+    root = ATTACH_DIR.resolve()
+    try:
+        target = Path(path).expanduser().resolve()
+    except OSError as e:
+        raise HTTPException(400, "Bad path") from e
+    if root not in target.parents or not target.is_file():
+        raise HTTPException(404, "No such attachment")
+
+    media = IMAGE_TYPES.get(target.suffix.lower())
+    if not media:
+        raise HTTPException(415, "Not an image")
+    return FileResponse(target, media_type=media)
+
+
 def _reveal_command(target: Path) -> list[str]:
     """The platform's "show me this in the file manager" command.
 

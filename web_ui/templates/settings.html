@@ -261,10 +261,15 @@
 
     <section class="panel">
         <h2>Your projects</h2>
+        <p class="hint">Download gives you a zip of everything in a project, so you can
+        put a website on the internet, send it to someone, or just keep a copy. Your work
+        is yours and should never be stuck inside this app.</p>
         {% for s in sessions %}
         <div class="session-row">
             <a class="session-name" href="/sessions/{{ s.id }}">{{ s.name }}</a>
             <span class="session-meta">{{ s.last_active_at | humantime }}</span>
+            <a class="btn-neutral btn-sm" href="/api/files/export/{{ s.id }}"
+               download aria-label="Download {{ s.name }} as a zip file">Download</a>
             <button type="button" class="btn-neutral btn-sm" data-rename="{{ s.id }}" data-name="{{ s.name }}">Rename</button>
             <button type="button" class="btn-danger btn-sm" data-delete="{{ s.id }}" data-name="{{ s.name }}">Delete</button>
         </div>

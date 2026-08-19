@@ -1499,14 +1499,14 @@
 
   function removeAttachment(index) {
     const [gone] = attachments.splice(index, 1);
-    if (gone && gone.thumb) { try { URL.revokeObjectURL(gone.thumb); } catch (e) {} }
+    if (gone && gone.thumb && gone.thumb.startsWith('blob:')) { try { URL.revokeObjectURL(gone.thumb); } catch (e) {} }
     renderAttachments();
   }
 
   function clearAttachments() {
     const count = attachments.length;
     attachments.forEach((a) => {
-      if (a.thumb) { try { URL.revokeObjectURL(a.thumb); } catch (e) {} }
+      if (a.thumb && a.thumb.startsWith('blob:')) { try { URL.revokeObjectURL(a.thumb); } catch (e) {} }
     });
     attachments.length = 0;
     renderAttachments();
@@ -1516,10 +1516,49 @@
 
   let dragFrom = null;
 
+  /* Attachments live through a reload the same way the draft does. The files
+   * themselves are already saved on disk by the upload, so only the list needs
+   * keeping -- and the thumbnail is re-pointed at the server, because the blob
+   * URL made when the file was dropped dies with the page. */
+  const attachKey = 'attachments:' + sessionId;
+
+  function saveAttachments() {
+    try {
+      localStorage.setItem(attachKey, JSON.stringify(
+        attachments.map((a) => ({ path: a.path, name: a.name, isDir: !!a.isDir,
+                                  isImage: !!a.thumb }))
+      ));
+    } catch (e) {}
+  }
+
+  function restoreAttachments() {
+    let saved = [];
+    try {
+      saved = JSON.parse(localStorage.getItem(attachKey) || '[]');
+    } catch (e) {
+      // Only a corrupt value is expected here. A blanket catch previously hid
+      // a ReferenceError -- this ran before `attachKey` was declared -- and
+      // attachments silently never came back.
+      return;
+    }
+    if (!Array.isArray(saved) || !saved.length) return;
+    saved.forEach((a) => {
+      if (!a || !a.path) return;
+      attachments.push({
+        path: a.path,
+        name: a.name || 'file',
+        isDir: !!a.isDir,
+        thumb: a.isImage ? '/api/files/attachment?path=' + encodeURIComponent(a.path) : null,
+      });
+    });
+    renderAttachments();
+  }
+
   function renderAttachments() {
     if (!attachmentsBox) return;
     attachmentsBox.hidden = attachments.length === 0;
     attachmentsBox.innerHTML = '';
+    saveAttachments();
     attachments.forEach((a, i) => {
       const chip = document.createElement('span');
       chip.className = 'attachment-chip';
@@ -1649,7 +1688,7 @@
 
 
   function clearAttachments() {
-    attachments.forEach((a) => { if (a.thumb) { try { URL.revokeObjectURL(a.thumb); } catch (e) {} } });
+    attachments.forEach((a) => { if (a.thumb && a.thumb.startsWith('blob:')) { try { URL.revokeObjectURL(a.thumb); } catch (e) {} } });
     attachments = [];
     renderAttachments();
   }
@@ -1869,6 +1908,9 @@
     // light goes out with it rather than staying on until the tab closes.
     cameraModal.addEventListener('modalclosed', stopCamera);
   }
+
+  // After the definitions above, not before them.
+  restoreAttachments();
 
   const attachBtn = document.getElementById('attach-btn');
   const fileInput = document.getElementById('file-input');

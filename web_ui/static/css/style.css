@@ -446,12 +446,20 @@ html[data-theme="dark"] .setup-banner {
  * selecting and copying a block yields code and not a column of digits. The
  * gutter is not announced by a screen reader either, which is right: hearing
  * "one, two, three" before every line would be unbearable. */
+.code-lines {
+    /* Space either side of the digits, and the gap between the rule and the
+       code. Equal on both sides of the number so it is not shoved against the
+       line with a void to its left. */
+    --gutter-pad: 0.75em;
+    --code-gap: 1em;
+    /* Sized to the widest number present; `ch` is one digit in a monospace
+       face, so the column is exactly as wide as it needs to be. */
+    --gutter-w: calc(var(--digits, 2) * 1ch + var(--gutter-pad) * 2);
+}
 .code-row {
     display: block;
     position: relative;
-    /* Room for the gutter and its rule, then a normal gap before the code --
-       the same arrangement an editor uses. */
-    padding-left: 3em;
+    padding-left: calc(var(--gutter-w) + 1px + var(--code-gap));
     /* A blank line in the source is an empty block, which collapses to no
        height at all -- the line vanishes and its number lands on top of the
        next one. One line's worth keeps it. */
@@ -465,8 +473,8 @@ html[data-theme="dark"] .setup-banner {
        line down the block, rather than a dashed column. */
     top: 0;
     bottom: 0;
-    width: 2.2em;
-    padding-right: 0.55em;
+    width: var(--gutter-w);
+    padding: 0 var(--gutter-pad);
     text-align: right;
     border-right: 1px solid var(--code-gutter);
     color: var(--text-dim);
@@ -542,12 +550,18 @@ html[data-theme="dark"] .setup-banner {
     cursor: pointer;
     overflow: hidden;
     line-height: 0;
+    /* The space is claimed before the camera starts, so the dialog does not
+       lurch from a thin strip to a large square when the first frame arrives.
+       Reducing sudden movement is an accessibility matter, not a nicety. */
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    max-height: 70vh;
 }
 .camera-shot:hover, .camera-shot:focus-visible { border-color: var(--accent); }
 .camera-shot video {
     display: block;
     width: 100%;
-    max-height: 70vh;
+    height: 100%;
     object-fit: contain;
     /* Mirrored, because an unmirrored preview makes holding a page up to the
        lens a guessing game. The saved photo is not mirrored. */
@@ -557,7 +571,7 @@ html[data-theme="dark"] .setup-banner {
 
 /* While the camera is starting. Without this the dialog is a black rectangle
    for a second or two and it is not obvious anything is happening. */
-.camera-starting .camera-shot { position: relative; min-height: 240px; }
+.camera-starting .camera-shot { position: relative; }
 .camera-starting .camera-shot::after {
     content: "Starting your camera\00a0\2026";
     position: absolute;

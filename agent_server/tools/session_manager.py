@@ -43,6 +43,33 @@ async def _default_model() -> tuple[str, str]:
     return provider_for_model(model), model
 
 
+async def _git_init(folder) -> bool:
+    """Start every project as a git repository.
+
+    The user will never type a git command, and mostly will not know the word.
+    It is here so that "undo that" is a thing the assistant can actually do,
+    and so a project has a history to look back through -- both of which have
+    to be set up before the first change, not after something has gone wrong.
+
+    Best-effort: a machine without git still gets a perfectly working project.
+    """
+    import asyncio
+    import shutil
+
+    if not shutil.which("git") or (folder / ".git").exists():
+        return False
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "init", "-q",
+            cwd=str(folder),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        return await asyncio.wait_for(proc.wait(), timeout=10) == 0
+    except (OSError, TimeoutError):
+        return False
+
+
 async def create_project(
     ctx: ToolContext, *, name: str, description: str = "", folder: str = "", **_
 ) -> ToolResult:
@@ -62,6 +89,8 @@ async def create_project(
         Path(project_dir).expanduser().mkdir(parents=True, exist_ok=True)
     except OSError as e:
         return ToolResult.error(f"could not create the project folder: {e}", title)
+
+    await _git_init(Path(project_dir).expanduser())
 
     provider, model = await _default_model()
     session = await db.create_session(

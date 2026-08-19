@@ -57,10 +57,15 @@
       return '<span class="code-row" data-line="' + n + '">' +
              prefix + row + suffix + '</span>';
     });
+    // The gutter is sized to the widest number it will actually hold, rather
+    // than to a fixed width guessing at four digits: a five-line block gets a
+    // one-character column, a file opened at line 1200 gets four.
+    const digits = String((startLine || 1) + rows.length - 1).length;
     // Joined with nothing: each row is a block element, so it breaks the line
     // by itself. Keeping the newlines as well made every line render at double
     // height -- once for the block, once for the literal newline inside <pre>.
-    return out.join('');
+    return '<span class="code-lines" style="--digits:' + digits + '">' +
+           out.join('') + '</span>';
   }
 
   /* Two shapes are recognised.
