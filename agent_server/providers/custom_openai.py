@@ -4,17 +4,27 @@ One instance per row in the `custom_endpoints` table, registered under the
 provider key `custom:NAME`.
 """
 
+import logging
+from collections.abc import AsyncIterator
+
+import httpx
+
+from agent_server.providers.base import StreamEvent
 from agent_server.providers.openai_compat import OpenAICompatibleProvider
+
+log = logging.getLogger(__name__)
 
 
 class CustomOpenAIProvider(OpenAICompatibleProvider):
     """A named custom endpoint. name='my-vllm', base_url='http://box:8000/v1'."""
 
-    def __init__(self, name: str = "", base_url: str = "", api_key: str = ""):
+    def __init__(self, name: str = "", base_url: str = "", api_key: str = "",
+                 model_id: str = ""):
         super().__init__()
         self._name = name
         self.base_url = base_url
         self._api_key = api_key or ""
+        self._model_id = model_id or ""
 
     @property
     def name(self) -> str:
@@ -50,3 +60,49 @@ class CustomOpenAIProvider(OpenAICompatibleProvider):
     def settings_fields(self) -> list[dict]:
         # Configured on the home page under Custom endpoints, not here.
         return []
+
+    # ── which model ────────────────────────────────────────────────────────
+    async def _discover_model(self) -> str:
+        """Ask the endpoint what it is serving, and remember the answer.
+
+        One endpoint serves one model. There is no menu to pick from and no way
+        to switch without restarting the server behind it, so asking the user
+        to type a model id was asking them for something only the endpoint
+        knows -- and getting it slightly wrong failed every request.
+        """
+        headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                response = await client.get(
+                    f"{self.base_url.rstrip('/')}/models", headers=headers
+                )
+            response.raise_for_status()
+            rows = response.json().get("data", [])
+        except Exception as e:
+            log.info("endpoint %s could not be asked for its model: %s", self._name, e)
+            return ""
+        model_id = str(rows[0].get("id", "")) if rows else ""
+        if model_id:
+            from agent_server import database as db
+
+            self._model_id = model_id
+            await db.set_custom_endpoint_model(self._name, model_id)
+        return model_id
+
+    async def chat_completion(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        model: str,
+        thinking_effort: str | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        # The session stores the endpoint (`custom:my-vllm`) as its model,
+        # because to the user the endpoint *is* the model. Substitute the id
+        # the server itself uses, discovering it now if it was not running when
+        # the endpoint was saved. The name is a last resort: most local servers
+        # ignore this field, and one that does not will say so plainly.
+        model_id = self._model_id or await self._discover_model() or self._name
+        async for event in super().chat_completion(
+            messages, tools, model_id, thinking_effort
+        ):
+            yield event

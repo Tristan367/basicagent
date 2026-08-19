@@ -57,7 +57,7 @@ async def load_custom_endpoint_providers():
 
     fresh = {
         f"custom:{row['name']}": CustomOpenAIProvider(
-            row["name"], row["base_url"], row["api_key"]
+            row["name"], row["base_url"], row["api_key"], row["model_id"]
         )
         for row in await db_async.list_custom_endpoints()
         if row["base_url"]

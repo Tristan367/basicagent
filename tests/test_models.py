@@ -93,10 +93,13 @@ def test_resolve_model_choice_rejects_unknown():
         resolve_model_choice("definitely-not-a-model")
 
 
-def test_resolve_model_choice_custom_requires_a_model_id():
-    with pytest.raises(ValueError):
-        resolve_model_choice("custom:my-box", "")
-    assert resolve_model_choice("custom:my-box", "llama3") == ("custom:my-box", "llama3")
+def test_a_custom_endpoint_is_its_own_model():
+    """One endpoint serves one model and you cannot switch without restarting
+    the server behind it, so the endpoint's name is the only name the user
+    should ever need. Asking them to also type a model id was asking for
+    something only the endpoint knows -- and slightly wrong meant every request
+    failed."""
+    assert resolve_model_choice("custom:my-box") == ("custom:my-box", "custom:my-box")
 
 
 def test_price_label_calls_out_a_free_tier():

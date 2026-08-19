@@ -130,21 +130,11 @@ async def switch_model(session_id: str, request: Request, payload: dict):
         yield agent.sse({"type": "switch_status", "phase": "switching", "name": display_name})
 
         if model.startswith("custom:"):
-            # The picker's value is the provider key ("custom:my-vllm"); the
-            # model id the endpoint actually expects is a separate setting.
-            # Storing the provider key in both columns sent "custom:my-vllm"
-            # as the model name and the endpoint rejected every request.
-            model_id = (await db.get_setting("custom_model_id", "")).strip()
-            if not model_id:
-                yield agent.sse({
-                    "type": "error",
-                    "message": (
-                        "This endpoint needs a model name before it can be used. "
-                        "Add one in Settings, under Custom endpoints."
-                    ),
-                })
-                return
-            await db.update_session(session_id, provider=model, model=model_id)
+            # An endpoint is its own model: it serves exactly one, and you
+            # cannot switch without restarting the server behind it. Both
+            # columns hold the endpoint key, and the provider substitutes the
+            # id the server uses at request time.
+            await db.update_session(session_id, provider=model, model=model)
         else:
             await db.update_session(session_id, provider=provider_for_model(model), model=model)
         log.info("switch model done session=%s model=%s", session_id, model)

@@ -1,6 +1,7 @@
 """The one settings page: API keys, the default model, and a few preferences."""
 
 import asyncio
+import logging
 import os
 import sys
 import time
@@ -18,6 +19,7 @@ from agent_server.providers import (
 )
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 # Strong references to fire-and-forget tasks, so they are not garbage
 # collected mid-flight.
@@ -51,7 +53,6 @@ async def save_settings(request: Request):
     model = str(form.get("default_model", "")).strip()
     if model:
         await db.set_setting("default_model", model)
-        await db.set_setting("custom_model_id", str(form.get("custom_model_id", "")).strip())
     return RedirectResponse("/settings", status_code=303)
 
 
@@ -68,32 +69,51 @@ async def save_custom_endpoint(
         return RedirectResponse("/settings?error=locked", status_code=303)
     name = name.strip()
     base_url = base_url.strip()
+    api_key = api_key.strip()
     if not name or not base_url:
         return RedirectResponse("/settings?error=endpoint", status_code=303)
     if not base_url.startswith(("http://", "https://")):
         return RedirectResponse("/settings?error=endpoint_url", status_code=303)
+
+    # What actually arrived over the wire, so this never has to be guessed at
+    # again. Lengths and the equality, never the key itself.
+    log.info(
+        "custom endpoint save name=%r url_len=%d key_len=%d key_is_url=%s",
+        name, len(base_url), len(api_key), api_key == base_url,
+    )
+
+    # An exact copy of the address in the key box is never a key someone meant
+    # to save, whoever put it there -- a paste into the wrong box, or a browser
+    # filling a field it decided was a login. Refusing it is not the old "that
+    # looks like a web address" guess, which read the *shape* of a value and
+    # blocked a perfectly good key: two fields of one submission being
+    # byte-identical has no legitimate reading.
+    if api_key and api_key == base_url:
+        return RedirectResponse("/settings?error=key_is_address", status_code=303)
+
     # The key box shows the ends of the saved key rather than its value, so
     # "nothing typed" means keep what is there. To remove a key, remove the
     # endpoint -- an endpoint without its key is not a thing anyone wants.
-    api_key = api_key.strip()
     if not api_key:
         existing = await db.get_custom_endpoint(name)
         api_key = existing["api_key"] if existing else ""
-    await db.save_custom_endpoint(name, base_url, api_key)
-    await load_custom_endpoint_providers()
+
     # Say whether it actually works, rather than guessing from the shape of
-    # what was typed. A previous version tried to spot an address pasted into
-    # the key box and refused to save -- which is a guess about intent, and a
-    # guess that blocks someone from entering a perfectly good key is far worse
-    # than the mistake it was trying to prevent. Asking the endpoint is both
-    # certain and more useful: it catches a wrong key, a wrong address, and a
-    # server that simply is not running.
-    return RedirectResponse(f"/settings?checked={await _check_endpoint(base_url, api_key)}",
-                            status_code=303)
+    # what was typed. Asking the endpoint is both certain and more useful: it
+    # catches a wrong key, a wrong address, and a server that is not running.
+    # The same answer carries the model id, so nobody has to type that either.
+    status, model_id = await _check_endpoint(base_url, api_key)
+    await db.save_custom_endpoint(name, base_url, api_key, model_id)
+    await load_custom_endpoint_providers()
+    return RedirectResponse(f"/settings?checked={status}", status_code=303)
 
 
-async def _check_endpoint(base_url: str, api_key: str) -> str:
-    """Ask a saved endpoint for its model list. Returns a short status word."""
+async def _check_endpoint(base_url: str, api_key: str) -> tuple[str, str]:
+    """Ask an endpoint for its model list.
+
+    Returns a short status word and the id of the first model it reports, which
+    is the name it wants in requests.
+    """
     import httpx
 
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
@@ -101,19 +121,20 @@ async def _check_endpoint(base_url: str, api_key: str) -> str:
         async with httpx.AsyncClient(timeout=8) as client:
             response = await client.get(f"{base_url.rstrip('/')}/models", headers=headers)
     except httpx.HTTPError:
-        return "unreachable"
+        return "unreachable", ""
     # The real status, not a verdict. A 401 usually means the key, but some
     # servers answer that way to any path they do not recognise, so saying
     # "the key is wrong" outright sends people hunting for the wrong problem.
     if response.status_code in (401, 403):
-        return f"auth{response.status_code}"
+        return f"auth{response.status_code}", ""
     if response.status_code >= 400:
-        return f"http{response.status_code}"
+        return f"http{response.status_code}", ""
     try:
-        count = len(response.json().get("data", []))
+        rows = response.json().get("data", [])
     except ValueError:
-        return "error"
-    return f"ok{count}"
+        return "error", ""
+    first = str(rows[0].get("id", "")) if rows else ""
+    return f"ok{len(rows)}", first
 
 
 @router.post("/_settings/custom_endpoint/delete")

@@ -73,7 +73,6 @@ def offerable_models() -> list[dict]:
                 "name": provider.name,
                 "provider_label": "your own computer",
                 "provider": key,
-                "needs_model_id": True,
                 "price_out": 0.0,
                 "price_label": "your own",
                 "recommended": False,

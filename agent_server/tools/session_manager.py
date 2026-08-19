@@ -39,7 +39,9 @@ async def _default_model() -> tuple[str, str]:
     """
     model = effective_default_model(await db.get_all_settings())
     if model.startswith("custom:"):
-        return model, (await db.get_setting("custom_model_id", "")).strip() or ""
+        # A custom endpoint is its own model; the provider resolves the id the
+        # server wants when the request goes out.
+        return model, model
     return provider_for_model(model), model
 
 

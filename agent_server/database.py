@@ -109,6 +109,8 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("messages", "code", "TEXT"),
     ("messages", "code_start", "INTEGER DEFAULT 1"),
     ("messages", "open_session", "TEXT"),
+    # Discovered by asking the endpoint, never typed. See save_custom_endpoint.
+    ("custom_endpoints", "model_id", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 
@@ -273,13 +275,30 @@ async def get_custom_endpoint(name: str) -> dict | None:
     return await _fetchone("SELECT * FROM custom_endpoints WHERE name = ?", (name,))
 
 
-async def save_custom_endpoint(name: str, base_url: str, api_key: str = ""):
+async def save_custom_endpoint(name: str, base_url: str, api_key: str = "",
+                               model_id: str = ""):
+    """Save an endpoint.
+
+    `model_id` is what the server calls the model it is serving. Nobody types
+    it: the endpoint is asked at save time, and asked again on first use if it
+    was not running then. One endpoint serves one model, so the name the user
+    gave the endpoint is the only name they should ever need.
+    """
     await _execute(
-        "INSERT INTO custom_endpoints (name, base_url, api_key, created_at, updated_at)"
-        " VALUES (?,?,?,?,?)"
+        "INSERT INTO custom_endpoints"
+        " (name, base_url, api_key, model_id, created_at, updated_at)"
+        " VALUES (?,?,?,?,?,?)"
         " ON CONFLICT(name) DO UPDATE SET base_url = excluded.base_url,"
-        " api_key = excluded.api_key, updated_at = excluded.updated_at",
-        (name, base_url, api_key, _now(), _now()),
+        " api_key = excluded.api_key, model_id = excluded.model_id,"
+        " updated_at = excluded.updated_at",
+        (name, base_url, api_key, model_id, _now(), _now()),
+    )
+
+
+async def set_custom_endpoint_model(name: str, model_id: str):
+    """Record a model id discovered later, when the endpoint first answers."""
+    await _execute(
+        "UPDATE custom_endpoints SET model_id = ? WHERE name = ?", (model_id, name)
     )
 
 

@@ -161,12 +161,17 @@ async def _settings_context() -> dict:
         "accent_text": contrast_text(settings.get("accent", "")) if settings.get("accent") else "",
         "provider_settings": provider_settings,
         "custom_endpoints": [
-            dict(ep, masked=mask_key(ep["api_key"]))
+            # `key_is_url` surfaces a key that is a copy of the address. It is
+            # refused on the way in now, but a row saved before that check
+            # existed would otherwise sit there looking configured and 401 on
+            # every message.
+            dict(ep, masked=mask_key(ep["api_key"]),
+                 key_is_url=bool(ep["api_key"].strip())
+                 and ep["api_key"].strip() == ep["base_url"].strip())
             for ep in await db.list_custom_endpoints()
         ],
         "models": offerable_models(),
         "default_model": effective_default_model(settings),
-        "custom_model_id": settings.get("custom_model_id", ""),
         "has_key": any_credentials(),
         "sessions": await db.list_sessions(profile=await parental.current_profile()),
         "nav_sessions": await db.list_sessions(profile=await parental.current_profile()),

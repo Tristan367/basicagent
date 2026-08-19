@@ -298,14 +298,13 @@ def provider_for_model(model_id: str) -> str:
     return DYNAMIC_MODELS.get(model_id, DEFAULT_PROVIDER)
 
 
-def resolve_model_choice(choice: str, custom_model: str = "") -> tuple[str, str]:
+def resolve_model_choice(choice: str) -> tuple[str, str]:
     """Turn the model picker's value into a (provider, model) pair."""
     choice = (choice or "").strip()
     if choice.startswith("custom:"):
-        model = custom_model.strip()
-        if not model:
-            raise ValueError("Type the model id the custom endpoint expects.")
-        return choice, model
+        # A custom endpoint serves one model and names itself. The provider
+        # asks the endpoint for the id it wants when the request goes out.
+        return choice, choice
     if not is_known_model(choice):
         raise ValueError(f"Unknown model: {choice}")
     return provider_for_model(choice), choice

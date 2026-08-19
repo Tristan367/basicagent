@@ -57,6 +57,19 @@
   }
   populateMicChoosers();
 
+  // ── Motion ─────────────────────────────────────────────────────────────────
+  // Every programmatic scroll goes through this. A long smooth scroll -- a
+  // whole page of content sliding past in one go -- is the classic trigger for
+  // vestibular disorders, and the distances here are long by definition:
+  // "back to top" and "jump to the newest message" only exist because you are
+  // far away. So it is smooth for people who like the sense of where they went,
+  // and an instant jump for anyone whose system says reduce motion. Live, not
+  // read once, because the setting can change while the app is open.
+  window.__scrollBehavior = function () {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'auto' : 'smooth';
+  };
+
   // ── Text size (browser zoom), remembered between launches ──────────────────
   // A settings control scales the whole app up or down (the way Ctrl+wheel
   // would), and the choice is saved so the next launch starts at the same size.
@@ -888,6 +901,14 @@
   function scrollToBottom() {
     if (chatScroller) chatScroller.scrollTop = chatScroller.scrollHeight;
   }
+  // Only the button animates. Following a reply as it streams calls
+  // scrollToBottom on every token, and a smooth scroll there would still be
+  // catching up when the next one starts.
+  function glideToBottom() {
+    if (!chatScroller) return;
+    chatScroller.scrollTo({ top: chatScroller.scrollHeight,
+                            behavior: window.__scrollBehavior() });
+  }
 
   // A small jump-to-bottom button appears once you scroll up far enough from
   // the newest message. It is removed from the tab order while hidden, and sits
@@ -915,7 +936,7 @@
   if (chatScroller && scrollBottomBtn) {
     chatScroller.addEventListener('scroll', updateScrollBottomBtn, { passive: true });
     scrollBottomBtn.addEventListener('click', () => {
-      scrollToBottom();
+      glideToBottom();
       updateScrollBottomBtn();
     });
     updateScrollBottomBtn();
@@ -2509,6 +2530,7 @@
         '<span class="model-price">' + escapeAttr(m.price_label) + '</span>';
       b.addEventListener('click', () => {
         modelMenu.hidden = true;
+        modelBtn.setAttribute('aria-expanded', 'false');
         chooseModel(m);
       });
       modelMenu.appendChild(b);
@@ -2525,26 +2547,45 @@
   }
 
   if (modelBtn && modelMenu) {
-    modelBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const openMenu = () => {
-        const wasOpen = !modelMenu.hidden;
-        modelMenu.hidden = wasOpen;
-        modelBtn.setAttribute('aria-expanded', wasOpen ? 'false' : 'true');
-      };
-      if (childMode && parentPassword === null) {
-        promptParentPassword((password) => { parentPassword = password; openMenu(); });
-        return;
-      }
+    // Loading and rendering happen here rather than at each call site. The
+    // child-mode path used to open the menu straight after the password was
+    // accepted, skipping the load entirely -- so unlocking it produced an
+    // empty menu: a thin bar above the button with nothing in it, which the
+    // next click then closed.
+    async function showMenu() {
       if (!modelData) {
         await loadModels();
         renderModelMenu();
       }
-      openMenu();
+      modelMenu.hidden = false;
+      modelBtn.setAttribute('aria-expanded', 'true');
+      const first = modelMenu.querySelector('button');
+      if (first) first.focus();
+    }
+    function hideMenu() {
+      modelMenu.hidden = true;
+      modelBtn.setAttribute('aria-expanded', 'false');
+    }
+    modelBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!modelMenu.hidden) { hideMenu(); return; }
+      if (childMode && parentPassword === null) {
+        // The password is remembered for this page, so unlocking one locked
+        // thing does not mean unlocking child mode itself, and does not have
+        // to be typed again to change the model twice.
+        // The server checks the password again on the switch itself, so a
+        // build with no password modal is not a way past it.
+        promptParentPassword((password) => { parentPassword = password; showMenu(); });
+        return;
+      }
+      await showMenu();
     });
     document.addEventListener('click', () => {
-      if (modelMenu) modelMenu.hidden = true;
-      if (modelBtn) modelBtn.setAttribute('aria-expanded', 'false');
+      if (!modelMenu.hidden) hideMenu();
+    });
+    modelMenu.addEventListener('click', (e) => e.stopPropagation());
+    modelMenu.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { hideMenu(); modelBtn.focus(); }
     });
   }
 

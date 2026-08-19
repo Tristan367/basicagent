@@ -147,6 +147,14 @@
                     <button type="submit" class="btn-danger btn-sm"
                             aria-label="Remove the {{ ep.name }} endpoint">Remove</button>
                 </form>
+                {# After the row's five cells, never between them: the row is
+                   display:contents, so a full-width note placed mid-row pushes
+                   every cell after it along by one column. #}
+                {% if ep.key_is_url %}
+                <p class="endpoint-status bad endpoint-rowmsg">The key saved for
+                <strong>{{ ep.name }}</strong> is a copy of its address, so every message will
+                come back refused. Type the real key in the Key box and press Save.</p>
+                {% endif %}
             </div>
             {% endfor %}
 
@@ -168,6 +176,10 @@
         or https:// — for example <code>http://localhost:8888/v1</code>.</p>
         {% elif request.query_params.get('error') == 'endpoint' %}
         <p class="endpoint-status bad">An endpoint needs both a name and an address.</p>
+        {% elif request.query_params.get('error') == 'key_is_address' %}
+        <p class="endpoint-status bad">The <strong>Key</strong> box held the address, character
+        for character, so it was not saved — the key already there is untouched. If your browser
+        filled that box for you, clear it and type the key in yourself.</p>
         {% elif checked and checked.startswith('ok') %}
         <p class="endpoint-status good">Saved, and it answered — {{ checked[2:] }} model{{ '' if checked[2:] == '1' else 's' }} available.</p>
         {% elif checked and checked.startswith('auth') %}
@@ -195,9 +207,6 @@
                 <option value="" disabled selected>No AI key set up yet</option>
                 {% endfor %}
             </select>
-            <input type="text" name="custom_model_id" placeholder="model id (custom only)"
-               aria-label="Model name your custom endpoint expects"
-                   value="{{ custom_model_id }}" autocomplete="off" spellcheck="false">
         </form>
     </section>
     </div>
@@ -628,7 +637,7 @@ document.querySelectorAll('.theme-choice .theme-opt[data-theme]').forEach((btn) 
     if (!btn) return;
     btn.addEventListener('click', () => {
         const scroller = document.querySelector('.settings-scroll');
-        if (scroller) scroller.scrollTo({ top: 0, behavior: 'smooth' });
+        if (scroller) scroller.scrollTo({ top: 0, behavior: window.__scrollBehavior() });
     });
 })();
 
