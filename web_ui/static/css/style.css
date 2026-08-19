@@ -1556,13 +1556,37 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     gap: 12px;
     align-items: center;
 }
+/* The window the picture is zoomed inside. The picture may be larger than
+   this; anything past the edge is clipped rather than pushing the dialog
+   around, and panning brings it back. */
+.preview-stage {
+    max-width: min(1000px, 88vw);
+    max-height: 74vh;
+    overflow: hidden;
+    border-radius: 8px;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;      /* the drag pans; the browser must not also scroll */
+}
+.preview-stage.zoomed { cursor: grab; }
+.preview-stage.zoomed:active { cursor: grabbing; }
 .preview-card img {
     max-width: min(1000px, 88vw);
     max-height: 74vh;
     object-fit: contain;
-    border-radius: 8px;
-    background: #000;
+    transform-origin: center center;
+    will-change: transform;
 }
+.preview-hint { margin: 0; font-size: 0.85rem; text-align: center; }
+
+/* No picture in this app is a thing to drag. Dragging one started a native
+   image drag, which the app's own file-drop handler caught and turned into an
+   attachment -- so pulling a picture aside to see behind it silently attached
+   it to the next message. Firefox needs the attribute as well; it is set
+   wherever an <img> is built. */
+img { -webkit-user-drag: none; user-select: none; }
 .preview-name {
     margin: 0;
     font-size: 0.92rem;
@@ -1653,13 +1677,37 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     gap: 12px;
     align-items: center;
 }
+/* The window the picture is zoomed inside. The picture may be larger than
+   this; anything past the edge is clipped rather than pushing the dialog
+   around, and panning brings it back. */
+.preview-stage {
+    max-width: min(1000px, 88vw);
+    max-height: 74vh;
+    overflow: hidden;
+    border-radius: 8px;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;      /* the drag pans; the browser must not also scroll */
+}
+.preview-stage.zoomed { cursor: grab; }
+.preview-stage.zoomed:active { cursor: grabbing; }
 .preview-card img {
     max-width: min(1000px, 88vw);
     max-height: 74vh;
     object-fit: contain;
-    border-radius: 8px;
-    background: #000;
+    transform-origin: center center;
+    will-change: transform;
 }
+.preview-hint { margin: 0; font-size: 0.85rem; text-align: center; }
+
+/* No picture in this app is a thing to drag. Dragging one started a native
+   image drag, which the app's own file-drop handler caught and turned into an
+   attachment -- so pulling a picture aside to see behind it silently attached
+   it to the next message. Firefox needs the attribute as well; it is set
+   wherever an <img> is built. */
+img { -webkit-user-drag: none; user-select: none; }
 .preview-name {
     margin: 0;
     font-size: 0.92rem;

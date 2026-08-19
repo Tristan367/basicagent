@@ -725,6 +725,9 @@
               '&path=' + encodeURIComponent(path);
     img.alt = path.split(/[\\/]/).pop();
     img.loading = 'lazy';
+    // A picture in a reply is there to be looked at, not carried off. Dragging
+    // one attached it to the next message.
+    img.draggable = false;
     const caption = document.createElement('figcaption');
     const open = document.createElement('button');
     open.type = 'button';
@@ -1597,13 +1600,142 @@
   // Show a full-size image from an attachment chip. Clicking the picture is
   // the obvious thing to try, and there is nowhere else to see what you
   // attached before sending it.
+  // ── Zooming a picture ──────────────────────────────────────────────────
+  //
+  // Not a nicety. A photo of a homework page, a screenshot of an error, a
+  // phone picture of a wiring diagram -- the whole reason to attach one is to
+  // look at it, and "fits on the screen" is not the same as "readable".
+  const PREVIEW_MIN = 1;
+  const PREVIEW_MAX = 8;
+  const PREVIEW_STEP = 1.35;
+  let pvScale = 1, pvX = 0, pvY = 0;
+
+  function pvApply(announceIt) {
+    const stage = document.getElementById('preview-stage');
+    const img = stage && stage.querySelector('img');
+    if (!img) return;
+    // Panning is bounded by however much of the picture is off-screen, so it
+    // can never be dragged out of the window and lost.
+    const slackX = Math.max(0, (img.clientWidth * pvScale - stage.clientWidth) / 2);
+    const slackY = Math.max(0, (img.clientHeight * pvScale - stage.clientHeight) / 2);
+    pvX = Math.min(slackX, Math.max(-slackX, pvX));
+    pvY = Math.min(slackY, Math.max(-slackY, pvY));
+    img.style.transform =
+      'translate(' + pvX + 'px,' + pvY + 'px) scale(' + pvScale + ')';
+    stage.classList.toggle('zoomed', pvScale > 1);
+    const label = Math.round(pvScale * 100) + '%';
+    const out = document.getElementById('preview-zoom-value');
+    if (out) out.textContent = label;
+    const minus = document.getElementById('preview-zoom-out');
+    const plus = document.getElementById('preview-zoom-in');
+    if (minus) minus.disabled = pvScale <= PREVIEW_MIN + 0.001;
+    if (plus) plus.disabled = pvScale >= PREVIEW_MAX - 0.001;
+    if (announceIt) announce('Zoom ' + label);
+  }
+
+  function pvZoom(factor, originX, originY) {
+    const before = pvScale;
+    pvScale = Math.min(PREVIEW_MAX, Math.max(PREVIEW_MIN, pvScale * factor));
+    if (pvScale === before) return;
+    if (pvScale === PREVIEW_MIN) {
+      pvX = pvY = 0;
+    } else if (originX !== undefined) {
+      // Keep whatever is under the pointer under the pointer. Without this,
+      // zooming walks away from the thing you were trying to look at.
+      const ratio = pvScale / before;
+      pvX = originX - (originX - pvX) * ratio;
+      pvY = originY - (originY - pvY) * ratio;
+    }
+    pvApply(true);
+  }
+
+  function pvReset() {
+    pvScale = 1;
+    pvX = pvY = 0;
+    pvApply(false);
+  }
+
+  function setUpPreviewZoom() {
+    const modal = document.getElementById('image-preview');
+    const stage = document.getElementById('preview-stage');
+    if (!modal || !stage) return;
+    const img = stage.querySelector('img');
+
+    const btn = (id, fn) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', fn);
+    };
+    btn('preview-zoom-in', () => pvZoom(PREVIEW_STEP));
+    btn('preview-zoom-out', () => pvZoom(1 / PREVIEW_STEP));
+    btn('preview-zoom-reset', () => { pvReset(); announce('Zoom 100%'); });
+
+    stage.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const box = stage.getBoundingClientRect();
+      pvZoom(e.deltaY < 0 ? PREVIEW_STEP : 1 / PREVIEW_STEP,
+             e.clientX - box.left - box.width / 2,
+             e.clientY - box.top - box.height / 2);
+    }, { passive: false });
+
+    stage.addEventListener('dblclick', (e) => {
+      if (pvScale > 1) { pvReset(); return; }
+      const box = stage.getBoundingClientRect();
+      pvZoom(2.5, e.clientX - box.left - box.width / 2,
+             e.clientY - box.top - box.height / 2);
+    });
+
+    // Dragging pans. It used to start a native image drag, which the app's own
+    // file-drop handler then caught -- so pulling the picture sideways to see
+    // the rest of it quietly attached that picture to the next message, and
+    // the only sign was a chip you had not put there.
+    let panning = false, lastX = 0, lastY = 0;
+    stage.addEventListener('pointerdown', (e) => {
+      if (pvScale <= 1) return;
+      panning = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      stage.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    stage.addEventListener('pointermove', (e) => {
+      if (!panning) return;
+      pvX += e.clientX - lastX;
+      pvY += e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      pvApply(false);
+    });
+    const stopPan = () => { panning = false; };
+    stage.addEventListener('pointerup', stopPan);
+    stage.addEventListener('pointercancel', stopPan);
+    if (img) img.addEventListener('dragstart', (e) => e.preventDefault());
+
+    // The keyboard gets the same picture. Arrows pan by a tenth of the window,
+    // which is a step you can follow rather than a jump.
+    modal.addEventListener('keydown', (e) => {
+      const step = stage.clientWidth / 10;
+      if (e.key === '+' || e.key === '=') { pvZoom(PREVIEW_STEP); }
+      else if (e.key === '-' || e.key === '_') { pvZoom(1 / PREVIEW_STEP); }
+      else if (e.key === '0') { pvReset(); announce('Zoom 100%'); }
+      else if (e.key === 'ArrowLeft') { pvX += step; pvApply(false); }
+      else if (e.key === 'ArrowRight') { pvX -= step; pvApply(false); }
+      else if (e.key === 'ArrowUp') { pvY += step; pvApply(false); }
+      else if (e.key === 'ArrowDown') { pvY -= step; pvApply(false); }
+      else return;
+      e.preventDefault();
+    });
+  }
+  setUpPreviewZoom();
+
   function openImagePreview(att) {
     const modal = document.getElementById('image-preview');
     if (!modal || !att.thumb) return;
     const img = modal.querySelector('img');
     img.src = att.thumb;
     img.alt = att.name;
+    img.draggable = false;
     modal.querySelector('.preview-name').textContent = att.name;
+    pvReset();
     window.__openModal(modal, modal.querySelector('.preview-close'));
   }
 
@@ -1747,6 +1879,9 @@
         const img = document.createElement('img');
         img.src = a.thumb;
         img.alt = '';
+        // Or the browser's own image drag beats the chip's reorder drag, and
+        // ends with the picture attached a second time.
+        img.draggable = false;
         thumb.appendChild(img);
       } else {
         thumb.innerHTML = a.isDir ? FOLDER_ICON_SVG : FILE_ICON_SVG;

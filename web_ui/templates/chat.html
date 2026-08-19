@@ -265,7 +265,21 @@
          aria-label="Picture preview" hidden>
         <div class="preview-card">
             <p class="preview-name"></p>
-            <img alt="">
+            {# The picture sits in a window it can be bigger than, so zooming
+               has somewhere to overflow into and panning has somewhere to go. #}
+            <div class="preview-stage" id="preview-stage">
+                <img alt="" draggable="false">
+            </div>
+            <div class="zoom-row preview-zoom">
+                <button type="button" class="btn-neutral" id="preview-zoom-out"
+                        aria-label="Zoom out">&minus;</button>
+                <span class="zoom-value" id="preview-zoom-value" aria-live="polite">100%</span>
+                <button type="button" class="btn-neutral" id="preview-zoom-in"
+                        aria-label="Zoom in">+</button>
+                <button type="button" class="btn-neutral" id="preview-zoom-reset">Fit</button>
+            </div>
+            <p class="hint preview-hint">Scroll or use + and &minus; to zoom. Drag or use the
+            arrow keys to move around.</p>
             <button type="button" class="btn-primary preview-close">Close</button>
         </div>
     </div>
