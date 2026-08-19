@@ -10,7 +10,6 @@ from typing import Any
 from agent_server.tools.base import ToolContext, ToolResult
 from agent_server.tools.bash import run_bash
 from agent_server.tools.browser import browser as browser_tool
-from agent_server.tools.capture import capture
 from agent_server.tools.file_ops import edit_file, read_file, write_file
 from agent_server.tools.search import glob_search, grep_search
 from agent_server.tools.session_manager import (
@@ -35,10 +34,6 @@ class Tool:
     handler: Handler
     # Read-only and side-effect free, so several may run at once.
     parallel_safe: bool = field(default=False)
-    # Useless without something that can look at an image. Offered only when a
-    # `vision` tool is actually registered, because a tool that can only ever
-    # answer "I can't see that" wastes a round trip and confuses the model.
-    needs_vision: bool = field(default=False)
 
     def schema(self) -> dict:
         return {
@@ -250,27 +245,6 @@ register(Tool(
 ))
 
 register(Tool(
-    name="capture",
-    description=(
-        "Screenshot the desktop — for anything that is not a web page. Use `browser` "
-        "for web pages. Pass `prompt` to have the capture described in the same call."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "prompt": {"type": "string", "description": "What to find out."},
-            "region": {"type": "string", "description": "'x,y,w,h' to capture part of the screen"},
-            "count": {"type": "integer", "description": "Number of frames, 1-24 (default 1)"},
-            "interval_ms": {"type": "integer", "description": "Gap between frames (default 400)"},
-        },
-        "required": [],
-    },
-    handler=capture,
-    parallel_safe=True,
-    needs_vision=True,
-))
-
-register(Tool(
     name="browser",
     description=(
         "Drive a real browser to build, inspect and TEST a web UI. Give it a list of "
@@ -278,9 +252,10 @@ register(Tool(
         "accessibility tree. Actions: goto, click, fill, press, hover, select, check, "
         "uncheck, upload, scroll, wait, back, forward, reload, resize, snapshot, eval, "
         "network, shoot, record, expect. `expect` is an assertion and fails the call "
-        "if it does not hold. `shoot` saves a screenshot; add `ask` to have it "
-        "described. `press` without `at` sends the key to whatever has focus, which "
-        "is how you test Escape, Tab and keyboard navigation."
+        "if it does not hold. `press` without `at` sends the key to whatever has "
+        "focus, which is how you test Escape, Tab and keyboard navigation. `shoot` "
+        "saves a screenshot to a path -- you cannot see it, but writing that path on "
+        "a line of its own shows the picture to the user."
     ),
     parameters={
         "type": "object",
@@ -310,16 +285,6 @@ register(Tool(
                             "description": "For select: one option, or several for a multi-select",
                         },
                         "js": {"type": "string", "description": "For eval"},
-                        "ask": {"type": "string", "description": "On shoot/record: question to answer"},
-                        "compare": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": (
-                                "On shoot/record with `ask`: image files to put alongside the "
-                                "new frame, so one question spans both (a mockup, or an "
-                                "earlier frame). Up to 4."
-                            ),
-                        },
                         "visible": {"type": "string", "description": "expect: must be visible"},
                         "hidden": {"type": "string", "description": "expect: must be gone"},
                         "count": {
@@ -363,13 +328,10 @@ register(Tool(
         "required": ["steps"],
     },
     handler=browser_tool,
-    # Deliberately NOT needs_vision. Everything that makes this tool worth
-    # having -- navigating, filling forms, asserting, reading the console, and
-    # `snapshot`, which returns the page's accessibility tree as text -- works
-    # with no ability to see an image at all. Only the optional `ask` on a
-    # screenshot needs vision, and it says so when it is unavailable. Gating the
-    # whole tool on vision took a website-building assistant's ability to open
-    # the website it had just built.
+    # Everything this tool is for -- navigating, filling forms, asserting,
+    # reading the console, and `snapshot`, which returns the page's
+    # accessibility tree as text -- is text. Nothing here needs to see an image,
+    # which is what makes it usable by every model this app can talk to.
 ))
 
 # ── Session manager tools (home session only) ───────────────────────────────
@@ -470,37 +432,16 @@ def allowed_tool_names(session: dict) -> list[str]:
     return [n for n in TOOLS if n not in MANAGER_TOOLS]
 
 
-def vision_available() -> bool:
-    """Whether anything registered can actually look at an image.
-
-    This app ships no vision tool: describing a picture needs a GPU or a paid
-    account it cannot assume. One can be registered by an embedding
-    application, and everything gated on this appears the moment it is.
-    """
-    return "vision" in TOOLS
-
-
 def tool_schemas(
     names: Iterable[str] | None = None,
-    include_vision: bool | None = None,
     exclude: set[str] | None = None,
 ) -> list[dict]:
-    """The schemas to send. `include_vision` defaults to whether vision exists.
-
-    This used to be passed `not provider.supports_vision()`, which was backwards
-    twice over: it asked whether the *model* was multimodal (irrelevant -- this
-    app never puts an image in a request) and then inverted the answer, so a
-    multimodal provider was the one that lost the tools.
-    """
-    if include_vision is None:
-        include_vision = vision_available()
+    """The schemas to send."""
     selected = list(names) if names is not None else list(TOOLS)
     return [
         TOOLS[n].schema()
         for n in selected
-        if n in TOOLS
-        and (include_vision or not TOOLS[n].needs_vision)
-        and (exclude is None or n not in exclude)
+        if n in TOOLS and (exclude is None or n not in exclude)
     ]
 
 

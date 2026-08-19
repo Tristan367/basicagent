@@ -37,10 +37,6 @@ class OpenAICompatibleProvider(Provider):
             self._client_key = key
         return self._client
 
-    # ── capabilities ───────────────────────────────────────────────────────
-    def supports_vision(self) -> bool:
-        return False
-
     def count_tokens(self, messages: list[dict]) -> int:
         return estimate_tokens(messages)
 

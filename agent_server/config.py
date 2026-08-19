@@ -100,7 +100,8 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ATTACH_DIR = DATA_DIR / "attachments"
 ATTACH_DIR.mkdir(parents=True, exist_ok=True)
 
-# Frames written by `browser` and `capture`, read back by `vision`.
+# Screenshots written by `browser`. Their paths go into replies, where the web
+# UI turns them into pictures for the user.
 CAPTURE_DIR = Path(os.getenv("BASICAGENT_CAPTURE_DIR") or _TMP / "basicagent_captures")
 CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -344,9 +345,6 @@ WEBFETCH_TIMEOUT = int(os.getenv("WEBFETCH_TIMEOUT", "30"))
 WEBFETCH_MAX_BYTES = int(os.getenv("WEBFETCH_MAX_BYTES", "5000000"))
 # Block requests to the local machine and private networks by default.
 WEBFETCH_ALLOW_PRIVATE = os.getenv("WEBFETCH_ALLOW_PRIVATE", "0") == "1"
-
-# ── Vision ──────────────────────────────────────────────────────────────────
-VISION_MAX_PIXELS = int(os.getenv("VISION_MAX_PIXELS", str(1600 * 1600)))
 
 # ── Dictation (faster-whisper) ───────────────────────────────────────────────
 # One backend on every platform, deliberately. whisper.cpp is faster, but it is

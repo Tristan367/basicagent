@@ -124,13 +124,6 @@ class AnthropicProvider(Provider):
         self._client = None
         self._client_key = ""
 
-    def supports_vision(self) -> bool:
-        # Claude is natively multimodal, but images reach this app as file
-        # paths the agent asks about through the `vision` tool rather than as
-        # message parts. Turning this on would hide those tools without
-        # anything replacing them.
-        return False
-
     def count_tokens(self, messages: list[dict]) -> int:
         return estimate_tokens(messages)
 

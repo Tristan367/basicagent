@@ -19,10 +19,6 @@ class GeminiProvider(OpenAICompatibleProvider):
     env_key = "GEMINI_API_KEY"
     settings_key = "gemini_api_key"
 
-    def supports_vision(self) -> bool:
-        # Every current Gemini model is natively multimodal.
-        return True
-
     def _build_kwargs(self, messages, tools, model, thinking_effort=None):
         kwargs = super()._build_kwargs(messages, tools, model, thinking_effort)
         # The compatibility layer rejects `stream_options` on some models rather

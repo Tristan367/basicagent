@@ -1,11 +1,10 @@
 """A browser the agent can drive, one per session.
 
-Replaces three overlapping implementations that did not share state: five
-`browser-*` tools sharing one global page, a `screenshot` tool that launched a
-fresh browser for every call and closed it again, and a `vision` tool that
-captured URLs through the second. So logging in with `browser-fill` and then
-taking a `screenshot` produced a shot of a logged-out page from a different
-browser, and nothing said which tools were stateful.
+Replaces two overlapping implementations that did not share state: five
+`browser-*` tools sharing one global page, and a `screenshot` tool that
+launched a fresh browser for every call and closed it again. So logging in with
+`browser-fill` and then taking a `screenshot` produced a shot of a logged-out
+page from a different browser, and nothing said which tools were stateful.
 
 The design follows from what an agent actually needs to verify a UI:
 
@@ -15,13 +14,10 @@ The design follows from what an agent actually needs to verify a UI:
 * **Console, page errors and failed requests are always recorded.** "The button
   did nothing" is not a finding; `Uncaught TypeError at app.js:1841` is. The
   old tools could not see any of it.
-* **Every frame is written to disk and its path returned.** The `browser-*`
-  tools threw the bytes away after describing them, so a before/after
-  comparison was impossible and nothing could be re-examined without redoing
-  the whole flow.
-* **Describing a frame is opt-in.** Analysing every step meant a vision call
-  per step, sequentially, over the network. Most steps only need to be
-  screenshotted in case something later goes wrong.
+* **Every frame is written to disk and its path returned.** No model this app
+  can talk to is able to look at an image, so a screenshot is worth taking for
+  one reason only: the path can be written into a reply, and then the *user*
+  sees the picture. That is also why nothing here tries to describe a frame.
 
 Note this tool is *meant* to reach localhost -- verifying the app you are
 building is the point -- so it has no private-network guard, unlike `webfetch`.

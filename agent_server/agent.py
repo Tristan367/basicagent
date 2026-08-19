@@ -356,9 +356,6 @@ async def _loop(
 ) -> AsyncIterator[dict]:
     session_id = session["id"]
     names = allowed_tool_names(session)
-    # Vision-gated tools are offered only when a `vision` tool exists, which has
-    # nothing to do with whether the provider is multimodal -- no request this
-    # app builds ever carries an image.
     tools = tool_schemas(names)
 
     async for event in _drain_pending(session, ctx):

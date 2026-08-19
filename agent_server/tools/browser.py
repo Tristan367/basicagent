@@ -20,7 +20,6 @@ from agent_server.browser import locate as _locate
 from agent_server.tools.base import ToolContext, ToolResult
 
 MAX_STEPS = 24
-MAX_ANALYSES = 4
 
 # Actions that name a target element. `press` is deliberately not here: without
 # `at` it goes to the page's keyboard, which is the only way to send Escape or
@@ -80,9 +79,7 @@ async def _run(ctx, session, steps, stop_on_error) -> ToolResult:
 
     lines: list[str] = []
     frames: list[str] = []
-    analyses: list[str] = []
     failed_at = 0
-    analysed = 0
 
     for number, step in enumerate(steps, 1):
         if ctx.abort.is_set():
@@ -119,10 +116,6 @@ async def _run(ctx, session, steps, stop_on_error) -> ToolResult:
                     lines.append(f"      -> {path}")
             if detail.get("text"):
                 lines.append(_indent(detail["text"]))
-            if detail.get("ask") and analysed < MAX_ANALYSES:
-                analysed += 1
-                answer = await _describe(ctx, detail["ask"], detail.get("images", []))
-                analyses.append(f"[step {number}] {answer}")
         elif detail:
             lines.append(_indent(str(detail)))
 
@@ -135,7 +128,7 @@ async def _run(ctx, session, steps, stop_on_error) -> ToolResult:
             if stop_on_error:
                 break
 
-    report = await _report(ctx, session, lines, frames, analyses, failed_at, len(steps))
+    report = await _report(ctx, session, lines, frames, failed_at, len(steps))
     title = _title(session, steps, failed_at)
     return ToolResult(output=report, is_error=bool(failed_at), title=title)
 
@@ -259,17 +252,10 @@ async def _perform(ctx, session, action: str, step: dict):
         return {"text": _network_report(session, step)}
 
     if action == "shoot":
-        path, data = await engine.capture(
+        path, _data = await engine.capture(
             session, ctx.session_id, at=at, full_page=bool(step.get("full_page"))
         )
-        out = {"frame": path}
-        if step.get("ask"):
-            out["ask"] = str(step["ask"])
-            # `compare` puts existing files alongside the fresh capture in one
-            # question, which is how a live page is checked against a mockup
-            # without a second round trip to fetch what was just saved.
-            out["images"] = _with_comparisons(ctx, [(path, data)], step.get("compare"))
-        return out
+        return {"frame": path}
 
     if action == "record":
         count = max(2, min(int(step.get("count") or 4), engine.MAX_FRAMES))
@@ -279,11 +265,7 @@ async def _perform(ctx, session, action: str, step: dict):
             if index:
                 await session.page.wait_for_timeout(interval)
             shots.append(await engine.capture(session, ctx.session_id, at=at))
-        out = {"frames": [p for p, _ in shots]}
-        if step.get("ask"):
-            out["ask"] = str(step["ask"])
-            out["images"] = _with_comparisons(ctx, shots, step.get("compare"))
-        return out
+        return {"frames": [p for p, _ in shots]}
 
     if action == "expect":
         return await _expect(session, step, at, timeout)
@@ -317,23 +299,6 @@ def _network_report(session, step: dict) -> str:
     if len(entries) > len(shown):
         lines.insert(0, f"... ({len(entries) - len(shown)} earlier requests omitted)")
     return "\n".join(lines) if lines else "(no requests recorded yet)"
-
-
-def _with_comparisons(ctx, shots, compare) -> list[tuple[str, bytes]]:
-    """Prepend files from disk so one question spans them and the new frames."""
-    if not compare:
-        return shots
-    if isinstance(compare, str):
-        compare = [compare]
-    reference = []
-    for raw in compare[:4]:
-        path = ctx.resolve(raw)
-        if not path.is_file():
-            raise engine.BrowserError(f"compare: no such file: {path}")
-        # Only the path travels now; whichever `vision` tool is installed reads
-        # the file itself.
-        reference.append((str(path), b""))
-    return reference + shots
 
 
 async def _expect(session, step: dict, at: str, timeout: int):
@@ -400,11 +365,8 @@ def _bare(step: dict) -> bool:
 
 # ── Reporting ───────────────────────────────────────────────────────────────
 
-async def _report(ctx, session, lines, frames, analyses, failed_at, total) -> str:
+async def _report(ctx, session, lines, frames, failed_at, total) -> str:
     parts = ["\n".join(lines)]
-
-    if analyses:
-        parts.append("\n\n".join(analyses))
 
     if failed_at:
         # Gathered without being asked, because a failure the model has to make
@@ -440,35 +402,6 @@ async def _diagnostics(ctx, session, frames) -> str:
         pass
 
     return "\n\n".join(chunks)
-
-
-async def _describe(ctx, question: str, images: list[tuple[str, bytes]]) -> str:
-    """Answer a question about the frames, using whatever `vision` is installed.
-
-    Dispatched through the registry by name rather than calling the vision
-    module, so a `vision` supplied as a custom tool -- pointed at whatever
-    server the user actually has -- works here exactly as a built-in would.
-    Looking at an image needs hardware or an account that not every install
-    has, so this harness does not ship one.
-    """
-    if not images:
-        return "(nothing captured to look at)"
-    from agent_server.tools.registry import TOOLS, execute_tool
-
-    if "vision" not in TOOLS:
-        saved = ", ".join(p for p, _ in images)
-        return (
-            "(`ask` needs a vision tool and none is installed, so the screenshot "
-            f"was saved but not described: {saved}. Do not retry `ask` -- use "
-            "`snapshot` for the page's accessibility tree, or `expect` to assert "
-            "what should be there. Both are text and both work here.)"
-        )
-
-    paths = [p for p, _ in images[:6]]
-    result = await execute_tool("vision", {"prompt": question, "paths": paths}, ctx)
-    if result.is_error:
-        return f"(could not look at it: {result.output}) Frames saved: {', '.join(paths)}"
-    return result.output
 
 
 def _label(action: str, step: dict) -> str:

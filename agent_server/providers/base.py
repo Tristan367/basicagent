@@ -93,10 +93,6 @@ class Provider(ABC):
         """Called after the key is saved."""
         credentials.invalidate(self.settings_key)
 
-    @abstractmethod
-    def supports_vision(self) -> bool:
-        ...
-
     def has_credentials(self) -> bool:
         return bool(self.api_key())
 
