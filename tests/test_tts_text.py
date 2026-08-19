@@ -224,3 +224,69 @@ def test_sentences_never_returns_a_bare_mark():
     """A chunk of pure punctuation renders as a click or a beat of silence."""
     for s in plan("Wait — — what? Yes: yes."):
         assert any(c.isalnum() for c in s), repr(s)
+
+
+# ── swearing, in child mode only ───────────────────────────────────────────
+#
+# Not a guard against the assistant: it has been told it is talking to a child
+# and will not swear. This is for the thing a child *will* try -- typing a word
+# and pressing play to hear the app say it back.
+
+
+from agent_server.tts import without_swearing  # noqa: E402
+
+
+@pytest.mark.parametrize("written, said", [
+    ("what the fuck", "what the"),
+    ("this is shit", "this is"),
+    ("you stupid bitch", "you stupid"),
+    ("oh damn", "oh"),
+    ("fuck fuck fuck", ""),
+])
+def test_swearing_is_lifted_out_rather_than_bleeped(written, said):
+    """A beep is a reward -- it tells a child they nearly got there. Silence is
+    a duller answer and a truer one."""
+    assert without_swearing(written) == said
+
+
+def test_the_sentence_still_ends_properly():
+    """Losing the full stop runs the sentence into the next one, which is
+    exactly the fault the rest of this module exists to prevent."""
+    assert without_swearing("Go away, damn it.") == "Go away, it."
+    assert without_swearing("Well shit.") == "Well."
+    assert without_swearing("Is it broken, damn?") == "Is it broken?"
+
+
+def test_a_line_that_was_only_swearing_is_not_spoken_as_a_click():
+    assert plan("shit", clean=True) == []
+    assert plan("Hello.\n\nfuck\n\nGoodbye.", clean=True) == ["Hello.", "Goodbye."]
+
+
+@pytest.mark.parametrize("word", [
+    # Every one of these is mangled by substring matching, and a child doing
+    # schoolwork will use all of them. This list is as load-bearing as the
+    # word list itself.
+    "class", "classic", "pass", "passage", "assignment", "assessment", "assassin",
+    "assume", "assist", "bass", "compass", "embassy", "grass", "mass", "glass",
+    "grape", "scrape", "Uranus", "cockatoo", "cockpit", "peacock", "shuttlecock",
+    "Scunthorpe", "analysis", "titanium", "buttercup", "button", "shiitake",
+    "hello", "shell", "shelter", "hellenic", "dickens", "Dickinson", "crapaud",
+    "assemble", "association", "brassica", "molasses", "casserole", "cassette",
+])
+def test_ordinary_words_a_child_uses_survive(word):
+    sentence = f"I wrote about the {word} today."
+    assert without_swearing(sentence) == sentence, f"{word!r} was mangled"
+
+
+def test_a_donkey_is_still_a_donkey_and_hell_is_still_a_place():
+    """Both are ordinary words in the surroundings a child meets them in: an
+    ass is a donkey in every fable ever written, and hell is in half of English
+    literature. Only the insults are caught."""
+    assert without_swearing("the ass carried the load") == "the ass carried the load"
+    assert without_swearing("Dante wrote about hell") == "Dante wrote about hell"
+    assert "hole" not in without_swearing("do not be an asshole")
+
+
+def test_nothing_is_filtered_outside_child_mode():
+    """`clean` is off by default, so an adult's own reading is left alone."""
+    assert plan("Well shit.") == ["Well shit."]

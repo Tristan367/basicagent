@@ -38,7 +38,9 @@ async def tts_plan(body: PlanBody):
     buffered, so it needs the sentence list up front rather than a fixed
     server-side carve-up.
     """
-    return {"sentences": tts_service.plan(body.text)}
+    from agent_server.parental import child_mode_enabled
+
+    return {"sentences": tts_service.plan(body.text, clean=await child_mode_enabled())}
 
 
 async def _tone() -> int:
@@ -56,8 +58,18 @@ async def _tone() -> int:
 
 @router.post("/speak")
 async def tts_speak(body: SpeakBody):
+    from agent_server.parental import child_mode_enabled
+
+    # Filtered here as well as in `/plan`, because this is the endpoint that
+    # actually makes a sound and it will take any text it is given. A child who
+    # works out that the two are separate finds nothing at the end of it.
+    text = body.text
+    if await child_mode_enabled():
+        text = tts_service.without_swearing(text)
+        if not any(c.isalnum() for c in text):
+            raise HTTPException(400, "Nothing to say")
     try:
-        audio = await tts_service.synth(body.text, body.voice, body.speed, await _tone())
+        audio = await tts_service.synth(text, body.voice, body.speed, await _tone())
     except tts_service.TTSError as e:
         raise HTTPException(400, str(e)) from e
     # no-store: these are regenerated freely and there is no point filling the

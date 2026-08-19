@@ -71,6 +71,18 @@ async def current_profile() -> str:
     return "child" if await child_mode_enabled() else "parent"
 
 
+async def visible_profile() -> str | None:
+    """Which projects may be listed right now. None means all of them.
+
+    The two directions are deliberately not symmetric. A child sees only their
+    own projects, which is the whole point of the separation. Ordinary mode
+    sees everything, including the child's -- a parent has to be able to open
+    what their child made, look through it, and set up a lesson in it, and
+    hiding it would mean the only way to reach it is to become the child.
+    """
+    return "child" if await child_mode_enabled() else None
+
+
 def profile_for_session(session_id: str) -> str:
     """The profile a session belongs to, from its well-known id."""
     return "child" if session_id == CHILD_HOME_SESSION_ID else "parent"

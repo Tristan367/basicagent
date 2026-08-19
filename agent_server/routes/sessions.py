@@ -27,14 +27,14 @@ async def _require(session_id: str) -> dict:
 
 @router.get("")
 async def list_sessions():
-    return await db.list_sessions(profile=await parental.current_profile())
+    return await db.list_sessions(profile=await parental.visible_profile())
 
 
 @router.get("/status")
 async def sessions_status():
     """Per-session activity for the Projects dropdown: is an AI working now, and
     what is the newest message, so the client can show working/unread dots."""
-    sessions = await db.list_sessions(profile=await parental.current_profile())
+    sessions = await db.list_sessions(profile=await parental.visible_profile())
     last = await db.last_messages()
     return [
         {

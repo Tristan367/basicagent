@@ -366,10 +366,93 @@ def sentences(text: str) -> list[str]:
     return out
 
 
-def plan(text: str) -> list[str]:
+# ── Language a child should not hear read back ──────────────────────────────
+#
+# This runs only in child mode, and only on the way to the voice. It is not a
+# guard against the assistant swearing -- it has been told not to and will not.
+# It is for the thing a child *will* try: typing a word and pressing play to
+# hear the app say it. The voice simply skips it.
+#
+# Word boundaries are load-bearing, not tidiness. A child doing schoolwork says
+# class, pass, assignment, assassin, grape, Uranus, cockatoo, Scunthorpe,
+# analysis, and a substring match mangles every one of them. Anything added
+# here belongs in the "must survive" list in the tests as well.
+_PROFANITY = (
+    "fuck", "fucking", "fucked", "fucker", "fuckers", "motherfucker", "motherfuckers",
+    "shit", "shits", "shitty", "shitting", "bullshit", "shithead",
+    "bitch", "bitches", "bitching",
+    "cunt", "cunts",
+    "dick", "dicks", "dickhead", "cock", "cocks", "prick", "pricks",
+    "asshole", "assholes", "arsehole", "arseholes", "arse", "arses",
+    "bastard", "bastards", "damn", "damned", "goddamn", "goddamned",
+    "piss", "pissed", "pissing", "crap", "crappy",
+    "slut", "sluts", "whore", "whores", "wanker", "wankers", "twat", "twats",
+    "bollocks", "bugger", "buggers", "nigger", "niggers", "faggot", "faggots",
+    "retard", "retards", "retarded",
+)
+
+# `ass` and `hell` are handled apart from the list above because both are
+# ordinary words in the surroundings a child meets them in -- an ass is a
+# donkey in every fable ever written, and hell appears in half of English
+# literature. Only the insults are caught.
+_EXTRA_PROFANITY = (
+    r"\bass(?=\s*(?:hole|hat|wipe)\b)",
+    r"\bwhat the hell\b",
+    r"\bhell no\b",
+    r"\bgo to hell\b",
+)
+
+_SWEARING = re.compile(
+    "|".join([rf"\b(?:{'|'.join(sorted(_PROFANITY, key=len, reverse=True))})\b", *_EXTRA_PROFANITY]),
+    re.IGNORECASE,
+)
+# Left behind after a word is lifted out: a doubled space, or a space pushed up
+# against the punctuation that followed the word.
+_GAP = re.compile(r"[ \t]{2,}")
+_ORPHANED = re.compile(r"\s+([,.;:!?])")
+# "Is it broken, damn?" loses the word and is left holding ",?" -- a comma the
+# sentence no longer needs, right where the voice wants a clean ending.
+_DANGLING = re.compile(r"[,;:]+(?=\s*[.!?])")
+# The same at either end: "damn, go away" would otherwise open on a comma.
+_EDGES = re.compile(r"^[\s,;:]+|[\s,;:]+$")
+
+
+def without_swearing(text: str) -> str:
+    """Take the swearing out, leaving a sentence that still reads as one.
+
+    Removed rather than bleeped or replaced with a marker: a beep is a reward,
+    and a child testing whether they can make the app swear has found out that
+    they nearly can. Silence is a duller answer and a truer one.
+
+    The punctuation stays. "Go away, damn it." keeps its full stop, so the
+    voice still lands the end of the sentence instead of running into the next.
+    """
+    if not text:
+        return text
+    cleaned = _SWEARING.sub("", text)
+    if cleaned == text:
+        return text
+    cleaned = _ORPHANED.sub(r"\1", _GAP.sub(" ", cleaned))
+    cleaned = _DANGLING.sub("", cleaned)
+    # Trailing punctuation that actually ends the sentence is kept; only the
+    # commas left hanging by the removal are trimmed.
+    tail = ""
+    while cleaned and cleaned[-1] in ".!?":
+        tail = cleaned[-1] + tail
+        cleaned = cleaned[:-1]
+    return (_EDGES.sub("", cleaned) + tail).strip()
+
+
+def plan(text: str, clean: bool = False) -> list[str]:
+    """The sentences to speak. `clean` takes out swearing first, for child mode."""
     if len(text) > MAX_TEXT_CHARS:
         text = text[:MAX_TEXT_CHARS]
-    return sentences(normalise(to_prose(text)))
+    if clean:
+        text = without_swearing(text)
+    spoken = sentences(normalise(to_prose(text)))
+    # A line that was nothing but swearing is now nothing at all, and a spoken
+    # chunk with no letters in it renders as a click.
+    return [s for s in spoken if any(c.isalnum() for c in s)]
 
 
 # ── Synthesis ───────────────────────────────────────────────────────────────
