@@ -68,18 +68,41 @@ async def save_custom_endpoint(
         return RedirectResponse("/settings?error=endpoint", status_code=303)
     if not base_url.startswith(("http://", "https://")):
         return RedirectResponse("/settings?error=endpoint_url", status_code=303)
-    # Catch the address typed into the key box. The two fields sat side by side
-    # with nothing but a placeholder to tell them apart, and a URL saved as a
-    # key fails later as an unexplained 401 from the endpoint rather than
-    # anything pointing back at this form.
-    if api_key.strip().startswith(("http://", "https://")):
-        return RedirectResponse("/settings?error=endpoint_key", status_code=303)
     if api_key and "\u2022" in api_key:
         existing = await db.get_custom_endpoint(name)
         api_key = existing["api_key"] if existing else ""
     await db.save_custom_endpoint(name, base_url, api_key)
     await load_custom_endpoint_providers()
-    return RedirectResponse("/settings", status_code=303)
+    # Say whether it actually works, rather than guessing from the shape of
+    # what was typed. A previous version tried to spot an address pasted into
+    # the key box and refused to save -- which is a guess about intent, and a
+    # guess that blocks someone from entering a perfectly good key is far worse
+    # than the mistake it was trying to prevent. Asking the endpoint is both
+    # certain and more useful: it catches a wrong key, a wrong address, and a
+    # server that simply is not running.
+    return RedirectResponse(f"/settings?checked={await _check_endpoint(base_url, api_key)}",
+                            status_code=303)
+
+
+async def _check_endpoint(base_url: str, api_key: str) -> str:
+    """Ask a saved endpoint for its model list. Returns a short status word."""
+    import httpx
+
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            response = await client.get(f"{base_url.rstrip('/')}/models", headers=headers)
+    except httpx.HTTPError:
+        return "unreachable"
+    if response.status_code in (401, 403):
+        return "unauthorized"
+    if response.status_code >= 400:
+        return "error"
+    try:
+        count = len(response.json().get("data", []))
+    except ValueError:
+        return "error"
+    return f"ok{count}"
 
 
 @router.post("/_settings/custom_endpoint/delete")

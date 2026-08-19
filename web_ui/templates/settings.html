@@ -180,16 +180,23 @@
             </div>
             <button type="submit" class="btn-primary">Add</button>
         </form>
+        {% set checked = request.query_params.get('checked') %}
         {% if request.query_params.get('error') == 'endpoint_url' %}
-        <p class="hint" style="color: var(--danger)">The <strong>Address</strong> does not look
-        right. It should start with http:// or https:// — for example
-        <code>http://localhost:8888/v1</code>.</p>
-        {% elif request.query_params.get('error') == 'endpoint_key' %}
-        <p class="hint" style="color: var(--danger)">The <strong>Key</strong> looks like a web
-        address. If your browser filled it in for you, clear it and type the key yourself — or
-        leave it empty, since most AIs running on your own computer do not need one.</p>
+        <p class="endpoint-status bad">The <strong>Address</strong> needs to start with http://
+        or https:// — for example <code>http://localhost:8888/v1</code>.</p>
         {% elif request.query_params.get('error') == 'endpoint' %}
-        <p class="hint" style="color: var(--danger)">An endpoint needs both a name and an address.</p>
+        <p class="endpoint-status bad">An endpoint needs both a name and an address.</p>
+        {% elif checked and checked.startswith('ok') %}
+        <p class="endpoint-status good">Saved, and it answered — {{ checked[2:] }} model{{ '' if checked[2:] == '1' else 's' }} available.</p>
+        {% elif checked == 'unauthorized' %}
+        <p class="endpoint-status bad">Saved, but it refused the key. Check the <strong>Key</strong>
+        is right, or clear it if this AI does not need one.</p>
+        {% elif checked == 'unreachable' %}
+        <p class="endpoint-status bad">Saved, but nothing answered at that address. Check the AI is
+        running and the address is right.</p>
+        {% elif checked == 'error' %}
+        <p class="endpoint-status bad">Saved, but the reply was not what an AI endpoint usually
+        sends. Check the address ends in the right place — often <code>/v1</code>.</p>
         {% endif %}
     </section>
 

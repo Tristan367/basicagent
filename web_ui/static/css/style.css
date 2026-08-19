@@ -1725,3 +1725,15 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 
 .endpoint-save { align-self: flex-start; margin-top: 12px; }
 .endpoint-card > form { display: flex; flex-direction: column; }
+
+/* The result of actually contacting a saved endpoint, rather than a guess
+   about what was typed. */
+.endpoint-status {
+    margin: 10px 0 0;
+    font-size: 0.95rem;
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+.endpoint-status.good { color: var(--accent); border-color: var(--accent); }
+.endpoint-status.bad { color: var(--danger); border-color: var(--danger); }
