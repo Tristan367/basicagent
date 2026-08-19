@@ -176,6 +176,9 @@
         or https:// — for example <code>http://localhost:8888/v1</code>.</p>
         {% elif request.query_params.get('error') == 'endpoint' %}
         <p class="endpoint-status bad">An endpoint needs both a name and an address.</p>
+        {% elif request.query_params.get('error') == 'endpoint_name' %}
+        <p class="endpoint-status bad">A <strong>Name</strong> cannot contain a slash. Try a
+        plain name like <code>my-ai</code> or <code>the big computer</code>.</p>
         {% elif request.query_params.get('error') == 'key_is_address' %}
         <p class="endpoint-status bad">The <strong>Key</strong> box held the address, character
         for character, so it was not saved — the key already there is untouched. If your browser

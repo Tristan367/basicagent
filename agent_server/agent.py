@@ -133,9 +133,9 @@ def _publish(run: _Run, event: dict):
         queue.put_nowait(event)
 
 
-async def _drive(session_id: str, handle: _Run):
+async def _drive(session_id: str, handle: _Run, abort: asyncio.Event | None = None):
     try:
-        async for event in run(session_id):
+        async for event in run(session_id, abort):
             _publish(handle, event)
     except asyncio.CancelledError:
         _publish(handle, {"type": "error", "message": "Run cancelled."})
@@ -197,14 +197,55 @@ async def shutdown(timeout: float = 5.0):
     _runs.clear()
 
 
-def start_run(session_id: str) -> _Run:
-    existing = _runs.get(session_id)
-    if existing is not None and session_id in _aborts:
-        return existing
+def claim_turn(session_id: str) -> tuple[_Run, asyncio.Event] | None:
+    """Take the session for a new turn, or None if a turn already has it.
+
+    Claiming is separate from starting because the caller has to persist the
+    user's message in between, and that is an await. The claim used to be made
+    on the run task's first step instead -- a whole event-loop turn after the
+    caller checked -- so two sends landing in that window (a double-tap on
+    Send, a retried request, Enter pressed twice) both saw an idle session. The
+    message was stored twice and asked of the model twice, and the second
+    handle replaced the first in `_runs`, so the live reply streamed into a
+    handle nobody was subscribed to while the user watched "This session is
+    already working." and then nothing at all.
+
+    The handle is published here rather than at start, so a second send in that
+    same window has a run to queue against and subscribe to. Nothing may await
+    between the check and the claim, which is why this is a plain function.
+    """
+    if session_id in _aborts:
+        return None
+    abort = asyncio.Event()
+    _aborts[session_id] = abort
     handle = _Run()
     _runs[session_id] = handle
-    handle.task = asyncio.create_task(_drive(session_id, handle))
+    return handle, abort
+
+
+def release_turn(session_id: str, handle: _Run, abort: asyncio.Event):
+    """Give a claim back, for a caller that claimed and then could not start."""
+    if _aborts.get(session_id) is abort:
+        _aborts.pop(session_id, None)
+    if _runs.get(session_id) is handle:
+        _publish(handle, {"type": "stream_end"})
+        handle.done.set()
+        _runs.pop(session_id, None)
+
+
+def start_claimed_run(session_id: str, handle: _Run, abort: asyncio.Event) -> _Run:
+    """Begin the run for a claim taken earlier by `claim_turn`."""
+    handle.task = asyncio.create_task(_drive(session_id, handle, abort))
     return handle
+
+
+def start_run(session_id: str) -> _Run:
+    """Claim and start in one step. For callers with nothing to persist."""
+    claimed = claim_turn(session_id)
+    if claimed is None:
+        existing = _runs.get(session_id)
+        return existing if existing is not None else _Run()
+    return start_claimed_run(session_id, *claimed)
 
 
 def active_run(session_id: str) -> _Run | None:
@@ -241,31 +282,46 @@ async def subscribe(session_id: str, replay: bool = True) -> AsyncIterator[dict]
         run.subscribers.discard(queue)
 
 
-async def run(session_id: str) -> AsyncIterator[dict]:
+async def run(session_id: str, abort: asyncio.Event | None = None) -> AsyncIterator[dict]:
     """Drive the session forward and yield UI events.
 
-    Assumes any new user input has already been persisted.
+    Assumes any new user input has already been persisted. `abort` is the claim
+    `start_run` already made on this session; without one, this call claims the
+    session itself and refuses if a turn is already in flight.
     """
-    session = await db.get_session(session_id)
-    if session is None:
-        yield {"type": "error", "message": "Session not found"}
-        return
+    if abort is None:
+        if session_id in _aborts:
+            yield {"type": "error", "message": "This session is already working."}
+            return
+        abort = asyncio.Event()
+        _aborts[session_id] = abort
 
-    provider = get_provider(session["provider"])
-    if not provider.has_credentials():
-        await db.revert_last_user_message(session_id)
-        yield {
-            "type": "error",
-            "message": "No API key is set up yet. Add one in Settings to get started.",
-        }
-        return
+    # Every path from here on has to release the claim, including the early
+    # returns below -- a claim left behind marks the session busy forever and
+    # nothing can be sent to it again.
+    try:
+        session = await db.get_session(session_id)
+        if session is None:
+            yield {"type": "error", "message": "Session not found"}
+            return
 
-    if session_id in _aborts:
-        yield {"type": "error", "message": "This session is already working."}
-        return
+        provider = get_provider(session["provider"])
+        if not provider.has_credentials():
+            await db.revert_last_user_message(session_id)
+            yield {
+                "type": "error",
+                "message": "No API key is set up yet. Add one in Settings to get started.",
+            }
+            return
 
-    abort = asyncio.Event()
-    _aborts[session_id] = abort
+        async for event in _run_turn(session_id, session, provider, abort):
+            yield event
+    finally:
+        _aborts.pop(session_id, None)
+        _compacted_this_run.discard(session_id)
+
+
+async def _run_turn(session_id: str, session: dict, provider, abort: asyncio.Event):
     ctx = ToolContext(
         session_id=session_id,
         project_dir=session["project_dir"],
@@ -289,8 +345,6 @@ async def run(session_id: str) -> AsyncIterator[dict]:
         await db.revert_last_user_message(session_id)
         yield {"type": "error", "message": f"Agent error: {type(e).__name__}: {e}"}
     finally:
-        _aborts.pop(session_id, None)
-        _compacted_this_run.discard(session_id)
         log.info("turn end session=%s tools=%d", session_id, tools_count)
 
 

@@ -122,9 +122,21 @@
       return '\u0000CODE' + (codes.length - 1) + '\u0000';
     });
 
+    // Image URLs come from model output like link URLs do, but only the link
+    // half was ever checked -- `![x](javascript:…)` and `![x](data:text/html,…)`
+    // went straight into a src attribute. Inert in today's browsers, and the
+    // asymmetry was an accident rather than a decision.
+    //
+    // Images are checked by scheme rather than against the link whitelist,
+    // because a relative path is a normal thing to write for a picture in the
+    // project and it carries no scheme to abuse.
+    const BAD_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+    const safeImg = (u) => !BAD_SCHEME.test(u) || /^https?:/i.test(u);
     out = out
       .replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g,
-        (_, alt, src) => `<img src="${src}" alt="${alt}" loading="lazy">`)
+        (_, alt, src) => safeImg(src)
+          ? `<img src="${src}" alt="${alt}" loading="lazy">`
+          : alt)
       .replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g,
         (_, label, href) => /^(https?:|\/|#)/.test(href)
           ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`

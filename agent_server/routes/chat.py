@@ -35,8 +35,8 @@ SSE_HEADERS = {
 }
 
 
-def _stream(session_id: str, request: Request) -> StreamingResponse:
-    agent.start_run(session_id)
+def _stream(session_id: str) -> StreamingResponse:
+    """Watch the session's current run. Starting one is the caller's job."""
 
     async def generator() -> AsyncIterator[str]:
         async for event in agent.subscribe(session_id):
@@ -69,10 +69,27 @@ async def chat(session_id: str, request: Request, body: ChatRequest):
     text = body.message.strip()
     if not text:
         raise HTTPException(400, "Message is required")
-    if agent.is_running(session_id) and agent.queue_message(session_id, text) is not None:
-        return _stream(session_id, request)
-    await db.add_message(session_id, "user", text)
-    return _stream(session_id, request)
+
+    # The session is claimed before the message is stored, and nothing awaits
+    # in between. Checking "is it busy?" and then awaiting the write left a
+    # window in which a second send saw an idle session too, so one tap of
+    # Send that the browser retried put the same message in the conversation
+    # twice and paid to have it read twice.
+    claimed = agent.claim_turn(session_id)
+    if claimed is None:
+        # Already working: this joins the turn in flight at its next boundary
+        # rather than starting a second one alongside it.
+        if agent.queue_message(session_id, text) is not None:
+            return _stream(session_id)
+        raise HTTPException(409, "This project is already working.")
+    handle, abort = claimed
+    try:
+        await db.add_message(session_id, "user", text)
+    except Exception:
+        agent.release_turn(session_id, handle, abort)
+        raise
+    agent.start_claimed_run(session_id, handle, abort)
+    return _stream(session_id)
 
 
 @router.post("/sessions/{session_id}/upload")
@@ -158,6 +175,39 @@ def _decode(text: str) -> str:
     return _html.unescape(text or "").strip()
 
 
+async def _is_public_host(host: str) -> bool:
+    """Whether a hostname resolves only to addresses out on the internet.
+
+    Every address the name resolves to is checked, not just the first, because
+    a name that answers with one public address and one private one is the
+    ordinary way this is got around.
+    """
+    import asyncio
+    import ipaddress
+    import socket
+
+    if not host:
+        return False
+    try:
+        # The loop's resolver, not socket's: a plain getaddrinfo blocks every
+        # other request on this process for as long as the lookup takes.
+        infos = await asyncio.get_running_loop().getaddrinfo(
+            host, None, proto=socket.IPPROTO_TCP
+        )
+    except (OSError, UnicodeError):
+        return False
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (address.is_private or address.is_loopback or address.is_link_local
+                or address.is_reserved or address.is_multicast
+                or address.is_unspecified):
+            return False
+    return bool(infos)
+
+
 @router.get("/link_preview")
 async def link_preview(url: str):
     """Fetch a URL's title/description/image for a small preview card."""
@@ -165,6 +215,14 @@ async def link_preview(url: str):
 
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
+        return {"ok": False}
+    # Previews are fetched automatically from links the *model* wrote, so this
+    # is the server following a URL nobody chose to visit. Off the local
+    # network only: otherwise it is a way to reach the router's admin page, a
+    # cloud metadata service, or -- once this is the teacher's machine serving
+    # a classroom -- anything else on the school network, and report back what
+    # it found in the page title.
+    if not await _is_public_host(parsed.hostname or ""):
         return {"ok": False}
     if url in _link_cache:
         _link_cache.move_to_end(url)

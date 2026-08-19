@@ -74,6 +74,13 @@ async def save_custom_endpoint(
         return RedirectResponse("/settings?error=endpoint", status_code=303)
     if not base_url.startswith(("http://", "https://")):
         return RedirectResponse("/settings?error=endpoint_url", status_code=303)
+    # A slash separates the endpoint from the model in a picker value, so a
+    # name with one in it produces a menu entry that cannot be resolved back:
+    # "my/box" splits into the endpoint "my", which does not exist, and every
+    # message fails. Refused here rather than mangled, because the name is how
+    # the user recognises their own machine.
+    if "/" in name:
+        return RedirectResponse("/settings?error=endpoint_name", status_code=303)
 
     # What actually arrived over the wire, so this never has to be guessed at
     # again. Lengths and the equality, never the key itself.
@@ -167,6 +174,41 @@ def _checkbox(form, name: str) -> bool | None:
     return "on" in values
 
 
+def _local_referer(request: Request) -> str:
+    """The page the form was on, if it was a page of this app; else home."""
+    from urllib.parse import urlparse
+
+    referer = request.headers.get("referer") or ""
+    try:
+        parsed = urlparse(referer)
+    except ValueError:
+        return "/"
+    if (parsed.scheme or parsed.netloc) and parsed.netloc != request.url.netloc:
+        return "/"
+    path = parsed.path or "/"
+    if not path.startswith("/") or path.startswith("//"):
+        return "/"
+    return path + (f"?{parsed.query}" if parsed.query else "")
+
+
+def _number(raw: str, low: float, high: float) -> str | None:
+    """A slider value, clamped, or None if it is not a number at all.
+
+    These went into the database as whatever text arrived. A value of "abc" or
+    "1e999" then made `float()` raise (or produce infinity) in the read-aloud
+    status endpoint, which 500'd on every request from then on -- read-aloud
+    broken for good, with no way to fix it from a page that never offered the
+    bad value in the first place.
+    """
+    try:
+        value = float(raw.strip())
+    except (TypeError, ValueError):
+        return None
+    if value != value or value in (float("inf"), float("-inf")):
+        return None
+    return f"{min(high, max(low, value)):g}"
+
+
 @router.post("/_settings/prefs")
 async def save_prefs(request: Request):
     form = await request.form()
@@ -186,12 +228,13 @@ async def save_prefs(request: Request):
             await db.set_setting(key, "1" if ticked else "0")
     if (voice := str(form.get("tts_voice", "")).strip()):
         await db.set_setting("tts_voice", voice)
-    if (speed := str(form.get("tts_speed", "")).strip()):
-        await db.set_setting("tts_speed", speed)
-    if (volume := str(form.get("tts_volume", "")).strip()):
-        await db.set_setting("tts_volume", volume)
-    if (sound_volume := str(form.get("sound_volume", "")).strip()):
-        await db.set_setting("sound_volume", sound_volume)
+    for key, low, high in (
+        ("tts_speed", 0.5, 2.0), ("tts_volume", 0.0, 1.0), ("sound_volume", 0.0, 1.0)
+    ):
+        if key in form:
+            value = _number(str(form.get(key, "")), low, high)
+            if value is not None:
+                await db.set_setting(key, value)
     if (size := str(form.get("whisper_size", "")).strip()):
         from agent_server import config
         from agent_server import stt as stt_service
@@ -205,10 +248,27 @@ async def save_prefs(request: Request):
             task = asyncio.create_task(stt_service.warmup())
             _background.add(task)
             task.add_done_callback(_background.discard)
-    return RedirectResponse(request.headers.get("referer") or "/", status_code=303)
+    # Back where they came from -- but only inside this app. The Referer is
+    # attacker-settable, and handing it straight to a redirect will send the
+    # user anywhere at all.
+    return RedirectResponse(_local_referer(request), status_code=303)
 
 
 # ── Child mode / parental controls ──────────────────────────────────────────
+
+
+async def _body(request: Request) -> dict:
+    """The JSON body as a dict, whatever arrived.
+
+    `await request.json()` returns whatever the body parsed to -- a list, a
+    string, a number, null -- and calling .get() on any of those raised, so a
+    malformed request crashed the endpoint rather than being refused.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 @router.get("/api/child/status")
@@ -224,7 +284,7 @@ async def child_status():
 
 @router.post("/api/child/enable")
 async def child_enable(request: Request):
-    data = await request.json()
+    data = await _body(request)
     password = str(data.get("password", "")).strip()
     if len(password) < 4:
         return {"ok": False, "reason": "password"}
@@ -238,7 +298,7 @@ async def child_enable(request: Request):
 
 @router.post("/api/child/disable")
 async def child_disable(request: Request):
-    data = await request.json()
+    data = await _body(request)
     password = str(data.get("password", "")).strip()
     if not await parental.parent_password_correct(password):
         return {"ok": False, "reason": "password"}
@@ -254,7 +314,7 @@ async def child_reset(request: Request):
 
     Child mode stays on — the parent just takes back control with a new password.
     """
-    data = await request.json()
+    data = await _body(request)
     password = str(data.get("password", "")).strip()
     if not await parental.override_elapsed():
         return {"ok": False, "reason": "waiting"}
@@ -273,7 +333,7 @@ async def child_forgot():
 
 @router.post("/api/child/verify")
 async def child_verify(request: Request):
-    data = await request.json()
+    data = await _body(request)
     return {"ok": await parental.parent_password_correct(str(data.get("password", "")).strip())}
 
 

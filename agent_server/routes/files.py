@@ -68,11 +68,14 @@ async def _resolve(session_id: str, raw: str, confine: bool = True) -> Path:
         raise HTTPException(404, "Session not found")
     root = Path(session["project_dir"]).expanduser().resolve()
 
-    candidate = Path(raw.strip()).expanduser()
-    target = candidate if candidate.is_absolute() else root / candidate
+    # ValueError as well as OSError: a NUL byte in the path raises
+    # "embedded null byte" from the C call, which is not an OSError, so a
+    # path with one in it crashed the request instead of being refused.
     try:
+        candidate = Path(raw.strip()).expanduser()
+        target = candidate if candidate.is_absolute() else root / candidate
         target = target.resolve()
-    except OSError as e:
+    except (OSError, ValueError) as e:
         raise HTTPException(400, "That path cannot be read") from e
 
     if confine and target != root and root not in target.parents:
@@ -200,7 +203,7 @@ async def attachment(path: str):
     root = ATTACH_DIR.resolve()
     try:
         target = Path(path).expanduser().resolve()
-    except OSError as e:
+    except (OSError, ValueError) as e:
         raise HTTPException(400, "Bad path") from e
     if root not in target.parents or not target.is_file():
         raise HTTPException(404, "No such attachment")

@@ -27,6 +27,10 @@ PROTECTED_RM_TARGETS = {
     "/home", "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64",
     "/boot", "/var", "/opt", "/root", "/srv", "/mnt", "/proc", "/sys", "/dev",
 }
+# The real home directory, spelled out. `~` and `$HOME` were covered but the
+# expanded path was not, and a model that has just run `pwd` writes the
+# expanded path.
+PROTECTED_RM_TARGETS.add(os.path.expanduser("~"))
 _BLOCK_DEV_RE = re.compile(r"/dev/(sd[a-z]+|hd[a-z]+|nvme\d+n\d+|vd[a-z]+|xvd[a-z]+|mmcblk\d+|disk|mapper)")
 
 
@@ -59,7 +63,14 @@ def danger_reason(command: str) -> str | None:
 
     # rm with recursive+force flags targeting a protected path. Match by token
     # basename so a path-qualified `/bin/rm` is caught as well as a bare `rm`.
-    tokens = s.split()
+    #
+    # Tokenised the way a shell does, because `str.split` keeps the quotes: it
+    # sees `rm -rf "/"` as the token `"/"`, which is not the string `/`, and
+    # waved the command through. Models quote paths as a matter of habit.
+    try:
+        tokens = shlex.split(s)
+    except ValueError:
+        tokens = s.split()
     if (
         any(os.path.basename(t) == "rm" for t in tokens)
         and _has_flag(tokens, "r", "--recursive")
@@ -87,7 +98,14 @@ def is_read_only(command: str) -> bool:
     if not stripped:
         return True
     # Anything that can redirect into a file or chain unknown commands is unsafe.
-    if any(tok in stripped for tok in (">", ">>", "&&", "||", ";", "`", "$(", "sudo")):
+    # A newline is a command separator exactly like `;`, and `&` both backgrounds
+    # and separates. Leaving them out meant a subagent -- which is allowed only
+    # observational commands -- could send "ls\nrm -rf build" and have it
+    # judged read-only on the strength of the first line. `<(` and `>(` run a
+    # command too, whatever the surrounding one does with the result.
+    if any(tok in stripped for tok in (
+        ">", ">>", "&", "|&", ";", "`", "$(", "<(", ">(", "\n", "\r", "sudo"
+    )):
         return False
     for segment in stripped.split("|"):
         try:
