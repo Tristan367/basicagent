@@ -1,6 +1,6 @@
 """Resolving a provider's API key.
 
-`openai_compat` and `anthropic` each carried a byte-identical copy of this,
+Two provider modules each carried a byte-identical copy of this,
 including a cache dict of their own. Two caches for one concept meant clearing
 one did not clear the other, and a fix applied to one never reached the other.
 

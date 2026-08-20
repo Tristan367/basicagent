@@ -208,48 +208,6 @@ MODELS = [
         "price_in_miss": 1.25,
         "price_out": 2.50,
     },
-    {
-        "id": "claude-fable-5",
-        "name": "Claude Fable 5",
-        "provider": "anthropic",
-        "context": 1_000_000,
-        "max_output": 128_000,
-        "price_in_hit": 1.0,
-        "price_in_miss": 10.0,
-        "price_out": 50.0,
-    },
-    {
-        "id": "claude-opus-5",
-        "name": "Claude Opus 5",
-        "provider": "anthropic",
-        "context": 1_000_000,
-        "max_output": 128_000,
-        "price_in_hit": 0.5,
-        "price_in_miss": 5.0,
-        "price_out": 25.0,
-    },
-    {
-        "id": "claude-sonnet-5",
-        "name": "Claude Sonnet 5",
-        "provider": "anthropic",
-        "context": 1_000_000,
-        "max_output": 128_000,
-        "price_in_hit": 0.3,
-        "price_in_miss": 3.0,
-        "price_out": 15.0,
-    },
-    {
-        # Dated id, deliberately: unlike the Opus and Sonnet 5 family, Haiku
-        # 4.5 has no undated alias on the API, so the short form 404s.
-        "id": "claude-haiku-4-5-20251001",
-        "name": "Claude Haiku 4.5",
-        "provider": "anthropic",
-        "context": 200_000,
-        "max_output": 64_000,
-        "price_in_hit": 0.1,
-        "price_in_miss": 1.0,
-        "price_out": 5.0,
-    },
 ]
 
 MODELS_BY_ID = {m["id"]: m for m in MODELS}

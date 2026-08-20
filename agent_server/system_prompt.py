@@ -7,11 +7,14 @@ date rolling over cannot change a live conversation's prefix and re-bill it at
 the cache-miss rate.
 """
 
+import logging
 import platform
 from datetime import datetime
 from pathlib import Path
 
 from agent_server import database as db
+
+log = logging.getLogger(__name__)
 
 _PROJECT = Path(__file__).parent.parent
 AGENT_PROMPT = (_PROJECT / "system_prompts" / "agent.md").read_text()
@@ -91,10 +94,13 @@ async def ensure_home_session() -> dict:
     """
     from agent_server.config import CHILD_HOME_SESSION_ID, HOME_SESSION_ID, PROJECTS_DIR
 
+    provider, model = await _home_model()
+
     home = await db.get_session(HOME_SESSION_ID)
     if home is None:
         home = await db.create_session(
-            name="Home", project_dir=str(PROJECTS_DIR), kind="manager", profile="parent"
+            name="Home", project_dir=str(PROJECTS_DIR), kind="manager", profile="parent",
+            provider=provider, model=model,
         )
     child = await db.get_session(CHILD_HOME_SESSION_ID)
     if child is None:
@@ -103,6 +109,56 @@ async def ensure_home_session() -> dict:
             project_dir=str(PROJECTS_DIR / "child"),
             kind="manager",
             profile="child",
+            provider=provider, model=model,
             session_id=CHILD_HOME_SESSION_ID,
         )
-    return home
+
+    for session_id in (HOME_SESSION_ID, CHILD_HOME_SESSION_ID):
+        await _repair_home_model(session_id, provider, model)
+    return await db.get_session(HOME_SESSION_ID)
+
+
+async def _home_model() -> tuple[str, str]:
+    """The provider and model the home assistant should be running on.
+
+    Whatever the user's default is, resolved to something they hold a key for.
+    """
+    from agent_server.config import provider_for_model, split_custom_choice
+    from agent_server.model_catalog import effective_default_model
+
+    model = effective_default_model(await db.get_all_settings())
+    if model.startswith("custom:"):
+        endpoint, model_id = split_custom_choice(model)
+        return endpoint, model_id or endpoint
+    return provider_for_model(model), model
+
+
+async def _repair_home_model(session_id: str, provider: str, model: str):
+    """Move the home assistant onto a provider the user actually has a key for.
+
+    It used to be created on a hard-coded model regardless of what the user had
+    set up. Somebody whose only key was Gemini -- which is the free option this
+    app points people at -- opened the app, said hello, and was told "No API key
+    is set up yet. Add one in Settings." They had just done that. There is
+    nothing in the app that would have told them what was wrong.
+
+    Only ever moved off a provider with no credentials. A working home session
+    is left exactly where it is, because the user may have chosen it.
+    """
+    from agent_server.providers import get_provider
+
+    session = await db.get_session(session_id)
+    if session is None:
+        return
+    try:
+        current = get_provider(session["provider"])
+    except ValueError:
+        current = None
+    if current is not None and current.has_credentials():
+        return
+    if session["provider"] == provider and session["model"] == model:
+        return
+    await db.update_session(session_id, provider=provider, model=model)
+    clear_env_cache(session_id)
+    log.info("home session %s moved to %s/%s (no key for %s)",
+             session_id, provider, model, session["provider"])

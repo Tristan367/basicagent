@@ -11,7 +11,7 @@ a prompt or spends anything.
 The bug that prompted this: the catalogue carried `claude-haiku-4-5`, which
 reads like the other Claude 5 ids but does not exist -- Haiku 4.5 only has the
 dated form. It was also in the recommended set, so a user whose only key was
-Anthropic would have had it chosen for them automatically, and every new
+a provider would have had it chosen for them automatically, and every new
 project would have failed on its first message with a 404 from a menu this app
 drew for them.
 """
@@ -32,11 +32,7 @@ async def _live_ids(provider_key: str) -> set[str] | None:
         return None
     key = provider.api_key()
 
-    if provider_key == "anthropic":
-        url = "https://api.anthropic.com/v1/models"
-        headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
-        strip = ""
-    elif provider_key == "gemini":
+    if provider_key == "gemini":
         url = "https://generativelanguage.googleapis.com/v1beta/openai/models"
         headers = {"Authorization": f"Bearer {key}"}
         strip = "models/"

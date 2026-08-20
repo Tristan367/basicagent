@@ -62,9 +62,9 @@ def test_recommended_excludes_the_priciest_model():
 
 
 def test_provider_for_model_uses_the_curated_table():
-    assert provider_for_model("claude-opus-5") == "anthropic"
     assert provider_for_model("deepseek-v4-pro") == "deepseek"
     assert provider_for_model("gemini-3.7-flash") == "gemini"
+    assert provider_for_model("openai/gpt-5-mini") == "openrouter"
 
 
 def test_discovered_model_routes_to_the_provider_that_advertised_it():
@@ -121,3 +121,22 @@ def test_contrast_text_stays_readable(colour, expected):
 def test_contrast_text_survives_nonsense():
     assert contrast_text("") == "#ffffff"
     assert contrast_text("not a colour") == "#ffffff"
+
+
+def test_no_model_here_costs_enough_to_frighten_someone():
+    """Claude was removed on purpose. It is excellent and it is many times the
+    price of everything else here, and the person this app is for has no way to
+    know that until the bill arrives -- which is the one surprise an app aimed
+    at people who are nervous about money must not spring.
+
+    Anyone who does want it can still reach it through OpenRouter or a custom
+    endpoint; it simply is not the thing a beginner is shown and can pick by
+    accident."""
+    from agent_server.config import MODELS
+
+    assert not any(m["id"].startswith("claude") for m in MODELS)
+    assert not any(m["provider"] == "anthropic" for m in MODELS)
+    # And nothing on offer is wildly out of step with the rest.
+    dearest = max(m["price_out"] for m in MODELS)
+    cheapest = min(m["price_out"] for m in MODELS)
+    assert dearest / cheapest < 50, "something here is orders of magnitude pricier than the rest"

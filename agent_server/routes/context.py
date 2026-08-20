@@ -61,17 +61,6 @@ PROVIDER_INFO = {
         "get_key_url": "https://openrouter.ai",
         "get_key_label": "get a key",
     },
-    "anthropic": {
-        "description": (
-            "Claude — some of the smartest, most careful AIs you can get. "
-            "Excellent quality, but much more expensive: work that costs cents on "
-            "DeepSeek could cost many dollars here. Worth it if you want the very "
-            "best and don't mind the price."
-        ),
-        "key_hint": "sk-ant-\u2026",
-        "get_key_url": "https://platform.claude.com",
-        "get_key_label": "get a key",
-    },
 }
 
 
@@ -115,7 +104,7 @@ async def _chat_context(session: dict) -> dict:
         # Runs of tool results folded into one "here is what happened" item, so
         # a reloaded conversation shows the same account of the work as the one
         # that was watched live.
-        "messages": activity.group(messages),
+        "messages": await _name_open_sessions(activity.group(messages)),
         "activity_families": json.dumps(activity.FAMILIES),
         "compactions": await db.get_compactions(session["id"]),
         "model_display": MODELS_BY_ID.get(session.get("model", ""), {}).get("name", session.get("model", "")),
@@ -148,6 +137,23 @@ async def _chat_context(session: dict) -> dict:
         # reader from a page, so this is the only signal we have.
         "uses_screen_reader": settings.get("uses_screen_reader", "0") == "1",
     }
+
+
+async def _name_open_sessions(items: list[dict]) -> list[dict]:
+    """Give each "open this project" button the project's name.
+
+    The name is not on the message row -- only the id is -- so it is looked up
+    here rather than stored, which also means a renamed project's button says
+    the new name instead of the one it had when the button was made.
+    """
+    out = []
+    for m in items:
+        sid = m.get("open_session")
+        if sid:
+            session = await db.get_session(sid)
+            m = {**m, "open_session_name": session["name"] if session else ""}
+        out.append(m)
+    return out
 
 
 async def _settings_context() -> dict:

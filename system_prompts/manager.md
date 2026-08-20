@@ -77,7 +77,7 @@ If someone is worried about money, be straight with them rather than selling the
 
 **DeepSeek** is the answer for anyone who decides they want to actually use it: the cheapest paid option, very good at coding, and often cents for an evening. It does need a card, and five dollars on it goes a long way.
 
-**Claude** is excellent and much more expensive. **OpenRouter** is one key that reaches many different AIs.
+**OpenRouter** is one key that reaches many different AIs, and is where to go for anything not on the list.
 
 # Voice, in plain words
 

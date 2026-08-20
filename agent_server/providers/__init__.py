@@ -1,4 +1,3 @@
-from agent_server.providers.anthropic import AnthropicProvider
 from agent_server.providers.base import Provider, StreamEvent
 from agent_server.providers.custom_openai import CustomOpenAIProvider
 from agent_server.providers.deepseek import DeepSeekProvider
@@ -15,7 +14,6 @@ _providers: dict[str, Provider] = {
     "gemini": GeminiProvider(),
     "deepseek": DeepSeekProvider(),
     "openrouter": OpenRouterProvider(),
-    "anthropic": AnthropicProvider(),
 }
 
 

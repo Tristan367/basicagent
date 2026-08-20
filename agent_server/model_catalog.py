@@ -14,8 +14,6 @@ RECOMMENDED_MODELS = {
     "deepseek-v4-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.7-flash",
-    "claude-haiku-4-5-20251001",
-    "claude-sonnet-5",
 }
 
 
@@ -41,7 +39,6 @@ def price_label(price_out: float, free_tier: bool = False) -> str:
 PROVIDER_LABEL = {
     "gemini": "Google",
     "deepseek": "DeepSeek",
-    "anthropic": "Anthropic",
     "openrouter": "OpenRouter",
 }
 

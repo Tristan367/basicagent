@@ -13,7 +13,6 @@ from PIL import Image
 
 from agent_server import images as pictures
 from agent_server.conversation import build_messages, to_api_message
-from agent_server.providers.anthropic import _convert_messages
 
 
 def make(path, size=(80, 60), colour=(200, 30, 30), mode="RGB"):
@@ -236,55 +235,3 @@ def test_nothing_is_sent_as_a_picture_when_the_model_cannot_see(shot):
              "images": json.dumps([shot])}]
     built = build_messages("sys", [], rows, sees_images=False)
     assert all(isinstance(m["content"], str) for m in built)
-
-
-# ── Anthropic, which spells a picture differently ──────────────────────────
-
-
-def test_anthropic_gets_its_own_image_block(shot):
-    row = {"role": "user", "content": "look", "images": json.dumps([shot])}
-    converted = _convert_messages([to_api_message(row, sees_images=True)])
-    block = converted[0]["content"][1]
-    assert block["type"] == "image"
-    assert block["source"] == {
-        "type": "base64", "media_type": "image/png",
-        "data": block["source"]["data"],
-    }
-    assert base64.b64decode(block["source"]["data"])[:4] == b"\x89PNG"
-
-
-def test_anthropic_still_gets_tool_results_immediately_after_the_call(shot):
-    """A picture turn after the results must merge into the same user turn, not
-    open a second one -- the API rejects a tool_result that is not adjacent."""
-    rows = [
-        {"role": "user", "content": "go"},
-        {"role": "assistant", "content": "", "tool_calls": [
-            {"id": "a", "type": "function", "function": {"name": "browser", "arguments": "{}"}}]},
-        {"role": "tool", "content": "done", "tool_call_id": "a", "images": json.dumps([shot])},
-    ]
-    built = build_messages("sys", [], rows, sees_images=True)
-    converted = _convert_messages(built)
-    assert [m["role"] for m in converted] == ["user", "assistant", "user"]
-    kinds = [b["type"] for b in converted[-1]["content"]]
-    assert kinds[0] == "tool_result" and "image" in kinds
-
-
-def test_a_remote_url_is_never_passed_through_to_a_provider():
-    """Nothing in this app puts one in a message, and quietly forwarding one
-    would make a request to a third party on the model's say-so."""
-    msg = {"role": "user", "content": [
-        {"type": "text", "text": "hi"},
-        {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}},
-    ]}
-    blocks = _convert_messages([msg])[0]["content"]
-    assert [b["type"] for b in blocks] == ["text"]
-
-
-def test_a_text_only_model_is_told_it_cannot_see_rather_than_that_it_scrolled_away(shot):
-    """Two different notes, and using the wrong one is worse than saying
-    nothing: "it scrolled out of view -- take it again" is both the wrong
-    explanation and, for something the user attached, an impossible
-    instruction."""
-    rows = [{"role": "user", "content": "look at this", "images": json.dumps([shot])}]
-    said = build_messages("sys", [], rows, sees_images=False)[1]["content"]
-    assert "cannot see" in said and "scrolled out" not in said

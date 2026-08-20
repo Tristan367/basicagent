@@ -24,7 +24,7 @@
   {% elif m.role == 'tool' %}
     {% if m.open_session %}
     <div class="message action" id="msg-{{ m.id }}">
-        <button type="button" class="open-project-btn" data-nav="/sessions/{{ m.open_session }}">Open this project &rarr;</button>
+        <button type="button" class="open-project-btn" data-nav="/sessions/{{ m.open_session }}">Open {{ m.open_session_name or "this project" }} &rarr;</button>
     </div>
     {% endif %}
   {% elif m.role == 'user' %}

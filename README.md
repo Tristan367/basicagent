@@ -24,7 +24,7 @@ exactly which model you're using and what it costs.
 - **Google Gemini** — has a free tier, so it costs nothing to try the whole app.
   ([get a key](https://aistudio.google.com/apikey))
 - **DeepSeek** — the cheapest paid option and very good at coding; the default.
-- **Anthropic** (Claude) and **OpenRouter** (one key, many models) also work, as
+- **OpenRouter** (one key, many models) also works, as
   does any OpenAI-compatible endpoint you add yourself (Ollama, vLLM, LM Studio).
 
 ## How it works
@@ -46,7 +46,7 @@ agent_server/
   conversation.py   DB rows <-> provider wire format
   database.py       SQLite (one connection, WAL)
   system_prompt.py  hard-coded prompts (agent + manager), frozen per session
-  providers/        DeepSeek, Gemini, Anthropic, OpenRouter, custom OpenAI-compatible
+  providers/        DeepSeek, Gemini, OpenRouter, custom OpenAI-compatible
   tools/            bash, browser, capture, edit, explore, glob, grep, read,
                     task, webfetch, websearch, write, session-manager tools
   routes/           home chat, project chat, settings, chat/streaming, speech

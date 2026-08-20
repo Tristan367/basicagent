@@ -1578,7 +1578,7 @@
         noteToolDone(ev.name);
         if (ev.open_session) {
           pendingOpen = ev.open_session;
-          appendAction(ev.open_session);
+          appendAction(ev.open_session, ev.open_session_name);
         }
         setStatus('Thinking\u2026');
         break;

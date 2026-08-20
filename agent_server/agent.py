@@ -699,6 +699,7 @@ def _tool_end_event(call: dict, name: str, result: ToolResult, elapsed_ms: int) 
         "code_start": result.code_start,
         "duration_ms": elapsed_ms,
         "open_session": result.open_session,
+        "open_session_name": result.open_session_name,
     }
 
 

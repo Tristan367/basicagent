@@ -91,9 +91,9 @@ def stored_images(row: dict) -> list[str]:
 def image_parts(paths: list[str]) -> list[dict]:
     """Picture paths as OpenAI content parts, skipping any that cannot be read.
 
-    The OpenAI shape is the one this app stores and speaks; the Anthropic
-    adapter translates these on the way out. Doing it the other way round would
-    mean every provider but one converting on every request.
+    Every provider this app talks to takes the OpenAI shape, so this is what
+    goes on the wire unchanged. A provider with its own spelling for a picture
+    would translate here, on the way out.
     """
     from agent_server import images as pictures
 

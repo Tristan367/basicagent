@@ -54,7 +54,7 @@ async def _discover_models():
     from agent_server import config
     from agent_server.providers import get_provider
 
-    for key in ("deepseek", "gemini", "anthropic"):
+    for key in ("deepseek", "gemini"):
         try:
             provider = get_provider(key)
             if not provider.has_credentials():

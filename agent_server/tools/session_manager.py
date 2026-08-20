@@ -134,6 +134,7 @@ async def create_project(
         ),
         title=f"Created project '{name}'",
         open_session=session["id"],
+        open_session_name=session["name"],
     )
 
 
@@ -171,6 +172,7 @@ async def open_project(ctx: ToolContext, *, name: str, **_) -> ToolResult:
         ),
         title=f"Opened '{session['name']}'",
         open_session=session["id"],
+        open_session_name=session["name"],
     )
 
 
