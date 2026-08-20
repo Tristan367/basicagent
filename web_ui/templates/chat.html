@@ -182,6 +182,42 @@
         </svg>
     </button>
 
+    {#
+      Play, out on its own and worth pressing.
+
+      It was a small triangle in the row of composer tools, beside the "read my
+      message aloud" button -- which was also a triangle. Two identical glyphs
+      in one row, one of which starts your game and one of which reads your
+      draft back. Stop was a third button next to it, so both halves of one
+      state were on screen at all times and only ever one of them did anything.
+
+      One button now, which is either Play or Stop and never both, in the gutter
+      to the left of the conversation. On a narrow screen the gutter is gone and
+      it sits above the composer -- the mirror of the jump-to-newest button on
+      the right, which is the shape people already know from this app.
+
+      Hidden until the assistant has run this project once, because a Play
+      button for a project with nothing to play is a promise the app cannot
+      keep. After that it stays: the command is remembered on the project, so
+      coming back tomorrow and pressing Play works.
+    #}
+    <button type="button" class="play-fab" id="play-fab" hidden
+            aria-label="Play your project"
+            title="Play — open your project so you can use it">
+        <span class="play-fab-glyph" aria-hidden="true">
+            <svg class="play-fab-play" viewBox="0 0 24 24" width="28" height="28">
+                <path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.54.84l10-6.5a1 1 0 0 0 0-1.68l-10-6.5A1 1 0 0 0 8 5.5z"/>
+            </svg>
+            <svg class="play-fab-stop" viewBox="0 0 24 24" width="28" height="28">
+                <rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/>
+            </svg>
+        </span>
+        {# The word as well as the glyph. This is the one control in the app that
+           makes the thing you built actually appear, and a bare triangle asks
+           somebody to already know that. #}
+        <span class="play-fab-word" id="play-fab-word">Play</span>
+    </button>
+
     <div class="composer-wrap">
         <form id="chat-form" autocomplete="off">
             <div class="composer">
@@ -204,10 +240,23 @@
                         </button>
                         {% endif %}
                         {% if tts.available %}
+                        {# A block of text with sound coming off it. It was a
+                           plain play triangle, which is what Play is, and Play
+                           was two buttons along in the same row -- so the row
+                           had two identical triangles doing entirely different
+                           things. Play has since moved out of here altogether,
+                           but the triangle was never right for this anyway:
+                           this reads your own draft back to you, and a page
+                           being spoken says that where a triangle does not. #}
                         <button type="button" id="read-draft-btn" class="icon-btn" title="Read my message aloud"
                                 aria-label="Read my message aloud">
                             <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
-                                <path fill="currentColor" d="M8 5v14l11-7z"/>
+                                <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                                      d="M2.5 5h11M2.5 9.4h8M2.5 13.8h11M2.5 18.2h6"/>
+                                <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                                      d="M17 9.2a4.6 4.6 0 0 1 0 5.6"/>
+                                <path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                                      d="M20 6.6a8.6 8.6 0 0 1 0 10.8"/>
                             </svg>
                         </button>
                         {% endif %}
@@ -227,25 +276,6 @@
                                 <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
                                       d="M2.5 8.5a2 2 0 0 1 2-2H7l1.5-2.5h7L17 6.5h2.5a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2z"/>
                                 <circle cx="12" cy="13" r="4.1" fill="none" stroke="currentColor" stroke-width="1.9"/>
-                            </svg>
-                        </button>
-                        {# Hidden until the assistant has run this project once,
-                           because a Play button for a project with nothing to
-                           play is a promise the app cannot keep. After that it
-                           stays: the command is remembered on the project, so
-                           coming back tomorrow and pressing Play works. #}
-                        <button type="button" id="play-btn" class="icon-btn" hidden
-                                aria-label="Play your project"
-                                title="Play — open your project so you can use it">
-                            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
-                                <path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.54.84l10-6.5a1 1 0 0 0 0-1.68l-10-6.5A1 1 0 0 0 8 5.5z"/>
-                            </svg>
-                        </button>
-                        <button type="button" id="play-stop-btn" class="icon-btn" hidden
-                                aria-label="Stop your project"
-                                title="Stop — close your project and shut it down">
-                            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
-                                <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
                             </svg>
                         </button>
                         {% if tts.available %}

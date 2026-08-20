@@ -148,3 +148,94 @@ def test_the_reveal_command_selects_the_file_on_every_platform(monkeypatch, tmp_
     ):
         monkeypatch.setattr(files.sys, "platform", platform)
         assert any(expected in part for part in files._reveal_command(target))
+
+
+# ── choosing a folder ───────────────────────────────────────────────────────
+#
+# Typing a path is something you can only do if you already know it, which is
+# the opposite of who this app is for. So the desktop's own folder chooser gets
+# opened and asked.
+
+
+def test_a_folder_chooser_is_found_on_every_platform(monkeypatch, tmp_path):
+    for platform, expected in (
+        ("darwin", "osascript"),
+        ("win32", "powershell"),
+        ("linux", "zenity"),
+    ):
+        monkeypatch.setattr(files.sys, "platform", platform)
+        monkeypatch.setattr(files.shutil, "which", lambda name: "/usr/bin/" + name)
+        cmd = files._picker_command(tmp_path)
+        assert cmd and cmd[0] == expected
+
+
+def test_a_linux_desktop_with_no_chooser_installed_reports_none(monkeypatch, tmp_path):
+    """The button is hidden rather than shown and broken. Somebody on a bare
+    desktop can still type the path, which is what the box is for."""
+    monkeypatch.setattr(files.sys, "platform", "linux")
+    monkeypatch.setattr(files.shutil, "which", lambda name: None)
+    assert files._picker_command(tmp_path) is None
+
+
+def test_the_linux_choosers_are_tried_in_turn(monkeypatch, tmp_path):
+    monkeypatch.setattr(files.sys, "platform", "linux")
+    for installed in ("zenity", "kdialog", "yad", "qarma"):
+        monkeypatch.setattr(
+            files.shutil, "which",
+            lambda name, want=installed: "/usr/bin/" + name if name == want else None,
+        )
+        cmd = files._picker_command(tmp_path)
+        assert cmd and cmd[0] == installed
+
+
+async def test_availability_matches_whether_there_is_a_chooser(monkeypatch):
+    monkeypatch.setattr(files, "_picker_command", lambda start: ["true"])
+    assert (await files.folder_picker_available())["available"] is True
+    monkeypatch.setattr(files, "_picker_command", lambda start: None)
+    assert (await files.folder_picker_available())["available"] is False
+
+
+async def test_the_chosen_folder_comes_back(db, monkeypatch, tmp_path):
+    monkeypatch.setattr(files, "_picker_command",
+                        lambda start: ["echo", str(tmp_path)])
+    out = await files.folder_picker()
+    assert out["path"] == str(tmp_path)
+
+
+async def test_closing_the_chooser_without_choosing_is_not_an_error(db, monkeypatch):
+    """Cancel exits non-zero with nothing on stdout. Reporting that as a failure
+    would put a red message on screen for somebody who simply changed their
+    mind."""
+    monkeypatch.setattr(files, "_picker_command", lambda start: ["false"])
+    out = await files.folder_picker()
+    assert out["ok"] is True
+    assert out["path"] == ""
+
+
+async def test_a_chooser_that_is_never_answered_gives_up(db, monkeypatch):
+    """Opened on a screen nobody is looking at, the dialog would otherwise sit
+    there forever holding a process open."""
+    monkeypatch.setattr(files, "_picker_command", lambda start: ["sleep", "30"])
+    monkeypatch.setattr(files, "PICKER_TIMEOUT", 0.2)
+    out = await files.folder_picker()
+    assert out["path"] == ""
+
+
+async def test_a_child_cannot_open_the_folder_chooser(db, monkeypatch):
+    """Pointing a project anywhere on the machine is exactly what the separation
+    exists to prevent, so the endpoint refuses it and not only the button."""
+    await db.set_setting("child_mode", "1")
+    monkeypatch.setattr(files, "_picker_command", lambda start: ["true"])
+    try:
+        with pytest.raises(HTTPException) as excinfo:
+            await files.folder_picker()
+        assert excinfo.value.status_code == 403
+    finally:
+        await db.set_setting("child_mode", "0")
+
+
+async def test_no_chooser_is_a_clear_refusal_rather_than_a_crash(db, monkeypatch):
+    monkeypatch.setattr(files, "_picker_command", lambda start: None)
+    with pytest.raises(HTTPException) as excinfo:
+        await files.folder_picker()
+    assert excinfo.value.status_code == 501

@@ -1019,6 +1019,12 @@ input.tts-volume {
     display: flex;
     flex-direction: column;
     gap: 20px;
+    /* These controls are rendered twice from the same markup: as a 960px page,
+       and inside the 520px panel over the chat. Anything in here that has to
+       reflow when it is narrow must ask how wide *this* is, because the
+       window's width says nothing about which of the two it is looking at.
+       See the endpoint table's @container rule. */
+    container-type: inline-size;
 }
 
 .panel {
@@ -1501,6 +1507,56 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 }
 .scroll-bottom-btn:hover { color: var(--accent); border-color: var(--accent); }
 
+/* ── Play, and Stop, which are the same button ───────────────────────────────
+   The one control that makes the thing you built actually appear, so it is
+   solid, coloured and about twice the area of anything in the composer. It is
+   never both at once: pressing it while your project is open stops it, and the
+   glyph, the word and the colour say which one you are looking at.
+
+   Positioned by JS to sit above the composer and left of the conversation --
+   the mirror of the jump-to-newest button. `left` and `bottom` here are the
+   no-JS fallback, and are deliberately clear of the settings button in the
+   corner below. */
+.play-fab {
+    position: fixed;
+    left: 20px;
+    bottom: 96px;
+    z-index: 20;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 22px 0 18px;
+    height: 60px;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent-btn);
+    color: #fff;
+    font-family: var(--font);
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+    transition: transform 0.12s ease, background-color 0.18s ease,
+                box-shadow 0.18s ease;
+}
+.play-fab[hidden], .play-fab.no-room { display: none; }
+.play-fab-glyph { display: grid; place-items: center; }
+/* Two glyphs in the markup, one shown. Swapping the SVG from script instead
+   meant re-parsing it on every state change for no gain. */
+.play-fab .play-fab-stop, .play-fab.running .play-fab-play { display: none; }
+.play-fab.running .play-fab-stop { display: block; }
+.play-fab:hover { transform: scale(1.05); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38); }
+/* Presses in under the finger. Small, but it is the difference between a
+   picture of a button and something that feels like a button. */
+.play-fab:active { transform: scale(0.94); }
+.play-fab.running { background: var(--danger); }
+.play-fab:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+}
+
 /* Respect users who prefer less motion: turn animations off entirely. */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
@@ -1640,6 +1696,30 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 /* A warning about one row, spanning the whole table so it cannot squeeze a
    column. `.endpoint-row` is display:contents, so this is a grid item. */
 .endpoint-rowmsg { grid-column: 1 / -1; margin: 0 0 6px; }
+
+/* Five columns whose minimum widths add up to about 600px. Narrower than that
+   and the table becomes two columns: every field on a line of its own, with
+   Save and Remove sharing the last one.
+
+   A container query rather than a media query, because the settings panel is
+   520px wide however wide the window is. As a media query keyed to the window
+   this never fired inside the panel, and the fields ran off its edge. */
+@container (max-width: 620px) {
+    .endpoint-table { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* The header labels columns that no longer exist. Each field is labelled by
+       its placeholder, which already says Name, Address and Key. */
+    .endpoint-header { display: none; }
+    .endpoint-name { grid-column: 1 / -1; padding-top: 10px; }
+    .endpoint-row input { grid-column: 1 / -1; }
+    /* A bordered box stretched across a whole line with its label against the
+       left edge reads as another text box. Centred, it reads as a button. */
+    .endpoint-table button { min-width: 0; justify-content: center; }
+    /* The add row has no Remove beside it. */
+    .endpoint-new > button { grid-column: 1 / -1; }
+    /* Space between the last saved endpoint and the empty row for a new one --
+       stacked, they otherwise run together into one column of boxes. */
+    .endpoint-new > input:first-child { margin-top: 12px; }
+}
 
 /* ── Picture preview ─────────────────────────────────────────────────────── */
 
@@ -1977,12 +2057,32 @@ html[data-theme="dark"] {
 .sessions-new:hover, .sessions-new:focus-visible { color: var(--accent) !important; }
 
 .stack-label { display: block; margin: 14px 0 6px; font-weight: 600; }
-#new-project-modal input[type="text"] { width: 100%; }
-.new-project-where { margin: 12px 0 0; gap: 0; }
-/* Tighter than the settings page's version: this is a two-line choice inside a
-   dialog, not a list of preferences to scan. */
-.new-project-where .checkbox-label { min-height: 38px; font-size: 0.98rem; }
+/* The text boxes in this dialog. They used to inherit nothing at all and came
+   out as the browser's own inch-tall grey slots, which next to the app's own
+   controls read as a half-finished page rather than a deliberate one. Same
+   values as the settings page's boxes, deliberately: they are the same thing. */
+#new-project-modal input[type="text"] {
+    width: 100%;
+    padding: 11px 12px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: var(--font);
+    background-color: var(--surface);
+    color: var(--text);
+}
+#new-project-modal input[type="text"]::placeholder { color: var(--text-dim); }
+.new-project-own { margin: 14px 0 0; min-height: 38px; font-size: 0.98rem; }
 #new-project-folder-row { margin-top: 10px; }
+/* The box and the Choose button, on one line, with the box taking whatever is
+   left. `min-width: 0` because a flex item will not shrink below the width of
+   its own placeholder without it, and this one's placeholder is a sentence.
+   `stretch` so the button is exactly as tall as the box beside it -- centred on
+   it, a shorter button next to a taller box reads as two unrelated controls. */
+.folder-pick { display: flex; gap: 8px; align-items: stretch; }
+.folder-pick input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.folder-pick button { flex: none; padding: 0 16px; }
+#new-project-folder-row .hint { margin-top: 8px; }
 #new-project-folder.drop-target {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
@@ -2139,6 +2239,11 @@ body.settings-open .settings-scroll {
     width: auto;
 }
 .app-bar-btn.icon-only svg { width: 26px; height: 26px; }
+/* Muted, like every other icon in the app -- the paperclip, the camera, the
+   read-my-draft button. In full white it was the brightest thing on the bar,
+   which is not what a settings gear should be. */
+.app-bar-btn.icon-only#settings-btn { color: var(--text-dim); }
+.app-bar-btn.icon-only#settings-btn:hover { color: var(--accent); }
 
 /* On a wide screen the bar is not where this belongs. There is empty gutter
    either side of the conversation, the bar is the one place every other control
@@ -2158,7 +2263,7 @@ body.settings-open .settings-scroll {
     align-items: center;
     justify-content: center;
     background: var(--surface);
-    color: var(--text);
+    color: var(--text-dim);
     border: 2px solid var(--border);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
     cursor: pointer;
@@ -2197,17 +2302,10 @@ body.settings-open .settings-fab { display: none; }
 
     .zoom-row { flex-wrap: wrap; }
 
-    /* The endpoint table is five columns with minimum widths that add up to
-       more than a narrow window. One column instead: the header is dropped
-       (it labels columns that no longer exist) and each field is labelled by
-       its placeholder, which already says Name, Address and Key. */
-    /* minmax(0, 1fr), not 1fr: a plain 1fr track refuses to shrink below its
-       contents' min-content width, so a long placeholder pushed the column
-       wider than the window and took the buttons with it. */
-    .endpoint-table { grid-template-columns: minmax(0, 1fr); }
-    .endpoint-table input, .endpoint-table button { min-width: 0; }
-    .endpoint-header { display: none; }
-    .endpoint-name { padding-top: 10px; }
+    /* The endpoint table reflows on its own container's width -- see the
+       @container rule beside it -- because the same markup is also rendered
+       inside a 520px panel on a wide screen, where this would never fire. */
+    .endpoint-table input { min-width: 0; }
 
     /* A <select> sizes itself to its widest option, and the model names here
        are long -- "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M (your own

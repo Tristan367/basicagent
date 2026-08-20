@@ -205,3 +205,31 @@ async def test_deleting_a_project_stops_what_it_was_running(project, tmp_path, m
     await asyncio.sleep(0.4)
     assert running_servers() == before, "the project was deleted but its server lived on"
     await database.close()
+
+
+# ── the button in the chat ──────────────────────────────────────────────────
+
+
+def test_play_and_stop_are_one_button():
+    """They used to be two, side by side in the row of composer tools, and both
+    were on screen at once -- so half the time you were looking at a Stop button
+    for something that was not running. One control now, which says which of the
+    two it is."""
+    from pathlib import Path
+
+    page = Path("web_ui/templates/chat.html").read_text()
+    assert page.count('id="play-fab"') == 1
+    assert 'id="play-btn"' not in page and 'id="play-stop-btn"' not in page
+
+
+def test_play_is_not_another_triangle_in_the_composer():
+    """Play was a triangle, and "read my message aloud" two buttons along was
+    the same triangle. Play has left the row; what stays must not be one."""
+    from pathlib import Path
+
+    page = Path("web_ui/templates/chat.html").read_text()
+    tools = page[page.index('class="composer-tools"'):page.index('id="send-btn"')]
+    assert "play-fab" not in tools, "Play is back in the composer row"
+    draft = tools[tools.index('id="read-draft-btn"'):]
+    draft = draft[:draft.index("</button>")]
+    assert "M8 5v14l11-7z" not in draft, "read-my-message is a play triangle again"

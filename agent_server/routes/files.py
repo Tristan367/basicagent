@@ -16,12 +16,14 @@ person clicking a link about their own computer.
 import asyncio
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from agent_server import database as db
+from agent_server import parental
 
 log = logging.getLogger(__name__)
 
@@ -298,3 +300,96 @@ async def reveal(payload: dict):
     raise HTTPException(
         501, "This computer has no file manager the app can open."
     )
+
+
+# ── Choosing a folder ────────────────────────────────────────────────────────
+#
+# Typing a path is a thing you can only do if you already know it, which is the
+# opposite of who this app is for. The desktop already has a folder chooser and
+# the user already knows how to drive it, so ask the desktop for one and take
+# the path it gives back.
+#
+# This is the same trick as revealing a file above: the app and the desktop are
+# on the same computer, so the server is the one that can reach it.
+
+# How long to leave the dialog open. Long enough for somebody to go and look for
+# the folder, short enough that a dialog nobody ever answers -- opened on a
+# screen they cannot see, say -- does not leave a process behind forever.
+PICKER_TIMEOUT = 300
+
+
+def _picker_command(start: Path) -> list[str] | None:
+    """The platform's "choose a folder" dialog, or None if there isn't one."""
+    if sys.platform == "darwin":
+        return ["osascript", "-e",
+                'POSIX path of (choose folder with prompt "Choose a folder for your project")']
+    if sys.platform.startswith("win"):
+        # -STA because the folder dialog is a WinForms control and will not open
+        # on a multi-threaded apartment.
+        script = (
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
+            "$d.Description = 'Choose a folder for your project';"
+            "if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }"
+        )
+        return ["powershell", "-NoProfile", "-STA", "-Command", script]
+    # Freedesktop. zenity is GNOME's and is on most desktops; kdialog is KDE's;
+    # yad and qarma are drop-in replacements people install when neither is.
+    if shutil.which("zenity"):
+        return ["zenity", "--file-selection", "--directory",
+                "--title=Choose a folder for your project", f"--filename={start}/"]
+    if shutil.which("kdialog"):
+        return ["kdialog", "--getexistingdirectory", str(start),
+                "--title", "Choose a folder for your project"]
+    for alt in ("yad", "qarma"):
+        if shutil.which(alt):
+            return [alt, "--file-selection", "--directory",
+                    "--title=Choose a folder for your project", f"--filename={start}/"]
+    return None
+
+
+@router.get("/folder-picker")
+async def folder_picker_available():
+    """Whether asking for a folder would do anything.
+
+    The button is hidden when it would not, the same as the camera: a control
+    that cannot work is worse than no control, because pressing it teaches you
+    nothing about why.
+    """
+    return {"available": _picker_command(Path.home()) is not None}
+
+
+@router.post("/folder-picker")
+async def folder_picker():
+    """Open the desktop's folder chooser and return what the user picked."""
+    if await parental.current_profile() == "child":
+        raise HTTPException(403, "Choosing a folder is not available in child mode.")
+
+    cmd = _picker_command(Path.home())
+    if cmd is None:
+        raise HTTPException(501, "This computer has no folder chooser the app can open.")
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except OSError as e:
+        log.info("folder chooser would not start: %s", e)
+        raise HTTPException(501, "The folder chooser would not open.") from e
+
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=PICKER_TIMEOUT)
+    except TimeoutError:
+        proc.kill()
+        # Not an error the user should see a red message about: they walked away
+        # from a dialog. The box they typed into is still there and still works.
+        return {"ok": True, "path": ""}
+
+    # Cancel is a non-zero exit with nothing on stdout, and is not a failure.
+    path = out.decode("utf-8", "replace").strip().splitlines()
+    chosen = path[0].strip() if path else ""
+    if not chosen:
+        return {"ok": True, "path": ""}
+    return {"ok": True, "path": str(Path(chosen))}

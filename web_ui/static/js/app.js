@@ -616,8 +616,10 @@
     const errorEl = document.getElementById('new-project-error');
     const createBtn = document.getElementById('new-project-create');
     const cancelBtn = document.getElementById('new-project-cancel');
-    const whereEls = modal.querySelectorAll('input[name="new_project_where"]');
+    const ownEl = document.getElementById('new-project-own-folder');
+    const browseBtn = document.getElementById('new-project-browse');
     let returnTo = null;
+    let pickerChecked = false;
 
     function showError(text) {
       errorEl.textContent = text || '';
@@ -626,8 +628,47 @@
 
     function refreshWhere() {
       if (!folderRow) return;
-      const chosen = [...whereEls].find((r) => r.checked);
-      folderRow.hidden = !chosen || chosen.value !== 'existing';
+      folderRow.hidden = !(ownEl && ownEl.checked);
+    }
+
+    // Whether this desktop has a folder chooser the server can open. Asked once,
+    // the first time the dialog is opened rather than on every page load: most
+    // people never open this at all.
+    async function checkPicker() {
+      if (pickerChecked || !browseBtn) return;
+      pickerChecked = true;
+      try {
+        const resp = await fetch('/api/files/folder-picker');
+        const data = await resp.json();
+        browseBtn.hidden = !(data && data.available);
+      } catch (e) { /* stays hidden; typing the path still works */ }
+    }
+
+    async function browse() {
+      browseBtn.disabled = true;
+      const said = browseBtn.textContent;
+      browseBtn.textContent = 'Choosing…';
+      try {
+        const resp = await fetch('/api/files/folder-picker', { method: 'POST' });
+        const data = await resp.json().catch(() => null);
+        if (!resp.ok) {
+          showError((data && data.detail) || 'The folder chooser would not open.');
+          return;
+        }
+        // An empty path means they closed it without choosing, which is not
+        // something to say anything about.
+        if (data && data.path) {
+          folderEl.value = data.path;
+          showError('');
+          announce('Folder chosen: ' + data.path);
+        }
+      } catch (e) {
+        showError('The folder chooser would not open.');
+      } finally {
+        browseBtn.disabled = false;
+        browseBtn.textContent = said;
+        folderEl.focus();
+      }
     }
 
     function open() {
@@ -635,8 +676,9 @@
       showError('');
       nameEl.value = '';
       if (folderEl) folderEl.value = '';
-      if (whereEls.length) whereEls[0].checked = true;
+      if (ownEl) ownEl.checked = false;
       refreshWhere();
+      checkPicker();
       modal.hidden = false;
       modal.classList.add('shown');
       nameEl.focus();
@@ -651,11 +693,10 @@
     async function create() {
       const name = nameEl.value.trim();
       if (!name) { showError('Give it a name first.'); nameEl.focus(); return; }
-      const chosen = [...whereEls].find((r) => r.checked);
-      const folder = (chosen && chosen.value === 'existing' && folderEl)
-        ? folderEl.value.trim() : '';
-      if (chosen && chosen.value === 'existing' && !folder) {
-        showError('Say which folder, or let me pick a place for it.');
+      const own = !!(ownEl && ownEl.checked);
+      const folder = own && folderEl ? folderEl.value.trim() : '';
+      if (own && !folder) {
+        showError('Say which folder, or untick the box.');
         folderEl.focus();
         return;
       }
@@ -683,10 +724,25 @@
     openBtn.addEventListener('click', open);
     cancelBtn.addEventListener('click', close);
     createBtn.addEventListener('click', create);
-    whereEls.forEach((r) => r.addEventListener('change', refreshWhere));
+    if (ownEl) {
+      ownEl.addEventListener('change', () => {
+        refreshWhere();
+        // Ticking it is asking to name a folder, so put the cursor where the
+        // folder goes rather than leaving it on the box that was just ticked.
+        if (ownEl.checked && folderEl) folderEl.focus();
+      });
+    }
+    if (browseBtn) browseBtn.addEventListener('click', browse);
     modal.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { e.stopPropagation(); close(); }
-      if (e.key === 'Enter' && e.target !== createBtn) { e.preventDefault(); create(); }
+      // Enter submits, except on the two buttons that are not "create it" --
+      // pressing Enter on Choose used to make the project instead of opening
+      // the chooser, which is the one moment it must not.
+      if (e.key === 'Enter' && e.target !== createBtn && e.target !== browseBtn
+          && e.target !== cancelBtn) {
+        e.preventDefault();
+        create();
+      }
     });
 
     // Dropping a folder fills the path in. The same gesture as attaching one to
@@ -766,6 +822,10 @@
       }
       panel.hidden = false;
       document.body.classList.add('settings-open');
+      // After the layout has settled, not before: the panel takes room from the
+      // chat and the composer moves, and the two floating buttons are placed
+      // against where the composer is.
+      requestAnimationFrame(placeFloatingButtons);
       triggers.forEach((t) => t.setAttribute('aria-expanded', 'true'));
       // Into the panel, so a keyboard or screen reader user lands on what just
       // appeared rather than being left wherever they were.
@@ -780,6 +840,7 @@
       if (!isOpen()) return;
       panel.hidden = true;
       document.body.classList.remove('settings-open');
+      requestAnimationFrame(placeFloatingButtons);
       triggers.forEach((t) => t.setAttribute('aria-expanded', 'false'));
       if (returnFocus !== false) visibleTrigger().focus();
       announce('Settings closed.');
@@ -1896,29 +1957,75 @@
   // game anywhere and no terminal to start one from. So the same machinery
   // gets a button.
 
-  const playBtn = document.getElementById('play-btn');
-  const playStopBtn = document.getElementById('play-stop-btn');
+  const playBtn = document.getElementById('play-fab');
+  const playWord = document.getElementById('play-fab-word');
   let playState = { command: '', running: false };
   let playBusy = false;
 
   function renderPlay() {
-    if (!playBtn || !playStopBtn) return;
+    if (!playBtn) return;
     const has = !!playState.command;
     playBtn.hidden = !has;
-    playStopBtn.hidden = !has || !playState.running;
+    // One button, two states, never both on screen at once. The glyph, the
+    // word, the colour and what pressing it does all change together.
+    const on = !!playState.running;
+    playBtn.classList.toggle('running', on);
+    if (playWord) playWord.textContent = on ? 'Stop' : 'Play';
     // Disabled rather than hidden while the assistant works: a button that
     // vanishes and comes back is harder to find again than one that greys out,
     // and someone navigating by keyboard loses their place entirely.
     // `running` is this page's own view of the turn; `playState.busy` is the
     // server's, which is what a page opened in the middle of one has to go on.
-    const wait = playBusy || running || playState.busy;
-    playBtn.disabled = wait;
-    playStopBtn.disabled = wait;
-    playBtn.setAttribute('aria-label',
-      playState.running ? 'Show your project again' : 'Play your project');
-    playBtn.title = playState.running
-      ? 'Show your project again — starts it fresh'
+    playBtn.disabled = playBusy || running || playState.busy;
+    playBtn.setAttribute('aria-label', on ? 'Stop your project' : 'Play your project');
+    playBtn.title = on
+      ? 'Stop — close your project and shut it down'
       : 'Play — open your project so you can use it';
+    if (has) positionPlayBtn();
+  }
+
+  // The mirror of the jump-to-newest button on the other side: just above the
+  // composer, and just left of the conversation column. On a wide screen that
+  // puts it out in the empty gutter; on a narrow one the gutter is gone and it
+  // tucks against the edge instead.
+  function positionPlayBtn() {
+    const inner = document.querySelector('.chat-scroll-inner');
+    const wrap = document.querySelector('.composer-wrap');
+    if (!playBtn || !inner || !wrap || playBtn.hidden) return;
+    const gap = 16;
+    // Measured with the button laid out, never while it is display:none -- a
+    // hidden element measures zero, and a zero-height button always looks like
+    // it fits, so it would flicker back and forth every time this ran.
+    playBtn.classList.remove('no-room');
+    const width = playBtn.offsetWidth;
+    const height = playBtn.offsetHeight;
+
+    const contentLeft = inner.getBoundingClientRect().left;
+    const composer = wrap.getBoundingClientRect();
+    playBtn.style.bottom = (window.innerHeight - composer.top + gap) + 'px';
+    // The floor is the composer's own left edge, not the window's. With the
+    // settings panel open the chat is pushed right by the width of the panel,
+    // and measured against the window this button sat underneath it -- hidden
+    // behind the one thing you are meant to be able to talk past.
+    playBtn.style.left = Math.max(composer.left + gap, contentLeft - gap - width) + 'px';
+
+    // On a narrow screen the settings sheet comes up from the bottom and pushes
+    // the composer right up under the app bar, leaving no band between the two
+    // to sit in -- placed there anyway it landed on top of the Projects menu.
+    // Out of the way until there is room again, which is one press of Close.
+    const bar = document.querySelector('.app-bar');
+    const barBottom = bar ? bar.getBoundingClientRect().bottom : 0;
+    if (composer.top - gap - height < barBottom + 8) playBtn.classList.add('no-room');
+  }
+
+  // Both floating buttons hang off the composer, so both have to be put back
+  // whenever it moves. A ResizeObserver is not enough on its own: opening the
+  // settings sheet on a narrow screen moves the composer a long way up the page
+  // without changing its size at all, and neither button heard about it -- so
+  // both stayed down behind the sheet.
+  function placeFloatingButtons() {
+    positionScrollBottomBtn();
+    positionPlayBtn();
   }
 
   async function refreshPlay() {
@@ -1961,8 +2068,14 @@
   }
 
   if (playBtn) {
-    playBtn.addEventListener('click', () => callPlay('start', 'Your project is open.'));
-    playStopBtn.addEventListener('click', () => callPlay('stop', 'Your project has been closed.'));
+    playBtn.addEventListener('click', () => (playState.running
+      ? callPlay('stop', 'Your project has been closed.')
+      : callPlay('start', 'Your project is open.')));
+    window.addEventListener('resize', positionPlayBtn);
+    const wrap = document.querySelector('.composer-wrap');
+    if (window.ResizeObserver && wrap) {
+      new ResizeObserver(positionPlayBtn).observe(wrap);
+    }
     refreshPlay();
   }
 

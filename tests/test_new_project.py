@@ -165,4 +165,26 @@ def test_the_folder_choice_is_not_rendered_in_child_mode():
 
     page = Path("web_ui/templates/base.html").read_text()
     block = page[page.index('id="new-project-modal"'):]
-    assert "{% if not child_mode %}" in block[:block.index("new_project_where")]
+    assert "{% if not child_mode %}" in block[:block.index("new-project-own-folder")]
+
+
+def test_using_your_own_folder_is_off_until_you_ask_for_it():
+    """The dialog used to offer two radio buttons, the first of which said it
+    would "put its files somewhere sensible for me" -- which reads as the app
+    scattering your work somewhere you will never find it again. Now there is
+    one unticked box, and nothing is said about where the files go unless you
+    ask to choose."""
+    import re
+    from pathlib import Path
+
+    page = Path("web_ui/templates/base.html").read_text()
+    block = page[page.index('id="new-project-modal"'):]
+    block = block[:block.index("new-project-error")]
+    # The comments explain why the old wording went; only what a user can read
+    # is being checked here.
+    block = re.sub(r"\{#.*?#\}", "", block, flags=re.S)
+
+    box = re.search(r'<input type="checkbox" id="new-project-own-folder"[^>]*>', block)
+    assert box, "the folder choice is not a single checkbox"
+    assert "checked" not in box.group(0), "using your own folder is on by default"
+    assert "somewhere sensible" not in block

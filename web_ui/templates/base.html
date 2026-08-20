@@ -164,22 +164,32 @@
                    autocomplete="off" spellcheck="false">
 
             {% if not child_mode %}
-            <fieldset class="welcome-choice new-project-where">
-                <legend class="sr-only">Where should its files go?</legend>
-                <label class="checkbox-label">
-                    <input type="radio" name="new_project_where" value="new" checked>
-                    Put its files somewhere sensible for me
-                </label>
-                <label class="checkbox-label">
-                    <input type="radio" name="new_project_where" value="existing">
-                    Use a folder I already have
-                </label>
-            </fieldset>
+            {# One unticked box, and nothing said about where the files go
+               otherwise.
+
+               This was two radio buttons, the first of which offered to "put its
+               files somewhere sensible for me" -- which reads as the app
+               scattering your work somewhere you will never find it again. The
+               honest answer is that it is kept with the rest of your projects,
+               but explaining that here is answering a question nobody asked. So
+               the choice is now only whether you want to name a folder yourself,
+               and if you do not, we say nothing. #}
+            <label class="checkbox-label new-project-own">
+                <input type="checkbox" id="new-project-own-folder">
+                Use a folder of my own
+            </label>
             <div id="new-project-folder-row" hidden>
                 <label class="stack-label" for="new-project-folder">Which folder?</label>
-                <input type="text" id="new-project-folder"
-                       placeholder="Drag a folder here, or type its path"
-                       autocomplete="off" spellcheck="false">
+                <div class="folder-pick">
+                    <input type="text" id="new-project-folder"
+                           placeholder="Drag a folder here, or type its path"
+                           autocomplete="off" spellcheck="false">
+                    {# Hidden until the server says this desktop has a folder
+                       chooser it can open, the same as the camera button. #}
+                    <button type="button" class="btn-neutral" id="new-project-browse" hidden>
+                        Choose&hellip;
+                    </button>
+                </div>
                 <p class="hint">Nothing in it is changed or moved. The assistant will read
                 what is there and work in place.</p>
             </div>
