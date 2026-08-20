@@ -12,7 +12,6 @@ import pytest
 from PIL import Image
 
 from agent_server import images as pictures
-from agent_server.config import model_sees_images
 from agent_server.conversation import build_messages, to_api_message
 from agent_server.providers.anthropic import _convert_messages
 
@@ -117,18 +116,53 @@ def test_an_unreadable_picture_does_not_take_the_turn_down(tmp_path, broken):
 # ── which models may be sent one ───────────────────────────────────────────
 
 
-@pytest.mark.parametrize("model, sees", [
-    ("claude-opus-5", True),
-    ("gemini-3.7-flash", True),
-    ("openai/gpt-5-mini", True),
-    ("deepseek-v4-pro", False),
-    # Unknown ids default to "cannot", because being wrong that way costs a
-    # picture and being wrong the other way is a 400 that fails the whole turn.
-    ("some-local-llm", False),
-    ("Qwen2.5-VL-7B-Instruct", True),
+async def test_every_model_is_assumed_to_see_until_it_says_otherwise(db):
+    """There is no way to ask. `/v1/models` returns identifiers and nothing else
+    on every provider here, so the old answer was a hand-written table -- wrong
+    the day a provider ships anything new, and never right for a model on
+    someone's own machine."""
+    from agent_server import image_support
+
+    await image_support.forget()
+    assert await image_support.accepts_images("deepseek-v4-pro")
+    assert await image_support.accepts_images("something-nobody-has-heard-of")
+
+
+async def test_a_refusal_is_remembered_so_it_is_paid_for_once(db):
+    from agent_server import image_support
+
+    await image_support.forget()
+    await image_support.remember_refusal("deepseek-v4-pro")
+    assert not await image_support.accepts_images("deepseek-v4-pro")
+    assert await image_support.accepts_images("claude-opus-5"), "it marked the wrong model"
+
+    # And it survives a restart, which is the point of writing it down.
+    image_support._loaded = False
+    image_support._text_only.clear()
+    assert not await image_support.accepts_images("deepseek-v4-pro")
+
+    await image_support.forget("deepseek-v4-pro")
+    assert await image_support.accepts_images("deepseek-v4-pro")
+
+
+@pytest.mark.parametrize("message, is_refusal", [
+    ("Invalid content type: image_url is not supported by this model", True),
+    ("This model does not support image input", True),
+    ("modality 'image' is not accepted", True),
+    ("multimodal input is unavailable", True),
+    # Ways an accepted picture still fails. Marking the model text-only for
+    # these would lose every later picture for a reason that was never the
+    # model's.
+    ("The image is too large, maximum size is 5MB", False),
+    ("image dimensions exceed the limit", False),
+    ("rate limit exceeded", False),
+    ("invalid_api_key", False),
+    ("Connection timeout", False),
 ])
-def test_only_models_that_accept_pictures_are_sent_them(model, sees):
-    assert model_sees_images(model) is sees
+def test_only_an_actual_refusal_teaches_it_anything(message, is_refusal):
+    from agent_server import image_support
+
+    assert image_support.looks_like_a_refusal(message) is is_refusal
 
 
 # ── what goes on the wire ──────────────────────────────────────────────────

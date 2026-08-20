@@ -18,7 +18,8 @@ import uuid
 from collections.abc import AsyncIterator
 
 from agent_server import database as db
-from agent_server.config import MAX_TOOL_RESULT_CHARS, model_sees_images
+from agent_server import image_support
+from agent_server.config import MAX_TOOL_RESULT_CHARS
 from agent_server.conversation import (
     build_messages,
     normalize_tool_calls,
@@ -388,10 +389,12 @@ async def _loop(
     session_id = session["id"]
     names = allowed_tool_names(session)
     tools = tool_schemas(names)
-    # Asked once per turn rather than per message, and of the model running
-    # *now*: a conversation that began on a text-only model and moved to one
-    # that sees pictures should show it the pictures it can now look at.
-    sees_images = model_sees_images(session.get("model") or "")
+    # Optimistic, and corrected by the provider rather than by a table. Asked of
+    # the model running *now*, so a conversation that began on a text-only model
+    # and moved to one that sees pictures shows it the pictures it can now look
+    # at.
+    model = session.get("model") or ""
+    sees_images = await image_support.accepts_images(model)
     screen_reader = await db.get_setting("uses_screen_reader", "0") == "1"
 
     async for event in _drain_pending(session, ctx):
@@ -433,12 +436,19 @@ async def _loop(
             yield {"type": "error", "message": "Nothing to send: the conversation is empty."}
             return
 
+        carried_pictures = sees_images and any(
+            isinstance(m.get("content"), list)
+            and any(part.get("type") == "image_url" for part in m["content"])
+            for m in messages
+        )
+
         content = ""
         reasoning = ""
         partials: dict[int, dict] = {}
         usage: dict | None = None
         finish = "stop"
         failed = False
+        refused_pictures = False
 
         async for event in provider.chat_completion(
             messages=messages,
@@ -463,6 +473,18 @@ async def _loop(
             elif etype == "finish":
                 finish = event["reason"]
             elif etype == "error":
+                # A model that cannot take a picture says so before it bills a
+                # token. Retry the same turn without them rather than handing
+                # the user an error they cannot act on -- and remember it, so
+                # this costs one request ever rather than one a turn.
+                if (
+                    carried_pictures
+                    and not content.strip()
+                    and not reasoning.strip()
+                    and image_support.looks_like_a_refusal(event.get("message", ""))
+                ):
+                    refused_pictures = True
+                    break
                 failed = True
                 if content.strip() or reasoning.strip():
                     await db.add_message(
@@ -472,6 +494,12 @@ async def _loop(
                     )
                 yield {"type": "error", "message": event["message"]}
                 break
+
+        if refused_pictures:
+            await image_support.remember_refusal(model)
+            sees_images = False
+            log.info("session=%s model=%s will not take pictures", session_id, model)
+            continue
 
         if failed:
             return

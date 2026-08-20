@@ -307,22 +307,23 @@ _DROPPED = (
 # Told to the model on every turn when the setting is on, as a system message
 # after the frozen prompt rather than inside it. The setting can be changed at
 # any time and a session's prompt is frozen the first time it is used, so
-# putting it there means a user who turns it on today is still being written
-# for as though they could see, in every conversation they already had.
-SCREEN_READER_NOTE = """[This user works with a screen reader. They cannot see \
-anything on screen. This changes what "done" means for you:
+# putting it there means a user who turns it on today is still being written for
+# as though they could see, in every conversation they already had.
+#
+# What this note does NOT say is "do not open a preview". A screen reader reads
+# a browser window perfectly well -- that is what it is for -- so a blind user
+# gets more out of the thing running than out of a description of it.
+SCREEN_READER_NOTE = """[This user works with a screen reader and does not see \
+the screen. Two things follow:
 
-- A window you open with `preview` shows them nothing. After running something, \
-LOOK at it yourself with `shoot` or `capture` and DESCRIBE what is there -- the \
-layout, the colours, what moved, whether it worked. That description IS the \
-delivery, not a courtesy on top of it.
-- Never say "as you can see", "it looks like this", "the button on the left", or \
-refer to anything by where it is. Name it.
-- A picture you put in the chat is invisible to them. If it matters, say what is \
-in it too.
-- They navigate by keyboard alone. When you build a web page, every control must \
-be reachable by Tab and usable by Enter or Space, with a real label. Check it, \
-do not assume it.]"""
+1. Never write anything that assumes sight. No "as you can see", no "it looks \
+like this", no pointing at a thing by where it sits. Name it.
+2. Whatever you build, they will meet through a screen reader, so it has to \
+survive one: every control reachable by Tab and usable by Enter or Space, a real \
+label on each, headings in order, and images with alt text. Check it rather than \
+assuming it -- `browser` can Tab through a page and tell you what it found.
+
+Open the preview as you would for anyone. They can read it.]"""
 
 
 def build_messages(
