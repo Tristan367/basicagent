@@ -244,3 +244,13 @@ def test_a_remote_url_is_never_passed_through_to_a_provider():
     ]}
     blocks = _convert_messages([msg])[0]["content"]
     assert [b["type"] for b in blocks] == ["text"]
+
+
+def test_a_text_only_model_is_told_it_cannot_see_rather_than_that_it_scrolled_away(shot):
+    """Two different notes, and using the wrong one is worse than saying
+    nothing: "it scrolled out of view -- take it again" is both the wrong
+    explanation and, for something the user attached, an impossible
+    instruction."""
+    rows = [{"role": "user", "content": "look at this", "images": json.dumps([shot])}]
+    said = build_messages("sys", [], rows, sees_images=False)[1]["content"]
+    assert "cannot see" in said and "scrolled out" not in said

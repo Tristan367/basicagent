@@ -392,6 +392,7 @@ async def _loop(
     # *now*: a conversation that began on a text-only model and moved to one
     # that sees pictures should show it the pictures it can now look at.
     sees_images = model_sees_images(session.get("model") or "")
+    screen_reader = await db.get_setting("uses_screen_reader", "0") == "1"
 
     async for event in _drain_pending(session, ctx):
         yield event
@@ -424,7 +425,8 @@ async def _loop(
 
         rows = await db.get_messages(session_id)
         messages = build_messages(
-            system_prompt, await db.get_compactions(session_id), rows, sees_images
+            system_prompt, await db.get_compactions(session_id), rows,
+            sees_images, screen_reader,
         )
 
         if not any(m["role"] != "system" for m in messages):

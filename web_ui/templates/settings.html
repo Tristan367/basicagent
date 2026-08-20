@@ -264,8 +264,8 @@
             <div class="form-row">
                 <label>Voice
                     <select name="tts_voice">
-                        {% for v in tts.voices %}
-                        <option value="{{ v }}" {% if v == settings.get('tts_voice', tts.default_voice) %}selected{% endif %}>{{ v }}</option>
+                        {% for v, label in tts.voice_choices %}
+                        <option value="{{ v }}" {% if v == settings.get('tts_voice', tts.default_voice) %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                     </select>
                 </label>

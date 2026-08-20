@@ -174,6 +174,12 @@ async def delete_session(session_id: str):
     if session.get("kind") == "manager":
         raise HTTPException(400, "The home chat cannot be deleted.")
     agent.request_abort(session_id)
+    # Before the row goes: afterwards there is nothing left that knows this
+    # project was running, and the server it started would hold its port until
+    # the app is closed -- which the user has no way to do anything about.
+    from agent_server import preview
+
+    await preview.stop(session_id)
     await db.delete_session(session_id)
     agent.forget_session(session_id)
     return {"ok": True}

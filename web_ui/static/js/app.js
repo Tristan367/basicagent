@@ -1552,11 +1552,20 @@
 
   async function refreshPlay() {
     if (!playBtn) return;
+    const was = playState.running;
     try {
       const resp = await fetch('/api/sessions/' + sessionId + '/preview');
       if (!resp.ok) return;
       playState = await resp.json();
     } catch (e) { return; }
+    // The assistant can start the project on its own, and when it does a window
+    // appears and takes the focus. Someone who cannot see the screen has no way
+    // to know that happened, so say it. Only on the change, and not when the
+    // user pressed the button themselves -- they already know, and `callPlay`
+    // has said so.
+    if (playState.running && !was && !playBusy) {
+      announce('Your project is now open in its own window.');
+    }
     renderPlay();
   }
 

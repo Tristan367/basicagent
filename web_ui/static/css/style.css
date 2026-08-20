@@ -1146,13 +1146,19 @@ html[data-theme="dark"] select.welcome-mic {
 .session-name { font-weight: 600; color: var(--text); text-decoration: none; flex: 1; }
 .session-meta { color: var(--text-dim); font-size: 0.9rem; }
 
+/* The whole row is the target, not the little box. Someone with a tremor or
+   limited hand control cannot reliably hit a 20-pixel square, and the label was
+   already clickable -- it just was not tall enough to be worth aiming at. 44px
+   is the size a finger needs, and it costs nothing here. */
 .checkbox-label {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
     font-size: 1.02rem;
+    min-height: 44px;
+    cursor: pointer;
 }
-.checkbox-label input { width: 20px; height: 20px; }
+.checkbox-label input { width: 24px; height: 24px; flex: none; }
 
 /* A real <fieldset> so the choice is announced as one group with a name,
    rather than three unrelated radios. The default border and padding are

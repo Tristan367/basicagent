@@ -38,6 +38,7 @@ def availability() -> dict:
         "available": bool(TTS_MODEL and TTS_VOICES),
         "model": TTS_MODEL.rsplit("/", 1)[-1] if TTS_MODEL else "",
         "voices": voices(),
+        "voice_choices": voice_choices(),
         "default_voice": TTS_DEFAULT_VOICE,
     }
 
@@ -54,6 +55,27 @@ async def warmup() -> None:
         await _model()
     except TTSError:
         pass
+
+
+# The prefix on a Kokoro voice id is not decoration: `af` is American female,
+# `bm` British male. Shown as a name and an accent, because "af_aoede" tells a
+# user nothing and a screen reader pronounces it as letters.
+_ACCENTS = {"a": "American", "b": "British"}
+_GENDERS = {"f": "female", "m": "male"}
+
+
+def voice_label(voice: str) -> str:
+    """"af_aoede" -> "Aoede (American, female)"."""
+    prefix, _, name = (voice or "").partition("_")
+    pretty = " ".join(part.capitalize() for part in name.replace("_", " ").split()) or voice
+    if len(prefix) == 2 and prefix[0] in _ACCENTS and prefix[1] in _GENDERS:
+        return f"{pretty} ({_ACCENTS[prefix[0]]}, {_GENDERS[prefix[1]]})"
+    return pretty or voice
+
+
+def voice_choices() -> list[tuple[str, str]]:
+    """`(id, label)` for every offerable voice, ordered the way they read."""
+    return sorted(((v, voice_label(v)) for v in voices()), key=lambda pair: pair[1])
 
 
 def voices() -> list[str]:

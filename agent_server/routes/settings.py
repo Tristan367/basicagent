@@ -282,6 +282,25 @@ async def child_status():
     }
 
 
+async def _close_previews():
+    """Shut every open project window when child mode is switched either way.
+
+    A preview window decides whether it is confined at the moment it opens. Turn
+    child mode on with one already open and it stays as it was -- an unconfined
+    browser, sitting on the screen the child is about to be handed. Closing them
+    is the whole fix: the next Play opens under whichever rules now apply.
+
+    Best-effort. Failing to close a window must not fail switching modes, which
+    is the more important of the two.
+    """
+    import contextlib
+
+    from agent_server import preview
+
+    with contextlib.suppress(Exception):
+        await preview.close_all()
+
+
 @router.post("/api/child/enable")
 async def child_enable(request: Request):
     data = await _body(request)
@@ -293,6 +312,7 @@ async def child_enable(request: Request):
     await db.set_setting("parent_password_hash", parental.hash_password(password))
     await db.set_setting("child_mode", "1")
     await db.delete_setting("child_override_until")
+    await _close_previews()
     return {"ok": True}
 
 
@@ -305,6 +325,7 @@ async def child_disable(request: Request):
     await db.set_setting("child_mode", "0")
     await db.delete_setting("parent_password_hash")
     await db.delete_setting("child_override_until")
+    await _close_previews()
     return {"ok": True}
 
 

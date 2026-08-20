@@ -526,10 +526,20 @@ MANAGER_EXTRA_TOOLS = frozenset({
 })
 
 
+# Manager tools a child's own home session must not be offered. Withheld rather
+# than refused at the handler: a tool in the list is a tool the model will try,
+# and spending a round trip to be told no is worse than never seeing it.
+PARENT_ONLY_TOOLS = frozenset({"assign_project"})
+
+
 def allowed_tool_names(session: dict) -> list[str]:
     """The tools a session may call, based on whether it is the home manager."""
     if (session.get("kind") or "project") == "manager":
-        return [n for n in TOOLS if n in MANAGER_TOOLS or n in MANAGER_EXTRA_TOOLS]
+        withheld = PARENT_ONLY_TOOLS if session.get("profile") == "child" else frozenset()
+        return [
+            n for n in TOOLS
+            if (n in MANAGER_TOOLS or n in MANAGER_EXTRA_TOOLS) and n not in withheld
+        ]
     return [n for n in TOOLS if n not in MANAGER_TOOLS]
 
 

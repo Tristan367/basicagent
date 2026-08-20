@@ -198,6 +198,9 @@ async def delete_project(ctx: ToolContext, *, name: str, **_) -> ToolResult:
     session = await db.get_session_by_name(name, profile=_visible(ctx))
     if session is None:
         return ToolResult.error(f"there is no project named '{name}'", title)
+    from agent_server import preview
+
+    await preview.stop(session["id"])
     await db.delete_session(session["id"])
     # The files are deliberately left in place: deleting a project should never
     # delete the user's work by surprise.

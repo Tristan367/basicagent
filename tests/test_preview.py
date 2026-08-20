@@ -180,3 +180,28 @@ async def test_closing_the_app_leaves_nothing_behind(project):
     await preview.close_all()
     await asyncio.sleep(0.4)
     assert running_servers() == before
+
+
+async def test_deleting_a_project_stops_what_it_was_running(project, tmp_path, monkeypatch):
+    """Afterwards nothing knows the project existed, so its server would hold
+    the port until the app closes -- and the user has no terminal to kill it
+    from. The stop has to happen before the row goes."""
+    from agent_server import database
+    from agent_server.tools.base import ToolContext
+    from agent_server.tools.session_manager import create_project, delete_project
+
+    await database.init_db()
+    ctx = ToolContext(session_id="home", project_dir=project, abort=asyncio.Event())
+    await create_project(ctx, name="Doomed")
+    session = await database.get_session_by_name("Doomed", profile=None)
+
+    port = free_port()
+    before = running_servers()
+    await preview.start(session["id"], f"PORT={port} python preview_server.py",
+                        f"http://127.0.0.1:{port}", project)
+    assert running_servers() == before + 1
+
+    await delete_project(ctx, name="Doomed")
+    await asyncio.sleep(0.4)
+    assert running_servers() == before, "the project was deleted but its server lived on"
+    await database.close()

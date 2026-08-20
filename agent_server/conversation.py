@@ -304,21 +304,49 @@ _DROPPED = (
 )
 
 
+# Told to the model on every turn when the setting is on, as a system message
+# after the frozen prompt rather than inside it. The setting can be changed at
+# any time and a session's prompt is frozen the first time it is used, so
+# putting it there means a user who turns it on today is still being written
+# for as though they could see, in every conversation they already had.
+SCREEN_READER_NOTE = """[This user works with a screen reader. They cannot see \
+anything on screen. This changes what "done" means for you:
+
+- A window you open with `preview` shows them nothing. After running something, \
+LOOK at it yourself with `shoot` or `capture` and DESCRIBE what is there -- the \
+layout, the colours, what moved, whether it worked. That description IS the \
+delivery, not a courtesy on top of it.
+- Never say "as you can see", "it looks like this", "the button on the left", or \
+refer to anything by where it is. Name it.
+- A picture you put in the chat is invisible to them. If it matters, say what is \
+in it too.
+- They navigate by keyboard alone. When you build a web page, every control must \
+be reachable by Tab and usable by Enter or Space, with a real label. Check it, \
+do not assume it.]"""
+
+
 def build_messages(
     system_prompt: str,
     compactions: list[dict],
     rows: list[dict],
     sees_images: bool = False,
+    screen_reader: bool = False,
 ) -> list[dict]:
     """Assemble the full request payload for a turn."""
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    if screen_reader:
+        messages.append({"role": "system", "content": SCREEN_READER_NOTE})
     for c in compactions:
         messages.append({
             "role": "system",
             "content": f"[Summary of earlier conversation]\n{c['summary_text']}",
         })
 
-    keep = _recent_picture_rows(rows) if sees_images else set()
+    # Only meaningful when pictures are being sent at all. On a text-only model
+    # every row would otherwise be marked "scrolled out of view -- take it
+    # again", which is the wrong explanation and, for something the user
+    # attached, an impossible instruction. Those rows want `describe_unseen`.
+    keep = _recent_picture_rows(rows) if sees_images else None
 
     # A tool result cannot carry a picture: the OpenAI-compatible providers take
     # a plain string on a `tool` message and nothing else. So captured frames
@@ -341,7 +369,7 @@ def build_messages(
     previous_at = ""
     for index, row in enumerate(rows):
         pictures = stored_images(row)
-        if pictures and index not in keep:
+        if pictures and keep is not None and index not in keep:
             row = {**row, "images": None,
                    "content": f"{row.get('content') or ''}\n\n{_DROPPED}".strip()}
             pictures = []
