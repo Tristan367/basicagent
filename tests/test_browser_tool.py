@@ -130,3 +130,37 @@ def test_a_key_press_does_not_need_a_target():
     from agent_server.tools.browser import _TARGETED
 
     assert "press" not in _TARGETED
+
+
+# ── streamed tool calls, which not every provider numbers ───────────────────
+
+
+def test_unnumbered_tool_call_fragments_do_not_collapse_into_one():
+    """Gemini sends no `index` on its streamed fragments. Defaulting that to 0
+    put every call of a turn in one slot, so a turn asking for two tools ran
+    only the second -- with the first one's arguments spliced onto its front."""
+    from agent_server.agent import _accumulate
+
+    partials = {}
+    _accumulate(partials, [{"index": None, "id": "a", "name": "read", "arguments": '{"f":'}])
+    _accumulate(partials, [{"index": None, "id": None, "name": None, "arguments": '"x"}'}])
+    _accumulate(partials, [{"index": None, "id": "b", "name": "write", "arguments": '{"g":1}'}])
+
+    assert len(partials) == 2, "two calls were merged into one"
+    assert partials[0] == {"id": "a", "name": "read", "arguments": '{"f":"x"}'}
+    assert partials[1] == {"id": "b", "name": "write", "arguments": '{"g":1}'}
+
+
+def test_numbered_fragments_still_work_the_way_they_did():
+    from agent_server.agent import _accumulate
+
+    partials = {}
+    _accumulate(partials, [
+        {"index": 0, "id": "a", "name": "read", "arguments": "{"},
+        {"index": 1, "id": "b", "name": "write", "arguments": "{"},
+    ])
+    _accumulate(partials, [
+        {"index": 0, "id": None, "name": None, "arguments": "}"},
+        {"index": 1, "id": None, "name": None, "arguments": "}"},
+    ])
+    assert partials[0]["arguments"] == "{}" and partials[1]["arguments"] == "{}"

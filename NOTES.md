@@ -385,6 +385,34 @@ One piece is already free: the cost of a conversation is tracked. A child seeing
 "this cost you two pence" is a lesson in itself, and a parent seeing it is
 reassurance.
 
+## The name
+
+**Leaning: NetraCode.** *Netra* is Sanskrit for "eye". Checked and clear.
+
+The runner-up, and the better idea, was **Sanjaya** -- in the Mahabharata he is
+granted divine sight for one purpose: to narrate the battle to Dhritarashtra,
+the blind king, who experiences the whole war through his description. That is
+what this app does for someone who cannot see the screen. "Sanjaya" alone is
+taken (an AI farming assistant, a template) though "SanjayaCode" was clear.
+
+Ruled out by what already exists, in case any of these come back up:
+
+- **Rune / RuneCode** -- an AI coding agent CLI, and a game
+- **Mimir** -- a computer-science education platform, acquired by HackerRank.
+  This is the Odin's-eye name: he traded an eye at Mimir's well for wisdom
+- **Kvasir** -- an AI learning platform. The one who could answer any question
+- **Kedalion** -- taken. Hephaestus sent him to ride on the blinded Orion's
+  shoulders and steer him toward the sunrise, which is the single best fit for
+  this app in any mythology, and it is gone
+- **Skald**, **QuillCode**, **Sayso**, **Charm**, **Helm**, **Delphi**,
+  **Draupnir**, **Vidya**, **Atlas**, **Argo**, **Saga** -- all taken
+
+Still clear if wanted: ChironCode, MedhaCode, MuseCode, GlyphCode, CastCode,
+SeerCode, BardCode, HestiaCode, GungnirCode.
+
+Web presence was checked; **trademark registers were not**. Do that before
+committing, and take the domain and the GitHub org the same day.
+
 ## Built since this file was written
 
 - **Confirmation before switching into a new project** — creating a project no

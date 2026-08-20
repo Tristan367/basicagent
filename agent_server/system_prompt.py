@@ -20,16 +20,40 @@ _PROJECT = Path(__file__).parent.parent
 AGENT_PROMPT = (_PROJECT / "system_prompts" / "agent.md").read_text()
 MANAGER_PROMPT = (_PROJECT / "system_prompts" / "manager.md").read_text()
 
+# Every line below answers something a model actually did instead of
+# summarising: carried on the conversation, narrated what it was about to do,
+# reached for a tool, refused because the request looked like a code change, or
+# expanded rather than compressed. Written against observed failures, not taste.
 COMPACT_PROMPT = """
-Summarise this conversation so another engineer could pick the work up cold.
+Write a summary of this conversation so far. This is a housekeeping step, not a
+turn in the conversation.
+
+Output the summary and nothing else. No preamble, no "here is the summary", no
+sign-off, no questions, no offer to continue. The first character of your reply
+is the first character of the summary.
+
+Do not use any tool. Do not read a file, run a command, or check anything. You
+already have everything you need above. This is not a request to do more work,
+and the work described is not yours to continue.
 
 Preserve: what the user asked for, decisions made and why, every file created or
 modified with its path, key code and APIs discovered, commands that were run and
-what they returned, errors hit and how they were resolved, and what still
-remains to be done.
+what they returned, errors hit and how they were resolved, anything the user
+explicitly asked to be remembered, and what still remains to be done.
 
 Drop: tool output that no longer matters, exploration that led nowhere, and
-pleasantries. Write plain prose and be specific — names, paths, and line numbers.
+pleasantries.
+
+Be shorter than the conversation. Plain prose, specific — names, paths, line
+numbers. If almost nothing has happened yet, say so in a sentence rather than
+padding it out.
+"""
+
+# Sent only when the first attempt came back empty, which small models do
+# surprisingly often on a long transcript.
+RETRY_NUDGE = """
+You returned nothing. Write the summary now, as plain text, starting with the
+first sentence of it. Even a few lines is better than an empty reply.
 """
 
 

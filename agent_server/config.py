@@ -287,8 +287,47 @@ def resolve_model_choice(choice: str) -> tuple[str, str]:
 
 # Compaction runs automatically when a session's live context passes this many
 # tokens. There is no UI for it; the user should never have to know it happens.
+#
+# Only the fallback for a model nothing is known about. `compact_threshold_for`
+# below works it out from the model's own numbers, because a flat figure is
+# wrong in both directions: 262,144 against a million-token window compacts four
+# times more often than it needs to, throwing away history and paying for
+# summaries to free room that was never scarce.
 COMPACT_THRESHOLD_TOKENS = int(os.getenv("COMPACT_THRESHOLD_TOKENS", "262144"))
-MIN_COMPACT_THRESHOLD = 4096
+# Above the system prompt, which is ~3,500 tokens and which compaction can
+# never touch: a threshold at or below that floor is one every turn is over.
+MIN_COMPACT_THRESHOLD = 16_384
+
+# What has to still fit above the threshold when compaction fires: one more
+# round. That is the model's whole output ceiling plus the tool results that
+# round might return -- both of which land *after* the check has already passed.
+#
+# `max_output` varies more than tenfold between models, so a flat percentage is
+# wrong at both ends: wasteful for a model that can only emit 8K, and unsafe for
+# one that can emit 128K, where a single maximum-length reply overruns the space
+# left for it.
+TOOL_ROUND_HEADROOM_TOKENS = int(os.getenv("TOOL_ROUND_HEADROOM_TOKENS", "120000"))
+
+
+def compact_threshold_for(model_id: str) -> int:
+    """When a session on this model should be summarised.
+
+    Everything the window holds, less the room one more round needs.
+    """
+    info = model_info(model_id)
+    context = int(info.get("context") or 0)
+    if not context:
+        return COMPACT_THRESHOLD_TOKENS
+
+    # The tool headroom is capped at a fifth of the window as well as at a fixed
+    # figure. A small model cannot reserve 120,000 tokens for one round -- taken
+    # literally it left a 131,072-token model compacting at 4,096, which is
+    # every single turn. And never below half the window, because a threshold
+    # that low is compaction as a permanent state rather than an occasional
+    # event.
+    tool_room = min(TOOL_ROUND_HEADROOM_TOKENS, context // 5)
+    reserve = int(info.get("max_output") or DEFAULT_MAX_OUTPUT) + tool_room
+    return max(MIN_COMPACT_THRESHOLD, context // 2, context - reserve)
 
 MAX_TOOL_RESULT_CHARS = int(os.getenv("MAX_TOOL_RESULT_CHARS", "50000"))
 

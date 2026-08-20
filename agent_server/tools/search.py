@@ -1,8 +1,8 @@
 """Code search: grep (ripgrep) and glob."""
 
 import asyncio
-import fnmatch
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -109,6 +109,86 @@ def _expand_braces(pattern: str) -> list[str]:
     return [pattern]  # unbalanced; leave it alone and let it match literally
 
 
+# fnmatch is the wrong matcher for a path pattern, in both directions.
+#
+# It has no idea what `**` means: `**/*.py` compiles to a regex wanting a
+# literal slash, so it misses every file at the top of the tree -- the agent
+# globbed for a file it had written a turn earlier and concluded it was not
+# there. And its `*` happily crosses a directory separator, so `src/*.py` also
+# returned `src/deep/nested.py`, which is the opposite mistake.
+#
+# So: translate the pattern properly. `**/` spans any number of directories
+# including none, `*` and `?` stop at a separator, and character classes are
+# passed through.
+_GLOB_CACHE: dict[str, "re.Pattern[str]"] = {}
+
+
+def _compile_glob(pattern: str) -> "re.Pattern[str]":
+    cached = _GLOB_CACHE.get(pattern)
+    if cached is not None:
+        return cached
+
+    out: list[str] = []
+    i, n = 0, len(pattern)
+    while i < n:
+        c = pattern[i]
+        if c == "*":
+            if pattern[i:i + 3] == "**/":
+                # Any depth, including none, so `**/x.py` finds `x.py` at the root.
+                out.append("(?:[^/]+/)*")
+                i += 3
+                continue
+            if pattern[i:i + 2] == "**":
+                out.append(".*")
+                i += 2
+                continue
+            out.append("[^/]*")
+            i += 1
+            continue
+        if c == "?":
+            out.append("[^/]")
+            i += 1
+            continue
+        if c == "[":
+            j = i + 1
+            if j < n and pattern[j] in "!^":
+                j += 1
+            if j < n and pattern[j] == "]":
+                j += 1
+            while j < n and pattern[j] != "]":
+                j += 1
+            if j >= n:
+                out.append(re.escape(c))
+                i += 1
+                continue
+            body = pattern[i + 1:j]
+            if body and body[0] in "!^":
+                body = "^" + body[1:]
+            out.append("[" + body.replace("\\", "\\\\") + "]")
+            i = j + 1
+            continue
+        out.append(re.escape(c))
+        i += 1
+
+    compiled = re.compile("".join(out) + r"\Z")
+    _GLOB_CACHE[pattern] = compiled
+    return compiled
+
+
+def _matches(rel: str, name: str, pattern: str) -> bool:
+    """Whether this file answers the pattern.
+
+    A pattern with no separator in it is matched against the file's name at any
+    depth -- `*.py` meaning "every Python file" is what everyone expects and
+    what the model writes. A pattern that does contain one is a path pattern and
+    is matched as written.
+    """
+    rx = _compile_glob(pattern)
+    if "/" in pattern:
+        return bool(rx.match(rel))
+    return bool(rx.match(name) or rx.match(rel))
+
+
 async def glob_search(ctx: ToolContext, *, pattern: str, path: str | None = None, **_) -> ToolResult:
     search_dir = ctx.resolve(path)
     title = f"'{pattern}'"
@@ -125,7 +205,7 @@ async def glob_search(ctx: ToolContext, *, pattern: str, path: str | None = None
             for name in files:
                 full = Path(root) / name
                 rel = str(full.relative_to(search_dir))
-                if any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(name, p) for p in patterns):
+                if any(_matches(rel, name, p) for p in patterns):
                     try:
                         results.append((full.stat().st_mtime, rel))
                     except OSError:

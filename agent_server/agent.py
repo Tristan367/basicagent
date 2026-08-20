@@ -415,16 +415,29 @@ async def _loop(
         if session_id not in _compacted_this_run:
             usage = await db.get_session_usage(session_id)
             if usage["threshold"] and usage["context"] >= usage["threshold"]:
-                from agent_server.compaction import compact_session
+                from agent_server.compaction import compact_session, would_compact
 
-                yield {"type": "compacting"}
-                result = await compact_session(session_id)
-                _compacted_this_run.add(session_id)
-                yield {"type": "compacted", **result}
-                if not result.get("ok"):
-                    yield {"type": "error", "message": result.get("reason", "Compaction failed")}
-                    return
-                continue
+                # Asked before announcing anything. Sitting just over the
+                # threshold with nothing worth summarising is the ordinary state
+                # right after a compaction, and without this check the user saw
+                # "Summarising..." flash on every single turn for nothing.
+                if await would_compact(session_id):
+                    _compacted_this_run.add(session_id)
+                    yield {"type": "compacting"}
+                    result = await compact_session(session_id)
+                    yield {"type": "compacted", **result}
+                    if result.get("ok"):
+                        continue
+                    # Deliberately not a return. Compaction is housekeeping; the
+                    # user asked a question. Ending the turn here leaves their
+                    # message with nothing answering it, and the next thing they
+                    # type piles in behind it -- a far worse outcome than one
+                    # oversized request, which may well succeed anyway since the
+                    # threshold sits below the model's real limit.
+                    log.info("compaction failed for %s: %s", session_id,
+                             result.get("reason", "unknown"))
+                else:
+                    _compacted_this_run.add(session_id)
 
         rows = await db.get_messages(session_id)
         messages = build_messages(
@@ -785,9 +798,25 @@ async def _record(session_id: str, call: dict, result: ToolResult, duration_ms: 
 
 
 def _accumulate(partials: dict[int, dict], deltas: list[dict]):
+    """Reassemble streamed tool calls, which arrive a fragment at a time.
+
+    Not every provider numbers its fragments. Gemini sends no `index` at all,
+    and defaulting that to 0 dropped every call of a turn into one slot -- a
+    turn asking for two tools ran only the second, with the first one's
+    arguments spliced onto the front of it.
+
+    So an unnumbered fragment opens a new slot whenever it carries an `id`
+    (a new id is a new call) and otherwise continues the one most recently
+    opened, which is the only reading the stream supports.
+    """
     for d in deltas:
-        idx = d.get("index") or 0
-        slot = partials.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+        index = d.get("index")
+        if index is None:
+            if d.get("id") and d["id"] not in {s.get("id") for s in partials.values()}:
+                index = max(partials, default=-1) + 1
+            else:
+                index = max(partials, default=0)
+        slot = partials.setdefault(index, {"id": "", "name": "", "arguments": ""})
         if d.get("id"):
             slot["id"] = d["id"]
         if d.get("name"):

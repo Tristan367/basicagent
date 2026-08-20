@@ -15,7 +15,11 @@ from agent_server.conversation import (
     pending_tool_calls,
 )
 from agent_server.providers import get_provider
-from agent_server.system_prompt import COMPACT_PROMPT, session_system_prompt
+from agent_server.system_prompt import (
+    COMPACT_PROMPT,
+    RETRY_NUDGE,
+    session_system_prompt,
+)
 
 # Work kept verbatim at the tail so recent context survives compaction. A
 # summary alone loses the concrete detail the model is actively working with --
@@ -28,7 +32,84 @@ from agent_server.system_prompt import COMPACT_PROMPT, session_system_prompt
 # to 74,000 tokens in one real session, so the early return fired every time and
 # nothing was ever summarised.
 KEEP_MIN_UNITS = 2
-KEEP_TAIL_TOKENS = 24_000
+
+# ...and it is a *share* of the threshold, never a flat number of tokens.
+#
+# A flat tail is wrong at both ends. Under a small threshold it swallows the
+# conversation: a 24,000-token tail beneath a 16,000-token threshold summarises
+# the single oldest round, frees nothing, and fires again on the next round,
+# destroying history a message at a time while never getting under the limit.
+# Under a large one it is miserly -- a 24,000-token tail beneath an 890,000-token
+# threshold throws away almost everything the model was working with, to save
+# room that was never scarce.
+KEEP_TAIL_SHARE = 0.35
+# A token floor is barely needed -- KEEP_MIN_UNITS already guarantees the last
+# couple of rounds survive whatever the arithmetic says -- but it stops a very
+# short conversation being cut at all.
+KEEP_TAIL_FLOOR = 1_000
+
+# Below this many tokens in the head, summarising is not worth doing and doing
+# it anyway is harmful.
+#
+# The measured context is the provider's reported prompt size, so it includes
+# the system prompt -- around 3,500 tokens here -- which compaction can never
+# touch. If the threshold ever sits near that floor, every turn is over it, every
+# turn compacts, and each pass summarises one tiny round into a summary that is
+# often *larger* than what it replaced. Watched live at a 3,000-token threshold:
+# six compactions in seven turns, one of them turning 19 tokens into 93, and the
+# context climbing the whole time.
+#
+# So: a head worth less than this is left alone. The session stays over its
+# threshold, which is the honest outcome -- better than shredding the
+# conversation a message at a time to free nothing.
+MIN_HEAD_TOKENS = 1_000
+
+
+def worth_compacting(head_tokens: int) -> bool:
+    return head_tokens >= MIN_HEAD_TOKENS
+
+
+def conversation_tokens(rows: list[dict]) -> int:
+    return sum(message_tokens(r) for r in rows)
+
+
+def keep_tail_budget(conversation: int) -> int:
+    """How much of the tail survives: a share of the conversation itself.
+
+    Of the *conversation*, and deliberately not of the threshold, because the
+    two are not measured in the same thing. The threshold is compared against
+    the provider's reported prompt size, which includes the system prompt and
+    every round of a turn; the tail walk adds up stored per-row counts. Measured
+    on one real session they were 12,376 and 4,118 -- three times apart. A tail
+    budget taken from the threshold was therefore always far larger than the
+    whole conversation, so the walk kept everything, left a few hundred tokens
+    to summarise, freed nothing, and fired again on the next turn.
+
+    A share of the conversation cannot drift like that: 35% is kept and 65% is
+    always there to be summarised, whatever units anything else is counted in.
+    """
+    return max(KEEP_TAIL_FLOOR, int(max(conversation, 0) * KEEP_TAIL_SHARE))
+
+
+def message_tokens(row: dict) -> int:
+    """What a stored row costs, measured if anyone measured it and estimated if not.
+
+    `token_count` comes from the usage a provider reports, and nothing reports a
+    cost for what the *user* typed -- so every `row["token_count"] or 0` prices
+    user turns at zero. That silently shrinks the measured context, makes the
+    tail walk keep far more than its budget, and under-reports how full the
+    session is. Estimate rather than assume free.
+    """
+    measured = row.get("token_count")
+    if measured:
+        return int(measured)
+    from agent_server.providers.base import estimate_tokens
+
+    return max(1, estimate_tokens([{
+        "content": row.get("content") or "",
+        "reasoning_content": row.get("reasoning_content") or "",
+        "tool_calls": normalize_tool_calls(row.get("tool_calls")),
+    }]))
 
 
 def group_messages(rows: list[dict]) -> list[list[dict]]:
@@ -72,9 +153,11 @@ def group_messages(rows: list[dict]) -> list[list[dict]]:
 
 
 def split_for_compaction(
-    rows: list[dict], keep_tail_tokens: int = KEEP_TAIL_TOKENS
+    rows: list[dict], keep_tail_tokens: int | None = None
 ) -> tuple[list[dict], list[dict]]:
     """Return (messages_to_summarise, messages_to_keep) cut on a unit boundary."""
+    if keep_tail_tokens is None:
+        keep_tail_tokens = keep_tail_budget(conversation_tokens(rows))
     groups = group_messages(rows)
     if len(groups) <= KEEP_MIN_UNITS:
         return [], rows
@@ -86,7 +169,7 @@ def split_for_compaction(
     keep = 0
     total = 0
     for group in reversed(groups):
-        cost = sum(r.get("token_count") or 0 for r in group)
+        cost = sum(message_tokens(r) for r in group)
         if keep >= KEEP_MIN_UNITS and total + cost > keep_tail_tokens:
             break
         if keep >= len(groups) - 1:
@@ -220,7 +303,7 @@ async def estimate_switch_costs(session_id: str, new_model_id: str) -> dict:
 
     rows = await db.get_messages(session_id)
     to_compact, _kept = split_for_compaction(rows)
-    head_tokens = sum(r.get("token_count") or 0 for r in to_compact)
+    head_tokens = sum(message_tokens(r) for r in to_compact)
     summary_est = max(int(head_tokens * SUMMARY_RATIO), MIN_SUMMARY_TOKENS) if head_tokens else 0
 
     direct_cost = context * target["price_in_miss"] / 1_000_000
@@ -245,6 +328,19 @@ async def estimate_switch_costs(session_id: str, new_model_id: str) -> dict:
         "direct_cost": direct_cost,
         "compact_cost": compact_cost,
     }
+
+
+async def would_compact(session_id: str) -> bool:
+    """Whether compacting now would actually free anything.
+
+    Asked before the turn announces "Summarising..." to the user. Without it a
+    session sitting just over its threshold with nothing worth summarising --
+    which is the normal state after a compaction -- flashed that message on
+    every single turn and then quietly did nothing.
+    """
+    rows = await db.get_messages(session_id)
+    to_compact, _kept = split_for_compaction(rows)
+    return bool(to_compact) and worth_compacting(sum(message_tokens(r) for r in to_compact))
 
 
 async def compact_session(
@@ -292,6 +388,16 @@ async def compact_session_events(
         yield fail("Not enough completed turns to compact yet.")
         return
 
+    head_tokens = sum(message_tokens(r) for r in to_compact)
+    if not manual_summary.strip() and not worth_compacting(head_tokens):
+        # Checked before the model is called, so a session that cannot usefully
+        # be compacted costs nothing to find that out, every turn, forever.
+        yield fail(
+            f"Only {head_tokens} tokens could be summarised, which would free "
+            "less than it costs. Leaving the conversation as it is."
+        )
+        return
+
     provider = get_provider(session["provider"])
 
     if manual_summary.strip():
@@ -305,25 +411,36 @@ async def compact_session_events(
             instructions += f"\n\nAdditional instructions for this summary:\n{extra_instructions.strip()}"
 
         messages = await _summariser_messages(session, rows, to_compact, instructions)
+
+        # An empty answer is not a transport error, so nothing below retries it
+        # -- and a small model handed a long transcript returns nothing
+        # surprisingly often. Ask once more, more bluntly, before giving up.
         summary = ""
-        async for event in provider.chat_completion(
-            messages=messages,
-            tools=[],
-            model=session["model"],
-            thinking_effort="low",
-        ):
-            if event["type"] == "content":
-                summary += event["text"]
-                yield {"type": "compact_delta", "text": event["text"]}
-            elif event["type"] == "error":
-                yield fail(event["message"])
-                return
-        summary = summary.strip()
+        for attempt in range(2):
+            ask = messages if attempt == 0 else messages + [
+                {"role": "user", "content": RETRY_NUDGE},
+            ]
+            summary = ""
+            async for event in provider.chat_completion(
+                messages=ask,
+                tools=[],
+                model=session["model"],
+                thinking_effort="low",
+            ):
+                if event["type"] == "content":
+                    summary += event["text"]
+                    yield {"type": "compact_delta", "text": event["text"]}
+                elif event["type"] == "error":
+                    yield fail(event["message"])
+                    return
+            summary = summary.strip()
+            if summary:
+                break
         if not summary:
-            yield fail("The model returned an empty summary.")
+            yield fail("The model returned an empty summary twice.")
             return
 
-    original_tokens = sum(r.get("token_count") or 0 for r in to_compact)
+    original_tokens = head_tokens
     compressed_tokens = provider.count_tokens([{"role": "system", "content": summary}])
 
     await db.add_compaction(

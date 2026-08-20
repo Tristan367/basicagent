@@ -555,7 +555,7 @@ def _price(usage_json: str, pricing: dict) -> tuple[dict, float]:
 
 async def get_session_usage(session_id: str) -> dict:
     """Token totals, spend, and live context size for one session."""
-    from agent_server.config import COMPACT_THRESHOLD_TOKENS, model_info
+    from agent_server.config import model_info
 
     session = await get_session(session_id)
     pricing = model_info((session or {}).get("model", ""))
@@ -614,7 +614,12 @@ async def get_session_usage(session_id: str) -> dict:
         context = (row or {}).get("total", 0) + (summaries or {}).get("total", 0)
 
     totals["context"] = context
-    totals["threshold"] = (session or {}).get("compact_threshold") or COMPACT_THRESHOLD_TOKENS
+    from agent_server.config import compact_threshold_for
+
+    totals["threshold"] = (
+        (session or {}).get("compact_threshold")
+        or compact_threshold_for((session or {}).get("model", ""))
+    )
     totals["max_context"] = pricing["context"]
     totals["priced"] = pricing["priced"]
     totals["percent"] = round(100 * context / totals["threshold"], 1) if totals["threshold"] else 0
