@@ -34,7 +34,7 @@
             <button type="button" class="app-bar-btn icon-only" id="settings-btn"
                     title="Settings" aria-label="Settings"
                     aria-expanded="false" aria-controls="settings-panel">
-                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
                           d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/>
                     <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
@@ -109,6 +109,21 @@
         </div>
         <div class="settings-panel-body" id="settings-panel-body"></div>
     </div>
+
+    {% if not is_settings %}
+    {# The same control as the gear on the bar, in the corner where there is
+       room for it on a wide screen. Only one of the two is ever visible. #}
+    <button type="button" class="settings-fab" id="settings-fab"
+            title="Settings" aria-label="Settings"
+            aria-expanded="false" aria-controls="settings-panel">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
+                          d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/>
+                    <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
+                          d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.3-2.5h-4l-.3 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4z"/>
+                </svg>
+    </button>
+    {% endif %}
 
     <div id="toast-area" class="toast-area" aria-live="polite"></div>
 

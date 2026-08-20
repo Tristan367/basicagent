@@ -279,8 +279,21 @@ function initSettings() {
         const btn = document.getElementById('to-top-btn');
         if (!btn) return;
         btn.addEventListener('click', () => {
-            const scroller = document.querySelector('.settings-scroll');
-            if (scroller) scroller.scrollTo({ top: 0, behavior: window.__scrollBehavior() });
+            // Whichever box is actually doing the scrolling. On the page that is
+            // `.settings-scroll`; in the panel it is the panel's own body, and
+            // looking only for the first meant the button did nothing at all
+            // there. Walk up from the button rather than naming either.
+            let node = btn.parentElement;
+            while (node && node !== document.body) {
+                const style = getComputedStyle(node);
+                const scrolls = /auto|scroll/.test(style.overflowY);
+                if (scrolls && node.scrollHeight > node.clientHeight + 4) {
+                    node.scrollTo({ top: 0, behavior: window.__scrollBehavior() });
+                    return;
+                }
+                node = node.parentElement;
+            }
+            window.scrollTo({ top: 0, behavior: window.__scrollBehavior() });
         });
     })();
 

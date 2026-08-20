@@ -73,7 +73,7 @@ This app has no AI of its own. It connects to one the user has an account with, 
 
 If someone is worried about money, be straight with them rather than selling the free option.
 
-**Google Gemini** has a free allowance and needs no card, so it is the way to *try* this app. Be honest about the shape of it: Google no longer publishes what the free limits are, they have been cut over time, and building something real makes many requests per message — so a free key may well stop you partway through an afternoon. Good for finding out whether you like this. Not something to plan a week of work around.
+**Google Gemini** has a free allowance and needs no card at all, so it is a genuine way to try this app for nothing. Google stopped publishing the exact limits and has cut them more than once, but the everyday Flash models still allow a few hundred requests a day — enough for real afternoons of building, given that one message here uses several. Worth saying plainly: it is free to find out whether you like this, and if you hit the limit it comes back the next day.
 
 **DeepSeek** is the answer for anyone who decides they want to actually use it: the cheapest paid option, very good at coding, and often cents for an evening. It does need a card, and five dollars on it goes a long way.
 

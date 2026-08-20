@@ -330,11 +330,13 @@
         {% for s in sessions %}
         <div class="session-row">
             <button type="button" class="session-name" data-nav="/sessions/{{ s.id }}">{{ s.name }}</button>
-            <span class="session-meta">{{ s.last_active_at | humantime }}</span>
-            <a class="btn-neutral btn-sm" href="/api/files/export/{{ s.id }}"
-               download aria-label="Download {{ s.name }} as a zip file">Download</a>
-            <button type="button" class="btn-neutral btn-sm" data-rename="{{ s.id }}" data-name="{{ s.name }}">Rename</button>
-            <button type="button" class="btn-danger btn-sm" data-delete="{{ s.id }}" data-name="{{ s.name }}">Delete</button>
+            <div class="session-row-actions">
+                <span class="session-meta">{{ s.last_active_at | humantime }}</span>
+                <a class="btn-neutral btn-sm" href="/api/files/export/{{ s.id }}"
+                   download aria-label="Download {{ s.name }} as a zip file">Download</a>
+                <button type="button" class="btn-neutral btn-sm" data-rename="{{ s.id }}" data-name="{{ s.name }}">Rename</button>
+                <button type="button" class="btn-danger btn-sm" data-delete="{{ s.id }}" data-name="{{ s.name }}">Delete</button>
+            </div>
         </div>
         {% else %}
         <p class="hint">No projects yet. Go back to the Project Manager and tell the assistant what you'd like to build.</p>

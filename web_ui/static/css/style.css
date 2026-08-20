@@ -1075,6 +1075,10 @@ html[data-theme="dark"] select.welcome-mic {
 .form-row label { display: flex; flex-direction: column; gap: 6px; font-size: 0.95rem; }
 /* Buttons in such a row line up with the controls, not with the captions. */
 .form-row > button { margin-bottom: 0; }
+/* ...and they go to the far end of the row rather than trailing the last
+   control. In a 520px panel the row wraps, and a button sitting immediately
+   after a wrapped slider looks like it belongs to it. */
+.form-row > button:last-child { margin-left: auto; }
 
 /* Padded to clear the 24x24 minimum target size. This app is used by people
    with unsteady hands and by people driving it from a phone, so a link that is
@@ -1135,16 +1139,33 @@ html[data-theme="dark"] select.welcome-mic {
     color: var(--accent);
 }
 
+/* The name on its own line, everything else under it.
+   Side by side, a project called "Mum's birthday card" wrapped onto three lines
+   in a 520px panel while "just now" took two and Delete hung off the edge. A
+   name is the thing you are looking for; it gets the width. */
 .session-row {
     display: flex;
-    gap: 12px;
-    align-items: center;
-    padding: 10px 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 12px 0;
     border-bottom: 2px solid var(--border);
 }
 .session-row:last-child { border-bottom: none; }
-.session-name { font-weight: 600; color: var(--text); text-decoration: none; flex: 1; }
-.session-meta { color: var(--text-dim); font-size: 0.9rem; }
+.session-name {
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    text-align: left;
+    padding: 2px 0;
+}
+.session-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.session-meta { color: var(--text-dim); font-size: 0.9rem; margin-right: auto; }
 
 /* The whole row is the target, not the little box. Someone with a tremor or
    limited hand control cannot reliably hit a 20-pixel square, and the label was
@@ -1946,18 +1967,22 @@ html[data-theme="dark"] {
    Fixed rather than a flex sibling on purpose: reflowing the conversation to
    make room would move every message under the reader's eye, and re-wrap a
    reply that is being read aloud. */
+/* On the LEFT, and flush against the bar.
+   On the right its close button sat directly under the app's own quit button --
+   two crosses in a column, one closing a panel and one closing the app. That is
+   a mistake somebody makes once and does not forgive. */
 .settings-panel {
     position: fixed;
     z-index: 60;
-    top: 46px;   /* just under the app bar, which is 44px plus its border */
-    right: 0;
+    top: 44px;   /* the app bar's exact bottom edge; 46 left a 2px seam */
+    left: 0;
     bottom: 0;
     width: min(520px, 100vw);
     display: flex;
     flex-direction: column;
     background: var(--surface, #1b1d24);
-    border-left: 1px solid var(--border, #2b2e38);
-    box-shadow: -18px 0 42px rgba(0, 0, 0, 0.34);
+    border-right: 1px solid var(--border, #2b2e38);
+    box-shadow: 18px 0 42px rgba(0, 0, 0, 0.34);
 }
 .settings-panel[hidden] { display: none; }
 
@@ -1981,11 +2006,28 @@ html[data-theme="dark"] {
    panel the body above owns it, so the inner one must not add a second. */
 .settings-panel-body #settings-page { max-width: none; margin: 0; }
 
+/* Everything below is the panel being 520px wide rather than a page being 960.
+   The same markup has to read well at both, and a few things were laid out on
+   the assumption that there was always room for one more thing beside them. */
+.settings-panel-body .panel { padding: 16px 0; }
+.settings-panel-body .form-row { gap: 12px; }
+/* A label and its control take the full width, so a select is not squeezed into
+   whatever is left over after the caption. */
+.settings-panel-body .form-row label { flex: 1 1 190px; min-width: 0; }
+.settings-panel-body .form-row select,
+.settings-panel-body .inline-form select { width: 100%; }
+.settings-panel-body .inline-form { flex-wrap: wrap; gap: 10px; }
+.settings-panel-body .inline-form input[type="password"],
+.settings-panel-body .inline-form input[type="text"] { flex: 1 1 100%; min-width: 0; }
+/* The back-to-top button is the last thing in the panel and belongs to the
+   whole of it, not to the section above it. */
+.settings-panel-body .to-top-btn { display: block; width: 100%; margin-top: 20px; }
+
 /* Room for the panel so the composer is not underneath it -- the composer being
    usable while this is open is the entire reason for the panel. */
 body.settings-open #chat-view,
 body.settings-open .settings-scroll {
-    padding-right: min(520px, 100vw);
+    padding-left: min(520px, 100vw);
 }
 
 @media (max-width: 900px) {
@@ -1999,12 +2041,12 @@ body.settings-open .settings-scroll {
         left: 0;
         width: 100vw;
         height: var(--sheet-height);
-        border-left: 0;
+        border-right: 0;
         border-top: 1px solid var(--border, #2b2e38);
         box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.34);
     }
     body.settings-open #chat-view,
-    body.settings-open .settings-scroll { padding-right: 0; }
+    body.settings-open .settings-scroll { padding-left: 0; }
     /* The composer has to sit above the sheet, not under it. A panel you can
        talk past is the entire idea; on a narrow screen the sheet would
        otherwise cover the one control that makes it true.
@@ -2015,14 +2057,52 @@ body.settings-open .settings-scroll {
     body.settings-open #chat-view { padding-bottom: var(--sheet-height); }
 }
 
-/* A gear needs no label beside it, so the button should not reserve room for
-   one. */
+/* A gear needs no label beside it, so the button reserves no room for one --
+   and it is square, because a 38x42 button with a 19px glyph rattling around
+   inside it reads as a mistake rather than a control. */
 .app-bar-btn.icon-only {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0;
-    width: 38px;
+    /* Square whatever the bar's height turns out to be. A fixed width made it
+       44x42 -- close enough to square to look like a mistake rather than a
+       choice. */
+    aspect-ratio: 1;
+    width: auto;
+}
+.app-bar-btn.icon-only svg { width: 26px; height: 26px; }
+
+/* On a wide screen the bar is not where this belongs. There is empty gutter
+   either side of the conversation, the bar is the one place every other control
+   already competes for, and a settings button is not something you reach for
+   mid-sentence. So: a proper round button down in the corner, out of the way
+   and easy to hit. Below that width the gutter is gone and it goes back on the
+   bar. */
+.settings-fab {
+    display: none;
+    position: fixed;
+    z-index: 55;
+    left: 22px;
+    bottom: 22px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    color: var(--text);
+    border: 2px solid var(--border);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+    cursor: pointer;
+}
+.settings-fab svg { width: 30px; height: 30px; }
+.settings-fab:hover { border-color: var(--accent); color: var(--accent); }
+body.settings-open .settings-fab { display: none; }
+
+@media (min-width: 1180px) {
+    .settings-fab { display: inline-flex; }
+    .app-bar-btn.icon-only#settings-btn { display: none; }
 }
 
 @media (max-width: 560px) {

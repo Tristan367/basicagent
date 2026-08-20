@@ -606,11 +606,26 @@
   // focus or steals the keyboard.
 
   (function () {
-    const openBtn = document.getElementById('settings-btn');
+    // Two triggers, one on the bar and one in the corner, of which only one is
+    // ever visible -- which is which is a question for the stylesheet, not for
+    // this.
+    const triggers = [
+      document.getElementById('settings-btn'),
+      document.getElementById('settings-fab'),
+    ].filter(Boolean);
+    const openBtn = triggers[0];
     const panel = document.getElementById('settings-panel');
     const body = document.getElementById('settings-panel-body');
     const closeBtn = document.getElementById('settings-close');
-    if (!openBtn || !panel || !body) return;
+    if (!triggers.length || !panel || !body) return;
+
+    function visibleTrigger() {
+      // `offsetParent` is null for a `position: fixed` element whether it is
+      // shown or not, so it cannot answer this -- and the corner button is
+      // fixed. `getClientRects()` is empty only when the element really is not
+      // being rendered.
+      return triggers.find((t) => t.getClientRects().length > 0) || openBtn;
+    }
 
     let loaded = false;
     let loading = false;
@@ -621,7 +636,7 @@
       if (isOpen() || loading) return;
       if (!loaded) {
         loading = true;
-        openBtn.setAttribute('aria-busy', 'true');
+        visibleTrigger().setAttribute('aria-busy', 'true');
         try {
           const resp = await fetch('/settings/body', { headers: { 'X-Panel': '1' } });
           if (!resp.ok) throw new Error('settings body ' + resp.status);
@@ -637,12 +652,12 @@
           return;
         } finally {
           loading = false;
-          openBtn.removeAttribute('aria-busy');
+          triggers.forEach((t) => t.removeAttribute('aria-busy'));
         }
       }
       panel.hidden = false;
       document.body.classList.add('settings-open');
-      openBtn.setAttribute('aria-expanded', 'true');
+      triggers.forEach((t) => t.setAttribute('aria-expanded', 'true'));
       // Into the panel, so a keyboard or screen reader user lands on what just
       // appeared rather than being left wherever they were.
       requestAnimationFrame(() => {
@@ -656,12 +671,12 @@
       if (!isOpen()) return;
       panel.hidden = true;
       document.body.classList.remove('settings-open');
-      openBtn.setAttribute('aria-expanded', 'false');
-      if (returnFocus !== false) openBtn.focus();
+      triggers.forEach((t) => t.setAttribute('aria-expanded', 'false'));
+      if (returnFocus !== false) visibleTrigger().focus();
       announce('Settings closed.');
     }
 
-    openBtn.addEventListener('click', () => (isOpen() ? close() : open()));
+    triggers.forEach((t) => t.addEventListener('click', () => (isOpen() ? close() : open())));
     if (closeBtn) closeBtn.addEventListener('click', () => close());
 
     document.addEventListener('keydown', (e) => {
@@ -674,7 +689,8 @@
 
     // Clicking the conversation is a clear enough "I am done here".
     document.addEventListener('pointerdown', (e) => {
-      if (!isOpen() || panel.contains(e.target) || openBtn.contains(e.target)) return;
+      if (!isOpen() || panel.contains(e.target)) return;
+      if (triggers.some((t) => t.contains(e.target))) return;
       if (e.target.closest('#chat-form, #messages')) close(false);
     });
   })();
