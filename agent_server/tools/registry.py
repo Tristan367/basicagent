@@ -15,6 +15,7 @@ from agent_server.tools.file_ops import edit_file, read_file, write_file
 from agent_server.tools.preview import preview
 from agent_server.tools.search import glob_search, grep_search
 from agent_server.tools.session_manager import (
+    assign_project,
     create_project,
     delete_project,
     list_projects,
@@ -406,6 +407,14 @@ register(Tool(
         "properties": {
             "name": {"type": "string", "description": "Short, friendly project name"},
             "description": {"type": "string", "description": "What the project is for"},
+            "for_child": {
+                "type": "boolean",
+                "description": (
+                    "Make this the CHILD's project rather than your own. Use when a "
+                    "parent is setting something up for their child -- a lesson, or a "
+                    "project to hand over. Independent of child mode."
+                ),
+            },
             "folder": {"type": "string", "description": "Optional explicit folder path"},
         },
         "required": ["name"],
@@ -460,6 +469,29 @@ register(Tool(
 ))
 
 register(Tool(
+    name="assign_project",
+    description=(
+        "Move a project between the child's list and the ordinary one. Whose a "
+        "project is and whether child mode is switched on are separate things: a "
+        "parent can set a lesson for a teenager without turning any safety locks on. "
+        "The project's files stay where they are."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "The project's name"},
+            "to": {
+                "type": "string",
+                "enum": ["child", "me"],
+                "description": "'child' gives it to them, 'me' takes it back",
+            },
+        },
+        "required": ["name", "to"],
+    },
+    handler=assign_project,
+))
+
+register(Tool(
     name="set_theme",
     description=(
         "Switch the app between light and dark mode. Use when the user asks to "
@@ -475,7 +507,7 @@ register(Tool(
 
 MANAGER_TOOLS = frozenset({
     "create_project", "list_projects", "open_project", "rename_project",
-    "delete_project", "set_theme",
+    "delete_project", "assign_project", "set_theme",
 })
 
 # Tools the home session may use in addition to the manager tools: enough to

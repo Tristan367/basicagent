@@ -23,9 +23,24 @@ def _profile(ctx: ToolContext) -> str:
     return parental.profile_for_session(ctx.session_id)
 
 
-def _projects_dir(ctx: ToolContext):
+def _visible(ctx: ToolContext) -> str | None:
+    """Which projects this manager may list. None means all of them.
+
+    The child's manager sees only the child's. The ordinary one sees
+    everything, because a parent has to be able to open what their child made,
+    look through it, and set a lesson up in it.
+    """
+    return "child" if _profile(ctx) == "child" else None
+
+
+def _owner(ctx: ToolContext, for_child: bool) -> str:
+    """Whose project a new one is. A child's manager can only make its own."""
+    return "child" if (for_child or _profile(ctx) == "child") else "parent"
+
+
+def _projects_dir(owner: str):
     base = PROJECTS_DIR
-    if _profile(ctx) == "child":
+    if owner == "child":
         base = base / "child"
     base.mkdir(parents=True, exist_ok=True)
     return base
@@ -73,17 +88,19 @@ async def _git_init(folder) -> bool:
 
 
 async def create_project(
-    ctx: ToolContext, *, name: str, description: str = "", folder: str = "", **_
+    ctx: ToolContext, *, name: str, description: str = "", folder: str = "",
+    for_child: bool = False, **_
 ) -> ToolResult:
     title = f"create project {name[:40]}"
     name = (name or "").strip()
     if not name:
         return ToolResult.error("a project name is required", title)
 
+    owner = _owner(ctx, for_child)
     if (folder or "").strip():
         project_dir = str((folder or "").strip())
     else:
-        project_dir = str(_projects_dir(ctx) / _slug(name))
+        project_dir = str(_projects_dir(owner) / _slug(name))
 
     from pathlib import Path
 
@@ -102,11 +119,16 @@ async def create_project(
         provider=provider,
         model=model,
         kind="project",
-        profile=_profile(ctx),
+        profile=owner,
+    )
+    whose = (
+        " It belongs to the child: they will see it in their own list whether or "
+        "not child mode is switched on."
+        if owner == "child" and _profile(ctx) != "child" else ""
     )
     return ToolResult(
         output=(
-            f"Created project '{name}' (id {session['id']}) in {project_dir}. "
+            f"Created project '{name}' (id {session['id']}) in {project_dir}.{whose} "
             f"A button to open it is now on screen; the user is NOT in it yet. "
             f"Tell them it is ready and that they can open it whenever they like."
         ),
@@ -116,13 +138,17 @@ async def create_project(
 
 
 async def list_projects(ctx: ToolContext, **_) -> ToolResult:
-    sessions = await db.list_sessions(profile=_profile(ctx))
+    sessions = await db.list_sessions(profile=_visible(ctx))
     if not sessions:
         return ToolResult(output="There are no projects yet.", title="projects")
+    mine = _profile(ctx)
     lines = []
     for s in sessions:
         desc = f" — {s['description']}" if s.get("description") else ""
-        lines.append(f"- {s['name']}{desc} (last worked on {s['last_active_at']})")
+        # Marked only where the distinction exists: the child's own manager
+        # sees nothing but the child's, so saying so every time is noise.
+        whose = " [the child's]" if mine != "child" and s.get("profile") == "child" else ""
+        lines.append(f"- {s['name']}{whose}{desc} (last worked on {s['last_active_at']})")
     return ToolResult(output="\n".join(lines), title=f"{len(sessions)} projects")
 
 
@@ -131,9 +157,9 @@ async def open_project(ctx: ToolContext, *, name: str, **_) -> ToolResult:
     name = (name or "").strip()
     if not name:
         return ToolResult.error("a project name is required", title)
-    session = await db.get_session_by_name(name, profile=_profile(ctx))
+    session = await db.get_session_by_name(name, profile=_visible(ctx))
     if session is None:
-        names = [s["name"] for s in await db.list_sessions(profile=_profile(ctx))]
+        names = [s["name"] for s in await db.list_sessions(profile=_visible(ctx))]
         available = ", ".join(names) if names else "(no projects yet)"
         return ToolResult.error(
             f"there is no project named '{name}'. Existing projects: {available}", title
@@ -154,7 +180,7 @@ async def rename_project(ctx: ToolContext, *, name: str, new_name: str, **_) -> 
     new_name = (new_name or "").strip()
     if not name or not new_name:
         return ToolResult.error("both the current and new names are required", title)
-    session = await db.get_session_by_name(name, profile=_profile(ctx))
+    session = await db.get_session_by_name(name, profile=_visible(ctx))
     if session is None:
         return ToolResult.error(f"there is no project named '{name}'", title)
     await db.update_session(session["id"], name=new_name)
@@ -169,7 +195,7 @@ async def delete_project(ctx: ToolContext, *, name: str, **_) -> ToolResult:
     name = (name or "").strip()
     if not name:
         return ToolResult.error("a project name is required", title)
-    session = await db.get_session_by_name(name, profile=_profile(ctx))
+    session = await db.get_session_by_name(name, profile=_visible(ctx))
     if session is None:
         return ToolResult.error(f"there is no project named '{name}'", title)
     await db.delete_session(session["id"])
@@ -182,6 +208,50 @@ async def delete_project(ctx: ToolContext, *, name: str, **_) -> ToolResult:
         ),
         title=f"Removed '{name}'",
     )
+
+
+async def assign_project(ctx: ToolContext, *, name: str, to: str = "child", **_) -> ToolResult:
+    """Move a project between the child's list and the ordinary one.
+
+    Whose a project is and whether child mode is switched on are two different
+    things, deliberately. A parent teaching a fourteen-year-old wants to set a
+    lesson without any of the safety locks; a parent of a six-year-old wants
+    both. Marking the project is what makes it theirs; child mode is a separate
+    switch.
+
+    The folder is left where it is. Moving it would break the project's git
+    history and whatever `preview` was told to run, to change a label.
+    """
+    title = f"give '{name[:34]}' to the {to}"
+    name = (name or "").strip()
+    target = (to or "").strip().lower()
+    if not name:
+        return ToolResult.error("a project name is required", title)
+    if _profile(ctx) == "child":
+        return ToolResult.error("only a grown-up can move a project between lists", title)
+    if target in ("child", "kid", "learner", "them"):
+        owner = "child"
+    elif target in ("me", "parent", "adult", "self", "back"):
+        owner = "parent"
+    else:
+        return ToolResult.error("`to` must be 'child' or 'me'", title)
+
+    session = await db.get_session_by_name(name, profile=None)
+    if session is None:
+        return ToolResult.error(f"there is no project named '{name}'", title)
+    if session.get("profile") == owner:
+        where = "the child's list" if owner == "child" else "your own list"
+        return ToolResult(output=f"'{name}' is already in {where}.", title=title)
+
+    await db.set_session_profile(session["id"], owner)
+    if owner == "child":
+        note = (
+            f"'{name}' is now the child's. They will see it in their own list, "
+            "whether or not child mode is switched on."
+        )
+    else:
+        note = f"'{name}' has been taken back out of the child's list."
+    return ToolResult(output=note, title=title)
 
 
 async def set_theme(ctx: ToolContext, *, theme: str, **_) -> ToolResult:

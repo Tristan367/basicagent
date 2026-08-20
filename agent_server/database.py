@@ -190,6 +190,11 @@ SESSION_FIELDS = {
     "kind", "system_prompt", "compact_threshold", "is_archived",
     "preview_command", "preview_url",
 }
+# `profile` is deliberately NOT in that set, and a test defends the omission.
+# `update_session` is reachable from a PATCH body, so anything listed there can
+# be written over HTTP -- and `profile` is what keeps a child's projects apart
+# from everyone else's. Changing it goes through `set_session_profile` below,
+# which no route calls.
 
 
 async def create_session(
@@ -257,6 +262,21 @@ async def update_session(session_id: str, **kwargs) -> dict | None:
         f"UPDATE sessions SET {clause} WHERE id = ?",
         (*updates.values(), session_id),
     )
+    return await get_session(session_id)
+
+
+async def set_session_profile(session_id: str, profile: str) -> dict | None:
+    """Move a project between the child's list and the ordinary one.
+
+    Separate from `update_session` on purpose. That one filters against
+    `SESSION_FIELDS` because its arguments can come from a request body; this
+    one is called only by the manager's `assign_project` tool, and putting
+    `profile` in the generic set would have made child mode one PATCH away
+    from being escaped.
+    """
+    if profile not in ("parent", "child"):
+        raise ValueError(f"unknown profile {profile!r}")
+    await _execute("UPDATE sessions SET profile = ? WHERE id = ?", (profile, session_id))
     return await get_session(session_id)
 
 
