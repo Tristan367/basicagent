@@ -1960,6 +1960,50 @@ html[data-theme="dark"] {
     .activity .chip { transition: opacity 260ms ease; }
 }
 
+.welcome-key-note { margin: 0 0 12px; }
+/* Said, but not shouted: most people will take the recommended route, and the
+   free one matters enormously to the few who cannot or will not use a card. */
+.welcome-fineprint { display: block; margin-top: 8px; font-size: 0.94em; opacity: 0.85; }
+
+/* ── Getting a key, step by step ─────────────────────────────────────────────
+   The one thing the user has to do somewhere other than here, so it is worth
+   the room. Numbers down the side, one instruction each, and a picture when
+   there is one -- a step with no picture is just as usable, which is what lets
+   them be added one at a time. */
+.walkthrough {
+    margin-top: 16px;
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 4px 14px;
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.walkthrough > summary {
+    cursor: pointer;
+    padding: 12px 4px;
+    font-weight: 600;
+    color: var(--accent);
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+.walkthrough-steps {
+    margin: 4px 0 8px;
+    padding-left: 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+.walkthrough-steps li { padding-left: 6px; }
+.walkthrough-steps li::marker { color: var(--accent); font-weight: 700; }
+.walkthrough-steps p { margin: 0 0 8px; line-height: 1.55; }
+.walkthrough-steps img {
+    display: block;
+    max-width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin-top: 6px;
+}
+
 /* ── Settings, over the conversation ─────────────────────────────────────────
    A panel rather than a page. The chat behind it keeps its scroll position, its
    draft and its focus, so opening this costs nothing.

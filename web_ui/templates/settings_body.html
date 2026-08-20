@@ -77,6 +77,33 @@
             directly, and it works out much cheaper than paying a middleman for a
             subscription. You only do it once. Pick whichever suits you:
         </p>
+
+        {# Open by default when there is no key at all, because then it is the
+           only thing on this screen that matters. Folded away afterwards, since
+           nobody needs it twice. #}
+        <details class="walkthrough" {% if needs_key %}open{% endif %}>
+            <summary>Show me how, step by step</summary>
+            <p class="hint">
+                This is the DeepSeek route, which is the cheapest and the one we
+                would suggest. It takes about five minutes and you only do it once.
+                If you would rather not put a card in at all, use Google Gemini
+                instead — it has a free allowance and the box for it is below.
+            </p>
+            <ol class="walkthrough-steps">
+                {% for step in walkthrough %}
+                <li>
+                    {% for para in step.text.split('\n\n') %}<p>{{ para }}</p>{% endfor %}
+                    {% if step.image %}
+                    <img src="{{ step.image }}" alt="" loading="lazy">
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ol>
+            <p class="hint">
+                Stuck anywhere in that? Close this and just ask — describe what you
+                are looking at and I will talk you through it.
+            </p>
+        </details>
     </section>
 
     {% for ps in provider_settings %}

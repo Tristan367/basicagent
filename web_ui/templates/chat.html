@@ -79,11 +79,19 @@
 
             <div class="welcome-step">
                 <span class="welcome-num">2</span>
-                <p>Connect an AI. This app doesn't come with one built in — it plugs into
-                an AI you already pay for, which is cheaper and gives you choices. It takes
-                about two minutes, one time only.</p>
+                <p>Connect an AI. This app has no AI of its own — it plugs into one you
+                pay for directly, which is far cheaper than a subscription. This is the
+                one setup step, it takes about five minutes, and you never do it again.</p>
             </div>
-            {% if not has_key %}<button type="button" class="btn-primary welcome-cta" data-nav="/settings">Set up your AI key</button>{% endif %}
+            {% if not has_key %}
+            <p class="hint welcome-key-note">There is a step-by-step guide waiting for you
+            with every click written out. In short: make an account at DeepSeek, put a
+            few dollars on it — five is a great many evenings — copy the code it gives
+            you, and paste it in. <span class="welcome-fineprint">If you would rather not
+            put a card in anywhere, Google Gemini has a free allowance instead; it is on
+            the same screen.</span></p>
+            <button type="button" class="btn-primary welcome-cta" data-nav="/settings">Show me how to set this up</button>
+            {% endif %}
             <div class="welcome-step">
                 <span class="welcome-num">3</span>
                 <p>Pick your microphone, so I can hear you. You can change this later.</p>

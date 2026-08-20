@@ -21,6 +21,7 @@ from agent_server.model_catalog import (
     offerable_models,
 )
 from agent_server.stt import availability as stt_availability
+from agent_server.templating import STATIC_DIR
 
 # Plain-language blurbs for the providers a non-technical user has to choose
 # between. The point is to let them pick without knowing what any of these are.
@@ -156,8 +157,68 @@ async def _name_open_sessions(items: list[dict]) -> list[dict]:
     return out
 
 
+# Getting a key is the one thing the user must do themselves, and the only
+# place this app sends them somewhere else. Written as the actual clicks, in
+# order, because "sign up and create an API key" is three unfamiliar words to
+# someone who has never done it.
+#
+# `shot` names a file in static/img/setup/. If it is not there the step renders
+# as words alone -- so the pictures can be added one at a time, and a missing
+# one is never a broken image.
+KEY_WALKTHROUGH = [
+    {
+        "shot": "01-account.png",
+        "text": "Go to platform.deepseek.com and make an account. It usually signs "
+                "you straight in afterwards.",
+    },
+    {
+        "shot": "02-topup.png",
+        "text": "Near the top of the page there is a Top up button. Click it.",
+    },
+    {
+        "shot": "03-amount.png",
+        "text": "Put in a small amount. Five dollars is plenty to see whether you "
+                "like this — it is a great many evenings' work. One dollar is "
+                "enough to try it at all.",
+    },
+    {
+        "shot": "04-apikeys.png",
+        "text": "In the menu down the left-hand side, click API keys.",
+    },
+    {
+        "shot": "05-create.png",
+        "text": "Click Create new API key, over on the right.",
+    },
+    {
+        "shot": "06-copy.png",
+        "text": "Give it any name you like — it is only so you can recognise it "
+                "later on their website, and nothing here cares. Then click "
+                "Create, and click the copy button.\n\nThat long code starting "
+                "with sk- is your key. Once you close that box you cannot see it "
+                "again — but making another one is free and takes seconds, so "
+                "this is not something to worry about.",
+    },
+    {
+        "shot": "07-paste.png",
+        "text": "Come back here and paste it into the DeepSeek box below. That is "
+                "the whole thing — you never have to do it again.",
+    },
+]
+
+
+def _walkthrough() -> list[dict]:
+    """The steps, each told whether its picture actually exists yet."""
+    shots = STATIC_DIR / "img" / "setup"
+    return [
+        {**step, "image": f"/static/img/setup/{step['shot']}"
+         if (shots / step["shot"]).is_file() else ""}
+        for step in KEY_WALKTHROUGH
+    ]
+
+
 async def _settings_context() -> dict:
     settings = await db.get_all_settings()
+    walkthrough = _walkthrough()
     provider_settings = []
     from agent_server.providers import get_provider_settings_fields
 
@@ -205,4 +266,6 @@ async def _settings_context() -> dict:
         "child_mode": settings.get("child_mode", "0") == "1",
         "override_remaining": await parental.override_remaining(),
         "override_elapsed": await parental.override_elapsed(),
+        "walkthrough": walkthrough,
+        "needs_key": not any_credentials(),
     }
