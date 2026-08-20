@@ -59,9 +59,14 @@
                     <input type="radio" name="a11y_mode" value="screen_reader">
                     I already use a screen reader
                 </label>
+                {# Offered even when the voice is not installed, because it is
+                   the thing many people came for and hiding it would mean they
+                   never learn it exists. It says so plainly instead: the
+                   preference is saved either way, so it starts working the
+                   moment the voice is set up. #}
                 <label class="checkbox-label">
                     <input type="radio" name="a11y_mode" value="read_aloud">
-                    Read replies out loud to me
+                    Read replies out loud to me{% if not tts.available %} — needs a one-off download; just ask me and I'll do it{% endif %}
                 </label>
                 <label class="checkbox-label">
                     <input type="radio" name="a11y_mode" value="visual" checked>

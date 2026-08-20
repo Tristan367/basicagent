@@ -354,6 +354,37 @@ The awkward part either way: replies stream in a word at a time, so a filter has
 to buffer across chunk boundaries or it will miss anything split across two.
 The sentence splitter that read-aloud already uses is the natural seam.
 
+## A score that goes up
+
+**Status: deferred, and worth returning to.**
+
+The idea: treat using the app the way a good game treats playing it. Something
+countable goes up, milestones land with a sound and a small celebration, and the
+whole thing is pleasant enough to want to come back to. Achievements on top,
+possibly for everyone rather than only for children -- an adult who enjoys using
+a tool uses it more.
+
+The chips and their sounds are the first half of this and are built. The score
+is the part still to design, and the design question is what the number *is*:
+
+- **Tokens** is the obvious one and probably wrong. It goes up fastest when the
+  assistant is struggling, so a child would be rewarded for the app working
+  badly, and it is a number nobody outside this field has any feel for.
+- **Things finished** -- files written, projects made, a game that runs -- is
+  what a person would actually be proud of, and it is already being counted for
+  the chips.
+- **Days come back** is the one that most games really run on, and it costs
+  nothing to track.
+
+The thing to be careful of: this is aimed partly at children, and a mechanic
+that rewards *more* use rather than *better* use is the wrong one to hand a
+six-year-old. "You finished the thing you set out to build" is a good reward.
+"You have used forty thousand tokens" is a slot machine.
+
+One piece is already free: the cost of a conversation is tracked. A child seeing
+"this cost you two pence" is a lesson in itself, and a parent seeing it is
+reassurance.
+
 ## Built since this file was written
 
 - **Confirmation before switching into a new project** — creating a project no

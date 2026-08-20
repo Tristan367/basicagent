@@ -400,8 +400,13 @@ def whisper_streaming_available() -> bool:
 
 # ── Text to speech (Kokoro) ──────────────────────────────────────────────────
 def _find_tts_model() -> str:
-    if os.getenv("TTS_MODEL"):
-        return os.getenv("TTS_MODEL", "")
+    # Checked for existence like the rest. Taken on trust, a stale or mistyped
+    # TTS_MODEL made the app report that read-aloud was ready and then fail at
+    # the moment somebody pressed play -- which is a worse outcome than saying
+    # up front that it is not installed.
+    override = os.getenv("TTS_MODEL", "")
+    if override:
+        return override if Path(override).exists() else ""
     candidates = [
         Path.home() / "models/tts/kokoro-v1.0.onnx",
         Path.home() / "models/tts/kokoro-v1.0.fp16.onnx",
@@ -414,8 +419,9 @@ def _find_tts_model() -> str:
 
 
 def _find_tts_voices() -> str:
-    if os.getenv("TTS_VOICES"):
-        return os.getenv("TTS_VOICES", "")
+    override = os.getenv("TTS_VOICES", "")
+    if override:
+        return override if Path(override).exists() else ""
     path = Path.home() / "models/tts/voices-v1.0.bin"
     return str(path) if path.exists() else ""
 
