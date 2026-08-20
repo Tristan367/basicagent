@@ -28,7 +28,10 @@ def price_label(price_out: float, free_tier: bool = False) -> str:
     if price_out <= 0:
         return "your own"
     if free_tier:
-        return f"free to start, then ${price_out:g}/M"
+        # "to try" rather than "to start": the allowance is real but small and
+        # no longer published, and someone who reads "free to start" plans an
+        # afternoon around it.
+        return f"free to try, then ${price_out:g}/M"
     return f"${price_out:g}/M"
 
 
@@ -88,13 +91,15 @@ def offerable_models() -> list[dict]:
         else:
             offered.append({**entry, "id": key, "name": provider.name})
 
-    # Free first, then by price. Someone looking for the cheapest option should
-    # find it at the top rather than having to read down the middle of the list
-    # to notice one costs nothing.
-    offered.sort(key=lambda m: (
-        0 if (m.get("free_tier") or m.get("price_out", 0.0) <= 0) else 1,
-        m.get("price_out", 0.0),
-    ))
+    # Cheapest first, by what it actually costs.
+    #
+    # A free allowance used to jump the queue, which put Gemini above a model
+    # costing a ninth as much per token. That was defensible when the free tier
+    # was generous; Google no longer publishes its limits and they have been cut
+    # hard, and a coding turn spends several requests -- so "free" now means
+    # "free until it stops", which is not worth the top of the list. It is still
+    # said on the label, where someone can weigh it for themselves.
+    offered.sort(key=lambda m: m.get("price_out", 0.0))
     return offered
 
 

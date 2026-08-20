@@ -193,3 +193,26 @@ def test_nothing_set_up_still_returns_something_usable(monkeypatch):
     for provider in kept.values():
         monkeypatch.setattr(provider, "api_key", lambda: "")
     assert model_catalog.recommended_default_model() == DEFAULT_MODEL
+
+
+def test_the_list_is_ordered_by_what_it_costs(monkeypatch):
+    """A free allowance used to jump the queue, which put a model above one
+    costing a ninth as much per token. Google no longer publishes those limits
+    and they have been cut hard, so "free" now means "free until it stops" --
+    not worth the top of the list. The label still says it."""
+    from agent_server import model_catalog, providers
+
+    kept = {k: v for k, v in providers._providers.items() if not k.startswith("custom:")}
+    monkeypatch.setattr(model_catalog, "_providers", kept)
+    for provider in kept.values():
+        monkeypatch.setattr(provider, "api_key", lambda: "k")
+
+    offered = model_catalog.offerable_models()
+    prices = [m["price_out"] for m in offered]
+    assert prices == sorted(prices), "the list is not cheapest-first"
+
+    free = [m for m in offered if m.get("free_tier")]
+    assert free, "no free-tier model to check the label on"
+    assert all("free to try" in m["price_label"] for m in free)
+    assert not any("free to start" in m["price_label"] for m in offered), \
+        "'free to start' invites planning an afternoon around an allowance that may not last"
