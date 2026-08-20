@@ -5,15 +5,15 @@ automatically. A step with no image renders as words alone, which is what
 happens today — nothing breaks while these are missing, so they can be added
 one at a time.
 
-Take them at a normal window size and crop to the part being described. No need
-to blur anything except the key itself in `06-copy.png`.
+This is the **Google Gemini** route, because it needs no card and its free
+allowance is enough to genuinely build something.
+
+Take them at a normal window size and crop to the part being described.
 
 | File | What it should show |
 |---|---|
-| `01-account.png` | The DeepSeek sign-up page at platform.deepseek.com |
-| `02-topup.png`   | The **Top up** button near the top of the platform page |
-| `03-amount.png`  | The top-up amount box, with a small amount entered |
-| `04-apikeys.png` | The left-hand menu with **API keys** highlighted |
-| `05-create.png`  | The **Create new API key** button at the top right |
-| `06-copy.png`    | The dialog with the new key and its copy button — **blur the key itself** |
-| `07-paste.png`   | This app's Settings, with the key pasted into the DeepSeek box |
+| `01-studio.png`  | aistudio.google.com/apikey, at the sign-in or the key list |
+| `02-create.png`  | The **Create API key** button |
+| `03-project.png` | The project chooser, if it appears |
+| `04-copy.png`    | The new key with its copy button — **blur the key itself** |
+| `05-paste.png`   | This app's Settings, with the key pasted into the Google Gemini box |

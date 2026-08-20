@@ -80,16 +80,17 @@
             <div class="welcome-step">
                 <span class="welcome-num">2</span>
                 <p>Connect an AI. This app has no AI of its own — it plugs into one you
-                pay for directly, which is far cheaper than a subscription. This is the
-                one setup step, it takes about five minutes, and you never do it again.</p>
+                have an account with, which is why it can be given away and why it costs so
+                little to run. This is the one setup step, and you never do it again.</p>
             </div>
             {% if not has_key %}
-            <p class="hint welcome-key-note">There is a step-by-step guide waiting for you
-            with every click written out. In short: make an account at DeepSeek, put a
-            few dollars on it — five is a great many evenings — copy the code it gives
-            you, and paste it in. <span class="welcome-fineprint">If you would rather not
-            put a card in anywhere, Google Gemini has a free allowance instead; it is on
-            the same screen.</span></p>
+            <p class="hint welcome-key-note"><strong>This part is free.</strong> Sign in
+            with a Google account, press one button, copy the code it gives you and paste
+            it in. No card, nothing to pay, about two minutes — and there is a guide with
+            every click written out. <span class="welcome-fineprint">Google gives you a
+            few hundred goes a day, which is plenty to build something real. If you later
+            want to work for hours at a stretch, DeepSeek is a paid option costing pennies,
+            and it is on the same screen.</span></p>
             <button type="button" class="btn-primary welcome-cta" data-nav="/settings">Show me how to set this up</button>
             {% endif %}
             <div class="welcome-step">
@@ -128,9 +129,10 @@
             {% if is_home and not has_key %}
             <div class="setup-banner" role="alert">
                 <p><strong>Before we can start, I need to be connected to an AI.</strong></p>
-                <p>This app plugs into an AI you already pay for — it takes about two minutes,
-                one time only, and it's cheaper than a subscription.</p>
-                <button type="button" class="btn-primary" data-nav="/settings">Set up your AI key</button>
+                <p>The quickest way is free: sign in with a Google account, press one button,
+                and paste the code it gives you. No card, about two minutes, one time only —
+                and there is a guide with every click written out.</p>
+                <button type="button" class="btn-primary" data-nav="/settings">Show me how</button>
             </div>
             {% endif %}
 

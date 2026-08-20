@@ -28,10 +28,11 @@ def price_label(price_out: float, free_tier: bool = False) -> str:
     if price_out <= 0:
         return "your own"
     if free_tier:
-        # "to try" rather than "to start": the allowance is real but small and
-        # no longer published, and someone who reads "free to start" plans an
-        # afternoon around it.
-        return f"free to try, then ${price_out:g}/M"
+        # The allowance is a few hundred requests a day and it resets, which is
+        # enough to build something rather than merely sample it -- so "free"
+        # unqualified, and the price after it for anyone who outgrows it. An
+        # earlier "free to try" undersold the one option that costs nothing.
+        return f"free, then ${price_out:g}/M"
     return f"${price_out:g}/M"
 
 

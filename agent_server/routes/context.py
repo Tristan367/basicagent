@@ -32,11 +32,11 @@ from agent_server.templating import STATIC_DIR
 PROVIDER_INFO = {
     "gemini": {
         "description": (
-            "Google's AI, and the easiest place to start: the everyday Gemini "
-            "models come with a free allowance, so you can use this app properly "
-            "without entering a card anywhere. If you already have a Google "
-            "account you are most of the way there. Friendly, creative, and very "
-            "good with pictures."
+            "Start here. Google's AI is free to use — a few hundred goes a day, "
+            "no card anywhere, and if you have a Gmail address you are most of "
+            "the way there already. That is enough to build something real and "
+            "find out whether you like this. Friendly, creative, and very good "
+            "with pictures."
         ),
         "key_hint": "AIza\u2026",
         "get_key_url": "https://aistudio.google.com/apikey",
@@ -44,9 +44,10 @@ PROVIDER_INFO = {
     },
     "deepseek": {
         "description": (
-            "The cheapest paid option, and the best of these at writing code — "
-            "this app was built with it. You can work for hours and still spend "
-            "less than a dollar, but it does need a card on file."
+            "Worth adding once you know you want to keep going. The best of these "
+            "at writing code — this app was built with it — and the cheapest paid "
+            "option by a distance: hours of work for less than a dollar, with no "
+            "daily limit to run into. It does need a card on file."
         ),
         "key_hint": "sk-\u2026",
         "get_key_url": "https://platform.deepseek.com",
@@ -162,46 +163,44 @@ async def _name_open_sessions(items: list[dict]) -> list[dict]:
 # order, because "sign up and create an API key" is three unfamiliar words to
 # someone who has never done it.
 #
+# Google, not DeepSeek, because this is the route with no card in it. The free
+# allowance runs to a few hundred requests a day, which is a real afternoon of
+# building rather than a taste -- and someone who has to enter card details
+# before they can see whether they like the thing mostly does not.
+#
 # `shot` names a file in static/img/setup/. If it is not there the step renders
 # as words alone -- so the pictures can be added one at a time, and a missing
 # one is never a broken image.
 KEY_WALKTHROUGH = [
     {
-        "shot": "01-account.png",
-        "text": "Go to platform.deepseek.com and make an account. It usually signs "
-                "you straight in afterwards.",
+        "shot": "01-studio.png",
+        "text": "Go to aistudio.google.com/apikey. If you have a Google account — a "
+                "Gmail address counts — sign in with it. If you do not, make one "
+                "there; it is free and takes a minute.",
     },
     {
-        "shot": "02-topup.png",
-        "text": "Near the top of the page there is a Top up button. Click it.",
+        "shot": "02-create.png",
+        "text": "Click the Create API key button.",
     },
     {
-        "shot": "03-amount.png",
-        "text": "Put in a small amount. Five dollars is plenty to see whether you "
-                "like this — it is a great many evenings' work. One dollar is "
-                "enough to try it at all.",
+        "shot": "03-project.png",
+        "text": "It may ask which project to put the key in. If you have never used "
+                "this before there will be one waiting for you, or it will offer to "
+                "make one — take whichever it offers. Nothing about the choice "
+                "matters here.",
     },
     {
-        "shot": "04-apikeys.png",
-        "text": "In the menu down the left-hand side, click API keys.",
+        "shot": "04-copy.png",
+        "text": "Your key appears. Click the copy button beside it.\n\nThat long "
+                "code is the key. Unlike some others, Google will let you come back "
+                "and look at it again later, so there is nothing to panic about if "
+                "you lose it.",
     },
     {
-        "shot": "05-create.png",
-        "text": "Click Create new API key, over on the right.",
-    },
-    {
-        "shot": "06-copy.png",
-        "text": "Give it any name you like — it is only so you can recognise it "
-                "later on their website, and nothing here cares. Then click "
-                "Create, and click the copy button.\n\nThat long code starting "
-                "with sk- is your key. Once you close that box you cannot see it "
-                "again — but making another one is free and takes seconds, so "
-                "this is not something to worry about.",
-    },
-    {
-        "shot": "07-paste.png",
-        "text": "Come back here and paste it into the DeepSeek box below. That is "
-                "the whole thing — you never have to do it again.",
+        "shot": "05-paste.png",
+        "text": "Come back here and paste it into the Google Gemini box below. That "
+                "is the whole thing — no card, nothing to pay, and you never have to "
+                "do it again.",
     },
 ]
 

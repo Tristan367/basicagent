@@ -213,6 +213,9 @@ def test_the_list_is_ordered_by_what_it_costs(monkeypatch):
 
     free = [m for m in offered if m.get("free_tier")]
     assert free, "no free-tier model to check the label on"
-    assert all("free to try" in m["price_label"] for m in free)
-    assert not any("free to start" in m["price_label"] for m in offered), \
-        "'free to start' invites planning an afternoon around an allowance that may not last"
+    # Said plainly. The allowance is a few hundred requests a day and it resets,
+    # which is enough to build something -- hedging it ("free to try") undersold
+    # the only option that costs nothing, which is the one that decides whether
+    # somebody nervous about money gets to see the app at all.
+    assert all(m["price_label"].startswith("free") for m in free)
+    assert not any("free to try" in m["price_label"] for m in offered)
