@@ -223,9 +223,63 @@ turn child mode off, switch the model, or reveal a key has to be refused exactly
 as the Settings page refuses it. The gate already exists; the tool has to be
 routed through the same one rather than reaching for `set_setting` itself.
 
-There is also a hole worth naming: **the Settings page has no assistant on it.**
-Someone who navigates there by voice arrives somewhere they cannot talk, which
-is the one screen in this app where that is true.
+See "Settings should not be a page" below: the hole this leaves is that Settings
+is the one screen in the app where nobody is listening.
+
+## Settings should not be a page
+
+**Status: designed, the groundwork done. Wanted.**
+
+Settings is a destination, so going there ends the conversation: the draft in the
+composer, the scroll position, the thing you were halfway through explaining.
+And it is the one screen in this app where nobody is listening -- which in an app
+whose whole premise is "everything can be done by talking" is a hole rather than
+a layout preference.
+
+**The shape: a panel that slides over the chat, never a destination.** The chat
+stays mounted underneath and stays usable -- no navigation, nothing lost. Wide
+screens get roughly 480px down the right; narrow ones a bottom sheet over about
+seventy percent, with the conversation still visible above it. Escape closes it.
+Focus moves in on open and back to the Settings button on close, and it is
+deliberately **not** a focus trap: Tab must be able to leave, because the point
+is that the chat still works while it is open.
+
+### Who is listening while it is open
+
+The awkward bit, and the reason this is not just a CSS change. A project's AI
+does not know how the app works and never will -- that separation is deliberate
+and worth keeping. So a question asked with the panel open has nowhere obvious
+to go.
+
+Two answers, and the cheaper one is probably right:
+
+1. **Give the manager the settings tools, and let people ask wherever they are.**
+   "Turn on dark mode" is answered by the manager doing it. A project's AI, asked
+   the same thing, offers the button that takes them to the manager (see the
+   buttons section above). The panel is then simply for people who would rather
+   click, and needs no conversation of its own.
+2. **Put a single ask-line in the panel** that routes to the manager and shows
+   the answer inside the panel, leaving the project's transcript untouched.
+
+Build (1) first. (2) is the kind of thing that sounds necessary and turns out to
+be used twice; it can be added later without redoing anything.
+
+### What has to happen first
+
+- **The Settings JavaScript is now its own file** (`web_ui/static/js/settings.js`)
+  rather than four hundred lines inside the template. It had no template
+  variables in it, so it was only there by habit -- and injecting a template
+  containing an inline `<script>` into a panel would not have run it. Done, and
+  verified to behave identically: theme, zoom, autosave, modals, voice preview.
+- **Three of the eight forms POST and reload** -- the theme row and the two
+  custom-endpoint forms. In a panel those have to become fetch calls, or the
+  panel throws itself away on submit. That is the actual remaining work.
+- A `/settings/body` route returning the panel's contents without the page
+  shell, so the panel can fetch it and the page can keep working as a fallback.
+
+Keep `/settings` as a real page throughout. It is the one screen a user cannot
+afford to lose access to -- the API key lives there -- so the panel should be an
+addition until it has been used for a while, not a replacement on day one.
 
 ## Handing a lesson to a child
 
