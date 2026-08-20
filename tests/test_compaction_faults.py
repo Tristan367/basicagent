@@ -6,6 +6,8 @@ is findable by reading the code, and all of them were present here too.
 """
 
 
+import pytest
+
 from agent_server import compaction
 from agent_server.config import compact_threshold_for
 from agent_server.system_prompt import COMPACT_PROMPT
@@ -183,17 +185,55 @@ def test_a_failed_compaction_does_not_end_the_turn():
 
 
 def test_the_tail_budget_is_a_share_of_the_conversation_not_the_threshold():
-    """They are not measured in the same thing. The threshold is compared
-    against the provider's reported prompt size -- system prompt included --
-    while the tail walk adds up stored per-row counts. Measured on one real
-    session: 12,376 against 4,118, three times apart. A tail taken from the
-    threshold was therefore larger than the whole conversation, so the walk kept
-    everything, left a few hundred tokens of head, freed nothing, and fired
-    again next turn."""
+    """The threshold covers more than the tail can ever be spent on.
+
+    It is compared against the provider's reported prompt size -- system prompt,
+    tool schemas and messages -- while the tail can only be spent on the
+    messages. The difference is fixed overhead compaction cannot reach.
+    """
     conversation = 4_118
     assert compaction.keep_tail_budget(conversation) < conversation
     # ...and it grows with the conversation, not with anything else.
     assert compaction.keep_tail_budget(400_000) > compaction.keep_tail_budget(4_000)
+
+
+@pytest.mark.parametrize("threshold, overhead, share", [
+    # The failing region is `overhead > (1 - share) x threshold`, which is the
+    # SMALL end -- and it climbs as the prompt and tool set grow. These are all
+    # inside it, and a threshold-derived tail keeps the whole conversation in
+    # every one.
+    (9_000, 6_300, 0.4),      # this app's own overhead, watched live
+    (32_000, 20_000, 0.4),    # a bigger prompt and tool set
+    (16_384, 12_000, 0.35),
+])
+def test_a_threshold_derived_tail_would_swallow_the_conversation(threshold, overhead, share):
+    """The arithmetic the fix is answering, written down so it stays answered.
+
+    Compaction fires when `overhead + messages >= threshold`, so there are at
+    least `threshold - overhead` tokens of messages to work with. A tail of
+    `share x threshold` is bigger than that whenever the overhead is large
+    relative to the threshold -- and then the walk keeps everything.
+    """
+    messages = threshold - overhead
+    would_have_kept = int(threshold * share)
+    assert would_have_kept >= messages, "this case is not actually in the broken region"
+
+    # What is used instead can never exceed half of what is there.
+    actually_keeps = compaction.clamp_tail(
+        compaction.keep_tail_budget(messages), messages
+    )
+    assert actually_keeps <= messages * 0.5 + 1
+    assert messages - actually_keeps > 0, "nothing would be left to summarise"
+
+
+def test_the_tail_can_never_exceed_half_the_conversation():
+    """The invariant, true whatever asked for the budget -- a floor, a share, or
+    any future setting. Clamped where the rows are in hand rather than where the
+    number is chosen."""
+    for conversation in (0, 100, 900, 4_118, 400_000):
+        for asked in (1, 500, 24_000, 10 ** 9):
+            kept = compaction.clamp_tail(asked, conversation)
+            assert kept <= conversation * 0.5 + 1, (conversation, asked, kept)
 
 
 def test_a_head_too_small_to_be_worth_summarising_is_left_alone():
@@ -214,3 +254,29 @@ async def test_nothing_is_announced_when_nothing_will_be_compacted(db):
     await db.add_message(session["id"], "assistant", "hi", token_count=5)
 
     assert not await compaction.would_compact(session["id"])
+
+
+async def test_it_says_so_when_the_overhead_alone_is_over_the_limit(db):
+    """Then no summary can ever get under it and the session would try on every
+    turn forever. "Could not compact" sends somebody looking for a fault in the
+    conversation when the fault is in the setting."""
+    session = await db.create_session(name="s", project_dir="/tmp")
+    await db.update_session(session["id"], compact_threshold=200)
+    for i in range(6):
+        await db.add_message(session["id"], "user", f"question {i} " * 60)
+        await db.add_message(session["id"], "assistant", f"answer {i} " * 60, token_count=400)
+
+    result = await compaction.compact_session(session["id"])
+    assert result["ok"] is False
+    assert "before anything is said" in result["reason"]
+    assert "needs raising" in result["reason"]
+
+
+async def test_the_overhead_is_the_prompt_plus_the_schemas(db):
+    """Both are sent on every request and neither can be summarised away."""
+    session = await db.create_session(name="s", project_dir="/tmp")
+    overhead = await compaction.overhead_tokens(session)
+    # Sanity: it is the size of a system prompt plus a tool list, not zero and
+    # not enormous. If this moves a long way, the safe-threshold floor should be
+    # looked at again -- the broken region climbs with it.
+    assert 3_000 < overhead < 30_000, overhead

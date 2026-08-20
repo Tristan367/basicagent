@@ -73,22 +73,45 @@ def conversation_tokens(rows: list[dict]) -> int:
     return sum(message_tokens(r) for r in rows)
 
 
+# However the tail budget was arrived at, it may never exceed half of what is
+# actually there to spend it on. This is the invariant that matters, and it is
+# true whatever the threshold, the share, or the overhead happen to be.
+KEEP_TAIL_CEILING_SHARE = 0.5
+
+
 def keep_tail_budget(conversation: int) -> int:
     """How much of the tail survives: a share of the conversation itself.
 
     Of the *conversation*, and deliberately not of the threshold, because the
-    two are not measured in the same thing. The threshold is compared against
-    the provider's reported prompt size, which includes the system prompt and
-    every round of a turn; the tail walk adds up stored per-row counts. Measured
-    on one real session they were 12,376 and 4,118 -- three times apart. A tail
-    budget taken from the threshold was therefore always far larger than the
-    whole conversation, so the walk kept everything, left a few hundred tokens
-    to summarise, freed nothing, and fired again on the next turn.
+    threshold covers more than the tail can ever be spent on. It is compared
+    against the provider's reported prompt size -- system prompt, tool schemas
+    and messages -- while the tail can only be spent on the messages. The
+    difference is fixed overhead that compaction cannot reach: about 6,300
+    tokens here, and it grows every time the prompt or the tool set does.
 
-    A share of the conversation cannot drift like that: 35% is kept and 65% is
-    always there to be summarised, whatever units anything else is counted in.
+    That gap is what breaks a threshold-derived tail, and it breaks at the
+    *small* end rather than the large one. Compaction fires when
+    `overhead + messages >= threshold`, so there are at least
+    `threshold - overhead` tokens of messages; a tail of `share x threshold`
+    exceeds them exactly when `overhead > (1 - share) x threshold`. At a 40%
+    share and 6,300 of overhead that is any threshold under about 10,500 --
+    watched live at 9,000, where the walk kept everything, left a few hundred
+    tokens of head, freed nothing, and fired again next turn.
+
+    A share of the conversation cannot drift that way at either end.
     """
     return max(KEEP_TAIL_FLOOR, int(max(conversation, 0) * KEEP_TAIL_SHARE))
+
+
+def clamp_tail(keep_tail: int, conversation: int) -> int:
+    """Never keep more than half of what there is, whatever asked for it.
+
+    The belt to the braces above. A floor, a user's preference, or any future
+    way of choosing the budget could each put it above the conversation; this is
+    applied where the rows are actually in hand, so it is true regardless of how
+    the number was arrived at.
+    """
+    return min(keep_tail, int(max(conversation, 0) * KEEP_TAIL_CEILING_SHARE))
 
 
 def message_tokens(row: dict) -> int:
@@ -156,8 +179,10 @@ def split_for_compaction(
     rows: list[dict], keep_tail_tokens: int | None = None
 ) -> tuple[list[dict], list[dict]]:
     """Return (messages_to_summarise, messages_to_keep) cut on a unit boundary."""
+    conversation = conversation_tokens(rows)
     if keep_tail_tokens is None:
-        keep_tail_tokens = keep_tail_budget(conversation_tokens(rows))
+        keep_tail_tokens = keep_tail_budget(conversation)
+    keep_tail_tokens = clamp_tail(keep_tail_tokens, conversation)
     groups = group_messages(rows)
     if len(groups) <= KEEP_MIN_UNITS:
         return [], rows
@@ -330,6 +355,26 @@ async def estimate_switch_costs(session_id: str, new_model_id: str) -> dict:
     }
 
 
+async def overhead_tokens(session: dict) -> int:
+    """What every request carries before a single message: prompt and schemas.
+
+    Compaction cannot touch any of it. If it alone is bigger than the threshold
+    then no amount of summarising will ever get under the limit, and the session
+    will try on every turn forever -- so it is worth being able to say that out
+    loud rather than reporting a generic failure.
+    """
+    import json
+
+    from agent_server.providers.base import estimate_tokens
+    from agent_server.tools.registry import allowed_tool_names, tool_schemas
+
+    prompt = await session_system_prompt(session)
+    schemas = tool_schemas(allowed_tool_names(session))
+    return estimate_tokens([{"content": prompt}]) + estimate_tokens(
+        [{"content": json.dumps(schemas)}]
+    )
+
+
 async def would_compact(session_id: str) -> bool:
     """Whether compacting now would actually free anything.
 
@@ -389,6 +434,23 @@ async def compact_session_events(
         return
 
     head_tokens = sum(message_tokens(r) for r in to_compact)
+
+    if not manual_summary.strip():
+        overhead = await overhead_tokens(session)
+        threshold = (await db.get_session_usage(session_id)).get("threshold") or 0
+        if threshold and overhead >= threshold:
+            # Said plainly, because the generic "could not compact" sends
+            # somebody looking for a fault in the conversation when the fault is
+            # in the setting: every request starts this far in before a word is
+            # said, so no summary can get beneath it.
+            yield fail(
+                f"This project's instructions and tools come to {overhead:,} tokens "
+                f"before anything is said, and it is set to summarise at "
+                f"{threshold:,}. Summarising cannot get under that, so nothing was "
+                "changed. The limit needs raising."
+            )
+            return
+
     if not manual_summary.strip() and not worth_compacting(head_tokens):
         # Checked before the model is called, so a session that cannot usefully
         # be compacted costs nothing to find that out, every turn, forever.
