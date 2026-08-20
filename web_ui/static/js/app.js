@@ -597,6 +597,115 @@
     setTimeout(cueError, 900);
   };
 
+  // ── Making a project by hand ──────────────────────────────────────────────
+  //
+  // The other way round from how this app is meant to work: instead of saying
+  // what you want and having it set up, you name a folder. For somebody who
+  // already knows what they are doing, or who has a folder of code they want
+  // this pointed at. Kept at the bottom of the menu and called "empty" so it
+  // does not read as the obvious route to somebody who does not know yet.
+
+  (function () {
+    const openBtn = document.getElementById('new-project-btn');
+    const modal = document.getElementById('new-project-modal');
+    if (!openBtn || !modal) return;
+
+    const nameEl = document.getElementById('new-project-name');
+    const folderRow = document.getElementById('new-project-folder-row');
+    const folderEl = document.getElementById('new-project-folder');
+    const errorEl = document.getElementById('new-project-error');
+    const createBtn = document.getElementById('new-project-create');
+    const cancelBtn = document.getElementById('new-project-cancel');
+    const whereEls = modal.querySelectorAll('input[name="new_project_where"]');
+    let returnTo = null;
+
+    function showError(text) {
+      errorEl.textContent = text || '';
+      errorEl.hidden = !text;
+    }
+
+    function refreshWhere() {
+      if (!folderRow) return;
+      const chosen = [...whereEls].find((r) => r.checked);
+      folderRow.hidden = !chosen || chosen.value !== 'existing';
+    }
+
+    function open() {
+      returnTo = document.activeElement;
+      showError('');
+      nameEl.value = '';
+      if (folderEl) folderEl.value = '';
+      if (whereEls.length) whereEls[0].checked = true;
+      refreshWhere();
+      modal.hidden = false;
+      modal.classList.add('shown');
+      nameEl.focus();
+    }
+
+    function close() {
+      modal.hidden = true;
+      modal.classList.remove('shown');
+      if (returnTo && returnTo.isConnected) returnTo.focus();
+    }
+
+    async function create() {
+      const name = nameEl.value.trim();
+      if (!name) { showError('Give it a name first.'); nameEl.focus(); return; }
+      const chosen = [...whereEls].find((r) => r.checked);
+      const folder = (chosen && chosen.value === 'existing' && folderEl)
+        ? folderEl.value.trim() : '';
+      if (chosen && chosen.value === 'existing' && !folder) {
+        showError('Say which folder, or let me pick a place for it.');
+        folderEl.focus();
+        return;
+      }
+      createBtn.disabled = true;
+      showError('');
+      try {
+        const resp = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, folder }),
+        });
+        const data = await resp.json().catch(() => null);
+        if (!resp.ok) {
+          showError((data && data.detail) || 'That did not work.');
+          return;
+        }
+        window.location.href = '/sessions/' + data.id;
+      } catch (e) {
+        showError('That did not work. Please try again.');
+      } finally {
+        createBtn.disabled = false;
+      }
+    }
+
+    openBtn.addEventListener('click', open);
+    cancelBtn.addEventListener('click', close);
+    createBtn.addEventListener('click', create);
+    whereEls.forEach((r) => r.addEventListener('change', refreshWhere));
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(); }
+      if (e.key === 'Enter' && e.target !== createBtn) { e.preventDefault(); create(); }
+    });
+
+    // Dropping a folder fills the path in. The same gesture as attaching one to
+    // a message, which is the only way most people here would think to say
+    // where something is.
+    if (folderEl) {
+      folderEl.addEventListener('dragover', (e) => { e.preventDefault(); folderEl.classList.add('drop-target'); });
+      folderEl.addEventListener('dragleave', () => folderEl.classList.remove('drop-target'));
+      folderEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        folderEl.classList.remove('drop-target');
+        const uri = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '')
+          .split('\n')[0].trim();
+        const path = fileUriToPath(uri) || (uri.startsWith('/') ? uri : '');
+        if (path) folderEl.value = path.replace(/\/+$/, '');
+      });
+    }
+  })();
+
   // ── Settings, over the conversation ───────────────────────────────────────
   //
   // Settings used to be somewhere you went, which ended whatever you were in

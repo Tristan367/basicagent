@@ -1965,6 +1965,29 @@ html[data-theme="dark"] {
    free one matters enormously to the few who cannot or will not use a card. */
 .welcome-fineprint { display: block; margin-top: 8px; font-size: 0.94em; opacity: 0.85; }
 
+/* ── Making a project by hand ────────────────────────────────────────────────
+   Last in the menu and deliberately quieter than the projects above it. Someone
+   looking for their own work should not have their eye caught by this on the
+   way past; someone looking for a way to make one will still find it. */
+.sessions-new {
+    border-top: 2px solid var(--border) !important;
+    color: var(--text-dim) !important;
+    font-size: 0.94rem;
+}
+.sessions-new:hover, .sessions-new:focus-visible { color: var(--accent) !important; }
+
+.stack-label { display: block; margin: 14px 0 6px; font-weight: 600; }
+#new-project-modal input[type="text"] { width: 100%; }
+.new-project-where { margin: 12px 0 0; gap: 0; }
+/* Tighter than the settings page's version: this is a two-line choice inside a
+   dialog, not a list of preferences to scan. */
+.new-project-where .checkbox-label { min-height: 38px; font-size: 0.98rem; }
+#new-project-folder-row { margin-top: 10px; }
+#new-project-folder.drop-target {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
 /* ── Getting a key, step by step ─────────────────────────────────────────────
    The one thing the user has to do somewhere other than here, so it is worth
    the room. Numbers down the side, one instruction each, and a picture when

@@ -54,6 +54,24 @@
                     {% else %}
                     <span class="sessions-empty">No projects yet</span>
                     {% endfor %}
+                    {#
+                      At the bottom, quiet, and worded so it does not compete.
+
+                      Telling the assistant what you want to build is the way
+                      this app is meant to work, and "Create new" sitting at the
+                      top of the list would read as the obvious route for
+                      somebody who does not yet know that. But making a project
+                      by hand is how every other tool does it, somebody who
+                      already has a folder full of code needs it, and having no
+                      way to do it at all is its own kind of rude.
+
+                      So: last, dimmer, and called "empty" -- which is the whole
+                      difference. The assistant hands you a project with
+                      something already in it.
+                    #}
+                    <button type="button" class="sessions-new" id="new-project-btn">
+                        New empty project&hellip;
+                    </button>
                 </div>
             </div>
         </nav>
@@ -124,6 +142,48 @@
                 </svg>
     </button>
     {% endif %}
+
+    <div class="modal-backdrop" id="new-project-modal" role="dialog" aria-modal="true"
+         aria-labelledby="new-project-title" hidden>
+        <div class="welcome-card quit-card">
+            <h2 id="new-project-title">New empty project</h2>
+            <p class="hint">This makes a project with nothing in it and opens it. If you
+            would rather describe what you want and have it built for you, close this and
+            ask the Project Manager instead.</p>
+
+            <label class="stack-label" for="new-project-name">What should it be called?</label>
+            <input type="text" id="new-project-name" placeholder="My website"
+                   autocomplete="off" spellcheck="false">
+
+            {% if not child_mode %}
+            <fieldset class="welcome-choice new-project-where">
+                <legend class="sr-only">Where should its files go?</legend>
+                <label class="checkbox-label">
+                    <input type="radio" name="new_project_where" value="new" checked>
+                    Put its files somewhere sensible for me
+                </label>
+                <label class="checkbox-label">
+                    <input type="radio" name="new_project_where" value="existing">
+                    Use a folder I already have
+                </label>
+            </fieldset>
+            <div id="new-project-folder-row" hidden>
+                <label class="stack-label" for="new-project-folder">Which folder?</label>
+                <input type="text" id="new-project-folder"
+                       placeholder="Drag a folder here, or type its path"
+                       autocomplete="off" spellcheck="false">
+                <p class="hint">Nothing in it is changed or moved. The assistant will read
+                what is there and work in place.</p>
+            </div>
+            {% endif %}
+
+            <p class="hint" id="new-project-error" hidden style="color: var(--danger)"></p>
+            <div class="quit-actions">
+                <button type="button" class="btn-primary" id="new-project-create">Create it</button>
+                <button type="button" class="btn-stop" id="new-project-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
 
     <div id="toast-area" class="toast-area" aria-live="polite"></div>
 

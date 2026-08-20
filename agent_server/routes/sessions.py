@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from agent_server import agent, parental
 from agent_server import database as db
 from agent_server.config import model_info, provider_for_model, split_custom_choice
-from agent_server.model_catalog import offerable_models
+from agent_server.model_catalog import effective_default_model, offerable_models
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -28,6 +28,72 @@ async def _require(session_id: str) -> dict:
 @router.get("")
 async def list_sessions():
     return await db.list_sessions(profile=await parental.visible_profile())
+
+
+@router.post("")
+async def create_session(payload: dict):
+    """Make a project without going through the assistant.
+
+    The way this app is meant to work is that you say what you want and the
+    Project Manager sets it up. This is the other way, for somebody who already
+    knows what they are doing or already has a folder of code -- offered quietly
+    rather than not at all, because having no way to do it is its own kind of
+    rude.
+    """
+    from pathlib import Path as _Path
+
+    from agent_server.config import PROJECTS_DIR
+    from agent_server.tools.session_manager import _git_init, _slug
+
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Give the project a name.")
+    if len(name) > 120:
+        raise HTTPException(400, "That name is too long.")
+
+    profile = await parental.current_profile()
+    raw_folder = str(payload.get("folder") or "").strip()
+
+    if raw_folder:
+        # Only outside child mode. A child pointing a project at any folder on
+        # the machine is exactly what the separation exists to prevent, and the
+        # option is not offered to them in the first place.
+        if profile == "child":
+            raise HTTPException(403, "Choosing a folder is not available in child mode.")
+        folder = _Path(raw_folder).expanduser()
+        try:
+            folder = folder.resolve()
+        except OSError as e:
+            raise HTTPException(400, "That folder path could not be read.") from e
+        if not folder.is_dir():
+            raise HTTPException(400, "There is no folder at that path.")
+        # A project rooted at home or at the filesystem root gives every tool in
+        # the session the run of the machine, which is never what was meant.
+        if folder == _Path.home() or folder.parent == folder:
+            raise HTTPException(400, "Pick a folder inside your home directory, not the whole of it.")
+    else:
+        base = PROJECTS_DIR / "child" if profile == "child" else PROJECTS_DIR
+        folder = base / _slug(name)
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise HTTPException(500, f"Could not make a folder for it: {e}") from e
+
+    await _git_init(folder)
+
+    model = effective_default_model(await db.get_all_settings())
+    if model.startswith("custom:"):
+        endpoint, model_id = split_custom_choice(model)
+        provider, model = endpoint, (model_id or endpoint)
+    else:
+        provider = provider_for_model(model)
+
+    session = await db.create_session(
+        name=name, project_dir=str(folder), provider=provider, model=model,
+        kind="project", profile=profile,
+    )
+    return {"ok": True, "id": session["id"], "name": session["name"],
+            "project_dir": session["project_dir"]}
 
 
 @router.get("/status")
