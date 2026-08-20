@@ -597,6 +597,88 @@
     setTimeout(cueError, 900);
   };
 
+  // ── Settings, over the conversation ───────────────────────────────────────
+  //
+  // Settings used to be somewhere you went, which ended whatever you were in
+  // the middle of: the draft in the composer, the scroll position, the reply
+  // being read aloud. It is now a panel over the chat, and the chat keeps
+  // working while it is open -- which is the whole point, so nothing here traps
+  // focus or steals the keyboard.
+
+  (function () {
+    const openBtn = document.getElementById('settings-btn');
+    const panel = document.getElementById('settings-panel');
+    const body = document.getElementById('settings-panel-body');
+    const closeBtn = document.getElementById('settings-close');
+    if (!openBtn || !panel || !body) return;
+
+    let loaded = false;
+    let loading = false;
+
+    function isOpen() { return !panel.hidden; }
+
+    async function open() {
+      if (isOpen() || loading) return;
+      if (!loaded) {
+        loading = true;
+        openBtn.setAttribute('aria-busy', 'true');
+        try {
+          const resp = await fetch('/settings/body', { headers: { 'X-Panel': '1' } });
+          if (!resp.ok) throw new Error('settings body ' + resp.status);
+          body.innerHTML = await resp.text();
+          loaded = true;
+          // Once only: several of the handlers in there are delegated on
+          // `document`, so initialising twice would double every click.
+          if (window.__initSettings) window.__initSettings();
+        } catch (e) {
+          // The page still exists and still works. Falling back to it is a far
+          // better outcome than a user who cannot reach their API key.
+          window.location.href = '/settings';
+          return;
+        } finally {
+          loading = false;
+          openBtn.removeAttribute('aria-busy');
+        }
+      }
+      panel.hidden = false;
+      document.body.classList.add('settings-open');
+      openBtn.setAttribute('aria-expanded', 'true');
+      // Into the panel, so a keyboard or screen reader user lands on what just
+      // appeared rather than being left wherever they were.
+      requestAnimationFrame(() => {
+        const first = panel.querySelector('h2, [tabindex], button, input, select');
+        if (first) { first.setAttribute('tabindex', first.tabIndex < 0 ? '-1' : first.tabIndex); first.focus(); }
+      });
+      announce('Settings opened. The chat is still here behind it.');
+    }
+
+    function close(returnFocus) {
+      if (!isOpen()) return;
+      panel.hidden = true;
+      document.body.classList.remove('settings-open');
+      openBtn.setAttribute('aria-expanded', 'false');
+      if (returnFocus !== false) openBtn.focus();
+      announce('Settings closed.');
+    }
+
+    openBtn.addEventListener('click', () => (isOpen() ? close() : open()));
+    if (closeBtn) closeBtn.addEventListener('click', () => close());
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !isOpen()) return;
+      // Let a modal inside the panel have the key first -- Escape should shut
+      // the rename box, not the whole panel out from under it.
+      if (panel.querySelector('.modal-backdrop:not([hidden])')) return;
+      close();
+    });
+
+    // Clicking the conversation is a clear enough "I am done here".
+    document.addEventListener('pointerdown', (e) => {
+      if (!isOpen() || panel.contains(e.target) || openBtn.contains(e.target)) return;
+      if (e.target.closest('#chat-form, #messages')) close(false);
+    });
+  })();
+
   // ── Chat (chat pages only) ────────────────────────────────────────────────
 
   const view = document.getElementById('chat-view');

@@ -1,0 +1,397 @@
+{# The Settings controls with no page around them.
+   Rendered twice: by settings.html for the standalone page, and on its own
+   at /settings/body so the panel can fetch it into the chat without a
+   navigation. Nothing in here may assume it is the whole page. #}
+<div id="settings-page">
+
+    <section class="panel">
+        <h2>Appearance</h2>
+        <div class="appearance-row">
+        <form method="POST" action="/_settings/prefs" class="theme-choice">
+            <button type="button" name="theme" value="light" data-theme="light"
+                    class="theme-opt {% if theme == 'light' %}active{% endif %}"
+                    aria-pressed="{{ 'true' if theme == 'light' else 'false' }}">Light mode</button>
+            <button type="button" name="theme" value="dark" data-theme="dark"
+                    class="theme-opt {% if theme == 'dark' %}active{% endif %}"
+                    aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}">Dark mode</button>
+            <span class="color-label">Color</span>
+            <button type="button" class="color-swatch green {% if not accent %}active{% endif %}"
+                    data-accent="" title="Default green" aria-label="Default green"
+                    aria-pressed="{{ 'true' if not accent else 'false' }}"></button>
+            <button type="button" class="color-swatch custom {% if accent %}active{% endif %}"
+                    id="custom-swatch" title="Custom color" aria-label="Custom color"
+                    aria-pressed="{{ 'true' if accent else 'false' }}"></button>
+            <input type="color" id="accent-picker" value="{{ accent or '#557030' }}"
+                   aria-label="Custom accent color" {% if not accent %}hidden{% endif %}>
+        </form>
+        <div class="zoom-row">
+            <span class="zoom-label">Zoom</span>
+            <button type="button" class="btn-neutral" id="zoom-out" aria-label="Zoom out">&minus;</button>
+            <span class="zoom-value" id="zoom-value" aria-live="polite">100%</span>
+            <button type="button" class="btn-neutral" id="zoom-in" aria-label="Zoom in">+</button>
+            <button type="button" class="btn-neutral" id="zoom-reset" aria-label="Reset zoom">Reset</button>
+        </div>
+        </div>
+    </section>
+
+    <section class="panel" id="parental-panel">
+        <h2>Parental controls</h2>
+        <p class="hint">Child mode makes the AI safe and kid-friendly, with a focus on learning and
+        education. Your child can build a game, make a website, or write a story, and the AI is
+        told never to just hand over answers — it guides them to figure things out for themselves.
+        Changing the AI (model, API keys) is locked behind a parent password.</p>
+        {% if child_mode %}
+        <p><strong>Child mode is on.</strong></p>
+        {% if override_elapsed %}
+        <p class="hint">The 24-hour reset is ready. Set a new parent password to take back control.</p>
+        <button type="button" class="btn-primary" id="child-reset">Set a new password</button>
+        {% else %}
+        <div class="quit-actions">
+            <button type="button" class="btn-stop" id="child-disable">Turn off child mode</button>
+            <button type="button" class="btn-neutral" id="child-forgot">I forgot the password</button>
+        </div>
+        <p class="hint" id="child-override-note" {% if override_remaining == 0 %}hidden{% endif %}>
+            Password reset ready in <strong id="child-override-time">{{ (override_remaining // 3600) }} hours</strong>.
+        </p>
+        {% endif %}
+        {% else %}
+        <button type="button" class="btn-primary" id="child-enable">Turn on child mode</button>
+        {% endif %}
+    </section>
+
+    {% if child_mode %}
+    <div class="lock-banner">
+        <p>Changing your AI, API keys, or model is locked while child mode is on.
+        You will be asked for the parent password each time you save one of them.</p>
+    </div>
+    {% endif %}
+    <div id="locked-area" {% if child_mode %}data-locked="1"{% endif %}>
+
+    <section class="panel">
+        <h2>Connect your AI</h2>
+        <p class="hint">
+            This app doesn't come with its own AI. Instead, it connects to an AI you
+            already pay for, using an <strong>API key</strong> — a secret code that lets
+            this app talk to that AI on your behalf. Adding an API key is a completely
+            normal, standard thing to do: it's the official way to use these AIs
+            directly, and it works out much cheaper than paying a middleman for a
+            subscription. You only do it once. Pick whichever suits you:
+        </p>
+    </section>
+
+    {% for ps in provider_settings %}
+    <section class="panel">
+        <h2>{{ ps.name }}
+            {% if ps.info.get_key_url %}
+            <a href="{{ ps.info.get_key_url }}" target="_blank" rel="noopener" class="get-key-link">{{ ps.info.get_key_label }} &rarr;</a>
+            {% endif %}
+        </h2>
+        {% if ps.info.description %}<p class="hint provider-desc">{{ ps.info.description }}</p>{% endif %}
+        <form method="POST" action="/_settings" class="inline-form" data-autosave>
+            {% for f in ps.fields %}
+            {% if f.kind == 'password' %}
+            {# The saved key's ends, as the placeholder -- enough to see one is
+               there and which it is. Never the full value, and never a row of
+               dots, which typing appended to and the server then discarded. #}
+            <input type="password" name="{{ f.key }}" class="{{ 'has-key' if f.has_value }}"
+                   placeholder="{% if f.has_value %}{{ f.masked }}{% else %}Paste your key here{% if ps.info.key_hint %} ({{ ps.info.key_hint }}){% endif %}{% endif %}"
+                   aria-label="{{ ps.name }} {{ f.label }}{% if f.has_value %} (saved: {{ f.masked }})){% endif %}"
+                   autocomplete="new-password" spellcheck="false">
+            {% else %}
+            <input type="text" name="{{ f.key }}" value="" placeholder="https://..." autocomplete="off" spellcheck="false"
+                   aria-label="{{ ps.name }} {{ f.label }}">
+            {% endif %}
+            {% endfor %}
+        </form>
+    </section>
+    {% endfor %}
+
+    <section class="panel">
+        <h2>Custom endpoint</h2>
+        <p class="hint">For connecting to an AI that runs on your own computer, or on a
+        company's own private AI. Most people can skip this.</p>
+
+        {# A table-shaped list: one row per endpoint, headed once. Labelling
+           every field on every row made a single endpoint fill most of a
+           screen; heading the columns once says the same thing in two lines. #}
+        <div class="endpoint-table">
+            {# Five cells, one per grid column. With four, auto-placement carried
+               the next row's first item into the leftover fifth column and every
+               row after shifted along by one. #}
+            <div class="endpoint-row endpoint-header" aria-hidden="true">
+                <span>Name</span><span>Address</span><span>Key</span><span></span><span></span>
+            </div>
+
+            {% for ep in custom_endpoints %}
+            <div class="endpoint-row">
+                <span class="endpoint-name">{{ ep.name }}</span>
+                {# Remove is a separate form: as a submit button inside the
+                   settings form it was the one the browser used when you
+                   pressed Enter in a field, so Enter deleted the endpoint. #}
+                <form method="POST" action="/_settings/custom_endpoint" class="endpoint-edit">
+                    <input type="hidden" name="name" value="{{ ep.name }}">
+                    <input type="text" name="base_url" value="{{ ep.base_url }}"
+                           aria-label="Address for {{ ep.name }}"
+                           placeholder="http://localhost:8888/v1" spellcheck="false" autocomplete="off">
+                    {# Shows the ends of the saved key. Never the whole value,
+                       and never a row of dots that typing would append to. #}
+                    <input type="password" name="api_key" spellcheck="false"
+                           autocomplete="new-password"
+                           aria-label="Key for {{ ep.name }}{% if ep.masked %} (currently {{ ep.masked }}){% endif %}"
+                           placeholder="{{ ep.masked if ep.masked else 'none set' }}">
+                    <button type="submit" class="btn-neutral btn-sm">Save</button>
+                </form>
+                <form method="POST" action="/_settings/custom_endpoint/delete" class="endpoint-del">
+                    <input type="hidden" name="name" value="{{ ep.name }}">
+                    <button type="submit" class="btn-danger btn-sm"
+                            aria-label="Remove the {{ ep.name }} endpoint">Remove</button>
+                </form>
+                {# After the row's five cells, never between them: the row is
+                   display:contents, so a full-width note placed mid-row pushes
+                   every cell after it along by one column. #}
+                {% if ep.key_is_url %}
+                <p class="endpoint-status bad endpoint-rowmsg">The key saved for
+                <strong>{{ ep.name }}</strong> is a copy of its address, so every message will
+                come back refused. Type the real key in the Key box and press Save.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <form method="POST" action="/_settings/custom_endpoint" class="endpoint-row endpoint-new">
+                <input type="text" name="name" placeholder="my-ai" aria-label="Name for the new endpoint"
+                       autocomplete="off" spellcheck="false">
+                <input type="text" name="base_url" placeholder="http://localhost:8888/v1"
+                       aria-label="Address of the new endpoint" autocomplete="off" spellcheck="false">
+                <input type="password" name="api_key" placeholder="only if it needs one"
+                       aria-label="Key for the new endpoint (optional)"
+                       autocomplete="new-password" spellcheck="false">
+                <button type="submit" class="btn-primary btn-sm">Add</button>
+            </form>
+        </div>
+
+        {% set checked = request.query_params.get('checked') %}
+        {% if request.query_params.get('error') == 'endpoint_url' %}
+        <p class="endpoint-status bad">The <strong>Address</strong> needs to start with http://
+        or https:// — for example <code>http://localhost:8888/v1</code>.</p>
+        {% elif request.query_params.get('error') == 'endpoint' %}
+        <p class="endpoint-status bad">An endpoint needs both a name and an address.</p>
+        {% elif request.query_params.get('error') == 'endpoint_name' %}
+        <p class="endpoint-status bad">A <strong>Name</strong> cannot contain a slash. Try a
+        plain name like <code>my-ai</code> or <code>the big computer</code>.</p>
+        {% elif request.query_params.get('error') == 'key_is_address' %}
+        <p class="endpoint-status bad">The <strong>Key</strong> box held the address, character
+        for character, so it was not saved — the key already there is untouched. If your browser
+        filled that box for you, clear it and type the key in yourself.</p>
+        {% elif checked and checked.startswith('ok') %}
+        <p class="endpoint-status good">Saved, and it answered — {{ checked[2:] }} model{{ '' if checked[2:] == '1' else 's' }} available.</p>
+        {% elif checked and checked.startswith('auth') %}
+        <p class="endpoint-status bad">Saved, but it answered {{ checked[4:] }}. That usually means
+        the key is wrong or missing — but some servers reply that way to any request they do not
+        recognise, so check the address ends in the right place too, often <code>/v1</code>.</p>
+        {% elif checked == 'unreachable' %}
+        <p class="endpoint-status bad">Saved, but nothing answered at that address. Check the AI is
+        running and the address is right.</p>
+        {% elif checked and checked.startswith('http') %}
+        <p class="endpoint-status bad">Saved, but it answered {{ checked[4:] }}, which is not what an
+        AI endpoint usually sends. Check the address.</p>
+        {% endif %}
+    </section>
+
+    <section class="panel">
+        <h2>Which AI to use for new projects</h2>
+        <p class="hint">New projects start with this AI. The price is roughly what it costs
+        to generate about a million words, and (recommended) means a safe, good-value choice.</p>
+        <form method="POST" action="/_settings" class="inline-form" data-autosave>
+            <select name="default_model">
+                {% for m in models %}
+                <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }} ({{ m.provider_label }}) — {{ m.price_label }}{% if m.recommended %} (recommended){% endif %}</option>
+                {% else %}
+                <option value="" disabled selected>No AI key set up yet</option>
+                {% endfor %}
+            </select>
+        </form>
+    </section>
+    </div>
+
+    <section class="panel">
+        <h2>Voice and speech</h2>
+        <form method="POST" action="/_settings/prefs" class="stack" data-autosave>
+            {# The hidden twin makes "unticked" distinguishable from "not on this
+               form"; without it a checkbox can be switched on but never off. #}
+            <label class="checkbox-label">
+                <input type="hidden" name="uses_screen_reader" value="off">
+                <input type="checkbox" name="uses_screen_reader"
+                       {% if settings.get('uses_screen_reader', '0') == '1' %}checked{% endif %}>
+                I use a screen reader
+            </label>
+            <p class="hint">When this is on, the app stays quiet and lets your screen reader
+            do the talking, so the two don't read over each other.</p>
+            <label class="checkbox-label">
+                <input type="hidden" name="stt_enabled" value="off">
+                <input type="checkbox" name="stt_enabled" {% if settings.get('stt_enabled', '1') == '1' %}checked{% endif %}>
+                Microphone (talk instead of type)
+            </label>
+            <div class="form-row">
+                <label>Microphone
+                    <select name="mic" data-mic-chooser>
+                        <option value="">Default microphone</option>
+                    </select>
+                </label>
+                <label>How well it listens
+                    <select name="whisper_size">
+                        {% for m in whisper_models %}
+                        <option value="{{ m.id }}" {% if m.id == whisper_size %}selected{% endif %}>
+                            {{ m.name }} &mdash; {{ m.size }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+            <p class="hint">
+                You should not need to change this &mdash; the best one is already
+                chosen, and it works without any special hardware. Only come here if
+                dictation feels slow on your computer.<br>
+                {% for m in whisper_models %}<strong>{{ m.name }}:</strong> {{ m.note }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                <br>Switching downloads the new one the first time, which takes a moment.
+            </p>
+            <label class="checkbox-label">
+                <input type="hidden" name="tts_auto" value="off">
+                <input type="checkbox" name="tts_auto" {% if settings.get('tts_auto', '0') == '1' %}checked{% endif %}>
+                Read replies aloud automatically
+            </label>
+            {% if tts.available %}
+            <div class="form-row">
+                <label>Voice
+                    <select name="tts_voice">
+                        {% for v, label in tts.voice_choices %}
+                        <option value="{{ v }}" {% if v == settings.get('tts_voice', tts.default_voice) %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label><span>Speed <span class="range-value" id="tts-speed-value"></span></span>
+                    <input type="range" name="tts_speed" min="0.5" max="2" step="0.05"
+                           value="{{ settings.get('tts_speed', '1.25') }}">
+                </label>
+                <label>Volume
+                    <input type="range" name="tts_volume" min="0" max="1" step="0.05"
+                           value="{{ settings.get('tts_volume', '0.75') }}">
+                </label>
+                <button type="button" class="btn-neutral" id="voice-preview-btn" aria-label="Preview this voice" title="Hear what this voice sounds like">
+                    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+                        <path fill="currentColor" d="M8 5v14l11-7z"/>
+                    </svg>
+                    Preview voice
+                </button>
+            </div>
+            {% else %}
+            <p class="hint">Text-to-speech is not installed. Put <code>kokoro-v1.0.onnx</code> and
+            <code>voices-v1.0.bin</code> in <code>~/models/tts</code> to enable it.</p>
+            {% endif %}
+        </form>
+    </section>
+
+    <section class="panel">
+        <h2>Sounds</h2>
+        <p class="hint">Short sounds tell you what is happening without you having to
+        watch the screen. Useful if you work by ear, or if you go and do something
+        else while a long job finishes.</p>
+        <form method="POST" action="/_settings/prefs" class="stack" data-autosave>
+            <label class="checkbox-label">
+                <input type="hidden" name="sound_cues" value="off">
+                <input type="checkbox" name="sound_cues"
+                       {% if settings.get('sound_cues', '1') == '1' %}checked{% endif %}>
+                Play a sound when a long job finishes, and when something goes wrong
+            </label>
+            <label class="checkbox-label">
+                <input type="hidden" name="sound_ticks" value="off">
+                <input type="checkbox" name="sound_ticks"
+                       {% if settings.get('sound_ticks', '0') == '1' %}checked{% endif %}>
+                Also tick quietly while the assistant is still working
+            </label>
+            <p class="hint">The tick is off to begin with. Turn it on if silence makes it
+            hard to tell whether the assistant is still going.</p>
+            <div class="form-row">
+                <label>How loud
+                    <input type="range" name="sound_volume" min="0" max="1" step="0.05"
+                           value="{{ settings.get('sound_volume', '0.4') }}"
+                           aria-label="How loud the sounds are">
+                </label>
+                <button type="button" class="btn-neutral" id="sound-preview-btn"
+                        title="Hear what the sounds are like">Try the sounds</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <h2>Your projects</h2>
+        <p class="hint">Download gives you a zip of everything in a project, so you can
+        put a website on the internet, send it to someone, or just keep a copy. Your work
+        is yours and should never be stuck inside this app.</p>
+        {% for s in sessions %}
+        <div class="session-row">
+            <button type="button" class="session-name" data-nav="/sessions/{{ s.id }}">{{ s.name }}</button>
+            <span class="session-meta">{{ s.last_active_at | humantime }}</span>
+            <a class="btn-neutral btn-sm" href="/api/files/export/{{ s.id }}"
+               download aria-label="Download {{ s.name }} as a zip file">Download</a>
+            <button type="button" class="btn-neutral btn-sm" data-rename="{{ s.id }}" data-name="{{ s.name }}">Rename</button>
+            <button type="button" class="btn-danger btn-sm" data-delete="{{ s.id }}" data-name="{{ s.name }}">Delete</button>
+        </div>
+        {% else %}
+        <p class="hint">No projects yet. Go back to the Project Manager and tell the assistant what you'd like to build.</p>
+        {% endfor %}
+    </section>
+
+    <section class="panel">
+        <h2>Restart</h2>
+        <p class="hint">Restart the app to pick up any updates. Your chat is saved. Mostly useful for developers.</p>
+        <button type="button" class="btn-primary" id="restart-btn">Restart the app</button>
+    </section>
+
+    <button type="button" class="btn-neutral to-top-btn" id="to-top-btn">Back to top &uarr;</button>
+
+</div>
+</div>
+
+<div class="saved-toast" id="saved-toast" role="status" hidden>Saved</div>
+
+<div class="modal-backdrop" id="rename-modal" role="dialog" aria-modal="true" aria-label="Rename project" hidden>
+    <div class="welcome-card quit-card">
+        <h2>Rename project</h2>
+        <input type="text" id="rename-input" class="modal-input" autocomplete="off"
+               aria-label="New project name">
+        <div class="quit-actions">
+            <button type="button" class="btn-primary" id="rename-confirm">Rename</button>
+            <button type="button" class="btn-stop" id="rename-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-backdrop" id="delete-modal" role="dialog" aria-modal="true" aria-label="Remove project" hidden>
+    <div class="welcome-card quit-card">
+        <h2>Remove project?</h2>
+        <p id="delete-text">This removes the project from your list. Your files are not deleted.</p>
+        <div class="quit-actions">
+            <button type="button" class="btn-danger" id="delete-confirm">Remove</button>
+            <button type="button" class="btn-stop" id="delete-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-backdrop" id="password-modal" role="dialog" aria-modal="true" aria-label="Parent password" hidden>
+    <div class="welcome-card quit-card">
+        <h2 id="password-modal-title">Parent password</h2>
+        <p id="password-modal-text">Enter the parent password.</p>
+        <input type="password" id="password-input" class="modal-input" autocomplete="new-password" aria-label="Parent password">
+        {# Only shown when a password is being *set*. A password box hides its
+           own typos, and getting one wrong here locks the parent out of their
+           own settings for a full day. #}
+        <input type="password" id="password-confirm-input" class="modal-input"
+               autocomplete="new-password" aria-label="Type the password again" hidden
+               placeholder="Type it again">
+        <p class="hint" id="password-modal-note" hidden>If you ever forget this password, you can reset it after a 24-hour wait.</p>
+        <p class="hint" id="password-modal-error" hidden style="color: var(--danger)"></p>
+        <div class="quit-actions">
+            <button type="button" class="btn-primary" id="password-confirm">Continue</button>
+            <button type="button" class="btn-stop" id="password-cancel">Cancel</button>
+        </div>
+    </div>

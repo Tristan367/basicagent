@@ -46,3 +46,17 @@ async def settings_page(request: Request):
     return templates.TemplateResponse(
         request=request, name="settings.html", context=await _settings_context()
     )
+
+
+@router.get("/settings/body")
+async def settings_body(request: Request):
+    """The Settings controls with no page around them.
+
+    Fetched by the panel so Settings can open over a conversation instead of
+    replacing it. The page at `/settings` renders the same template and stays
+    exactly as it was: it is the one screen a user cannot afford to lose -- the
+    API key lives there -- so it remains reachable even if the panel breaks.
+    """
+    return templates.TemplateResponse(
+        request=request, name="settings_body.html", context=await _settings_context()
+    )

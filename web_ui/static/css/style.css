@@ -1860,6 +1860,92 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
    picker and the Projects menu were simply gone. Not clipped, not awkward:
    unreachable, with no way to send a message and nothing on screen to
    suggest why. So both rows wrap instead. */
+/* ── Settings, over the conversation ─────────────────────────────────────────
+   A panel rather than a page. The chat behind it keeps its scroll position, its
+   draft and its focus, so opening this costs nothing.
+
+   Fixed rather than a flex sibling on purpose: reflowing the conversation to
+   make room would move every message under the reader's eye, and re-wrap a
+   reply that is being read aloud. */
+.settings-panel {
+    position: fixed;
+    z-index: 60;
+    top: 46px;   /* just under the app bar, which is 44px plus its border */
+    right: 0;
+    bottom: 0;
+    width: min(520px, 100vw);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface, #1b1d24);
+    border-left: 1px solid var(--border, #2b2e38);
+    box-shadow: -18px 0 42px rgba(0, 0, 0, 0.34);
+}
+.settings-panel[hidden] { display: none; }
+
+.settings-panel-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 10px 10px 20px;
+    border-bottom: 1px solid var(--border, #2b2e38);
+}
+.settings-panel-title { margin: 0; font-size: 1.15rem; }
+.settings-panel-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 16px 20px 40px;
+}
+/* The page's own outer wrapper does the scrolling on /settings. Inside the
+   panel the body above owns it, so the inner one must not add a second. */
+.settings-panel-body #settings-page { max-width: none; margin: 0; }
+
+/* Room for the panel so the composer is not underneath it -- the composer being
+   usable while this is open is the entire reason for the panel. */
+body.settings-open #chat-view,
+body.settings-open .settings-scroll {
+    padding-right: min(520px, 100vw);
+}
+
+@media (max-width: 900px) {
+    /* A sheet from the bottom, with the conversation still visible above it.
+       Never taller than leaves room for the composer: on a short phone a fixed
+       fraction of the screen pushed the Send button underneath it, and a panel
+       you cannot talk past is just a page with extra steps. */
+    :root { --sheet-height: min(62vh, calc(100vh - 340px)); }
+    .settings-panel {
+        top: auto;
+        left: 0;
+        width: 100vw;
+        height: var(--sheet-height);
+        border-left: 0;
+        border-top: 1px solid var(--border, #2b2e38);
+        box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.34);
+    }
+    body.settings-open #chat-view,
+    body.settings-open .settings-scroll { padding-right: 0; }
+    /* The composer has to sit above the sheet, not under it. A panel you can
+       talk past is the entire idea; on a narrow screen the sheet would
+       otherwise cover the one control that makes it true.
+
+       `62vh` and not `min(62vh, 100%)`: a percentage padding resolves against
+       the containing block's WIDTH even when it is padding-bottom, so on a tall
+       narrow phone the `100%` won and left the Send button under the sheet. */
+    body.settings-open #chat-view { padding-bottom: var(--sheet-height); }
+}
+
+/* A gear needs no label beside it, so the button should not reserve room for
+   one. */
+.app-bar-btn.icon-only {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    width: 38px;
+}
+
 @media (max-width: 560px) {
     html { font-size: 17px; }
     .bubble { max-width: 95%; }

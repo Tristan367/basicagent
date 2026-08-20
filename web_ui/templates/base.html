@@ -24,8 +24,23 @@
             {% if not is_home %}
             <button type="button" class="app-bar-btn" data-nav="/">Project Manager</button>
             {% endif %}
+            {# A gear rather than the word: it is the one control on this bar
+               that everybody already recognises, and the space it frees goes to
+               the project names, which are the part nobody can guess. It stays
+               on this bar rather than floating in a corner -- the bottom left
+               is where the Talk and attach buttons live, and that corner is
+               where the user's hand already is. #}
             {% if not is_settings %}
-            <button type="button" class="app-bar-btn" data-nav="/settings">Settings</button>
+            <button type="button" class="app-bar-btn icon-only" id="settings-btn"
+                    title="Settings" aria-label="Settings"
+                    aria-expanded="false" aria-controls="settings-panel">
+                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
+                          d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/>
+                    <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
+                          d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.3-2.5h-4l-.3 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4z"/>
+                </svg>
+            </button>
             {% endif %}
             <div class="sessions-wrap">
                 <button type="button" class="app-bar-btn" id="sessions-btn" aria-haspopup="true" aria-expanded="false">Projects <span class="chevron">&#9660;</span></button>
@@ -70,6 +85,31 @@
         </div>
     </div>
 
+    {#
+      Settings, over the conversation rather than instead of it. The chat stays
+      mounted and usable underneath: the draft in the composer, the scroll
+      position and the reply being read aloud all survive opening this.
+
+      Deliberately NOT a focus trap, and deliberately not closed by tabbing out.
+      Trapping would defeat the point -- the chat has to stay reachable -- and
+      closing on blur would throw the panel away every time somebody tabbed one
+      step too far, which is the kind of thing that is only ever annoying.
+    #}
+    <div id="settings-panel" class="settings-panel" role="dialog"
+         aria-label="Settings" aria-modal="false" hidden>
+        <div class="settings-panel-bar">
+            <h2 class="settings-panel-title">Settings</h2>
+            <button type="button" class="icon-btn settings-close" id="settings-close"
+                    title="Close settings" aria-label="Close settings">
+                <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                    <path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor"
+                          stroke-width="2.4" stroke-linecap="round" fill="none"/>
+                </svg>
+            </button>
+        </div>
+        <div class="settings-panel-body" id="settings-panel-body"></div>
+    </div>
+
     <div id="toast-area" class="toast-area" aria-live="polite"></div>
 
     {#
@@ -80,5 +120,8 @@
     <div id="sr-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/static/js/app.js?v={{ version }}"></script>
+    {# Loaded everywhere, because the panel can be opened from any screen. It
+       does nothing until the controls are actually present. #}
+    {% if not is_settings %}<script src="/static/js/settings.js?v={{ version }}"></script>{% endif %}
 </body>
 </html>
