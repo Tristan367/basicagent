@@ -140,3 +140,56 @@ def test_no_model_here_costs_enough_to_frighten_someone():
     dearest = max(m["price_out"] for m in MODELS)
     cheapest = min(m["price_out"] for m in MODELS)
     assert dearest / cheapest < 50, "something here is orders of magnitude pricier than the rest"
+
+
+# ── which model somebody lands on before they have chosen ──────────────────
+
+
+def test_the_default_is_the_cheapest_thing_they_can_reach(monkeypatch):
+    """Cheapest full stop, not cheapest-of-the-ones-we-like. Somebody who has
+    not picked a model has not agreed to spend anything either."""
+    from agent_server import model_catalog, providers
+
+    kept = {k: v for k, v in providers._providers.items() if not k.startswith("custom:")}
+    monkeypatch.setattr(model_catalog, "_providers", kept)
+    for provider in kept.values():
+        monkeypatch.setattr(provider, "api_key", lambda: "k")
+
+    offered = model_catalog.offerable_models()
+    chosen = model_catalog.recommended_default_model()
+    assert chosen == min(offered, key=lambda m: m["price_out"])["id"]
+    assert chosen == "deepseek-v4-flash", "the cheapest model in the catalogue moved"
+
+
+def test_a_model_on_their_own_computer_wins(monkeypatch):
+    """It costs nothing to run and they set it up deliberately, so it is both
+    the cheapest option and the one they most likely meant."""
+    from agent_server import model_catalog, providers
+
+    class Local:
+        name = "llm-box"
+
+        def has_credentials(self):
+            return True
+
+        def served_models(self):
+            return ["qwen3-coder"]
+
+    kept = {k: v for k, v in providers._providers.items() if not k.startswith("custom:")}
+    for provider in kept.values():
+        monkeypatch.setattr(provider, "api_key", lambda: "k")
+    kept["custom:box"] = Local()
+    monkeypatch.setattr(model_catalog, "_providers", kept)
+
+    assert model_catalog.recommended_default_model() == "custom:box"
+
+
+def test_nothing_set_up_still_returns_something_usable(monkeypatch):
+    from agent_server import model_catalog, providers
+    from agent_server.config import DEFAULT_MODEL
+
+    kept = {k: v for k, v in providers._providers.items() if not k.startswith("custom:")}
+    monkeypatch.setattr(model_catalog, "_providers", kept)
+    for provider in kept.values():
+        monkeypatch.setattr(provider, "api_key", lambda: "")
+    assert model_catalog.recommended_default_model() == DEFAULT_MODEL

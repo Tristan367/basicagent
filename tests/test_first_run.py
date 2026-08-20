@@ -14,13 +14,29 @@ from agent_server.system_prompt import ensure_home_session
 
 
 @pytest.fixture
-def only_gemini(db, monkeypatch):
-    """A user who has set up one key, and it is not the default provider's."""
-    from agent_server.providers import _providers
+def builtin_providers(monkeypatch):
+    """Only the providers that ship with the app.
 
-    for name, provider in _providers.items():
+    `_providers` is module-level, so a custom endpoint registered by another
+    test file is still in it here -- and a custom endpoint is free, so it wins
+    "cheapest" and the assertions below become about the wrong thing.
+    """
+    from agent_server import providers
+
+    kept = {k: v for k, v in providers._providers.items() if not k.startswith("custom:")}
+    monkeypatch.setattr(providers, "_providers", kept)
+    import agent_server.model_catalog as catalog
+
+    monkeypatch.setattr(catalog, "_providers", kept)
+    return kept
+
+
+@pytest.fixture
+def only_gemini(db, builtin_providers, monkeypatch):
+    """A user who has set up one key, and it is not the default provider's."""
+    for name, provider in builtin_providers.items():
         monkeypatch.setattr(provider, "api_key", (lambda n: (lambda: "k" if n == "gemini" else ""))(name))
-    return _providers
+    return builtin_providers
 
 
 async def test_the_home_assistant_lands_on_a_provider_the_user_has_a_key_for(db, only_gemini):
@@ -46,13 +62,11 @@ async def test_an_existing_install_is_repaired_on_startup(db, only_gemini):
     assert home["provider"] == "gemini", "a broken existing session was left broken"
 
 
-async def test_a_working_home_session_is_left_alone(db, monkeypatch):
+async def test_a_working_home_session_is_left_alone(db, builtin_providers, monkeypatch):
     """Only ever moved off a provider with no credentials. The user may have
     chosen the one it is on, and moving it under them would be worse than the
     bug."""
-    from agent_server.providers import _providers
-
-    for provider in _providers.values():
+    for provider in builtin_providers.values():
         monkeypatch.setattr(provider, "api_key", lambda: "k")
     await ensure_home_session()
     await db.update_session(HOME_SESSION_ID, provider="openrouter", model="x-ai/grok-4.3")
@@ -62,12 +76,10 @@ async def test_a_working_home_session_is_left_alone(db, monkeypatch):
     assert (home["provider"], home["model"]) == ("openrouter", "x-ai/grok-4.3")
 
 
-async def test_no_key_at_all_does_not_crash_the_front_door(db, monkeypatch):
+async def test_no_key_at_all_does_not_crash_the_front_door(db, builtin_providers, monkeypatch):
     """With nothing set up the home chat still has to render -- it is where the
     "set up your AI" banner lives, so it cannot be the thing that fails."""
-    from agent_server.providers import _providers
-
-    for provider in _providers.values():
+    for provider in builtin_providers.values():
         monkeypatch.setattr(provider, "api_key", lambda: "")
     home = await ensure_home_session()
     assert home is not None and home["id"] == HOME_SESSION_ID

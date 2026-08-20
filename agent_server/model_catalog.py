@@ -103,19 +103,24 @@ def any_credentials() -> bool:
 
 
 def recommended_default_model() -> str:
-    """The model new projects should start on.
+    """The model to start on: the cheapest thing the user can actually reach.
 
-    The cheapest *recommended* model the user actually has credentials for,
-    falling back to the cheapest available. It is deliberately never the most
-    expensive — a beginner with only a Claude key should land on Haiku, not
-    Fable 5, without ever thinking about it.
+    Cheapest full stop, not cheapest-of-the-ones-we-like. Somebody who has not
+    chosen a model has not agreed to spend anything either, and the difference
+    between the cheapest option and the dearest here is more than fortyfold --
+    a bill nobody warned them about is the one surprise this app must never
+    spring on the sort of person it is for.
+
+    A custom endpoint sorts to the front at zero, which is right: a model on
+    their own computer costs nothing to run and was set up deliberately.
+
+    They can pick something else whenever they like, and the picker shows the
+    price beside every name so the choice is an informed one.
     """
     available = offerable_models()
-    recommended = [m for m in available if m.get("recommended")]
-    pool = sorted(recommended or available, key=lambda m: m.get("price_out", 0.0))
-    if pool:
-        return pool[0]["id"]
-    return DEFAULT_MODEL
+    if not available:
+        return DEFAULT_MODEL
+    return min(available, key=lambda m: m.get("price_out", 0.0))["id"]
 
 
 def effective_default_model(settings: dict) -> str:
