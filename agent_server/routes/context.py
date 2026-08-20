@@ -1,9 +1,10 @@
 """Context builders shared by the page and settings routes."""
 
+import json
 from pathlib import Path
 
+from agent_server import activity, parental, whisper_streaming
 from agent_server import database as db
-from agent_server import parental, whisper_streaming
 from agent_server import tts as tts_service
 from agent_server.config import (
     CHILD_HOME_SESSION_ID,
@@ -111,7 +112,11 @@ async def _chat_context(session: dict) -> dict:
     settings = await db.get_all_settings()
     return {
         "session": session,
-        "messages": messages,
+        # Runs of tool results folded into one "here is what happened" item, so
+        # a reloaded conversation shows the same account of the work as the one
+        # that was watched live.
+        "messages": activity.group(messages),
+        "activity_families": json.dumps(activity.FAMILIES),
         "compactions": await db.get_compactions(session["id"]),
         "model_display": MODELS_BY_ID.get(session.get("model", ""), {}).get("name", session.get("model", "")),
         "is_home": is_home,

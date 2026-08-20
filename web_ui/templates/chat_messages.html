@@ -6,6 +6,21 @@
             <div class="summary-text" data-markdown>{{ m.summary_text }}</div>
         </details>
     </div>
+  {% elif m.kind == 'activity' %}
+    {#
+      What the assistant did between the message above and the one below. The
+      aria-label carries the whole thing as one sentence, so somebody reading
+      the history back gets "I read 3 files and ran a command" rather than four
+      separate fragments to reassemble.
+    #}
+    <div class="activity activity-done" role="list" aria-label="{{ m.sentence }}">
+        {% for c in m.chips %}
+        <span class="chip chip-{{ c.family }}" role="listitem">
+            <span class="chip-glyph" aria-hidden="true">{{ c.glyph }}</span>
+            <span class="chip-text">{{ c.text }}</span>
+        </span>
+        {% endfor %}
+    </div>
   {% elif m.role == 'tool' %}
     {% if m.open_session %}
     <div class="message action" id="msg-{{ m.id }}">

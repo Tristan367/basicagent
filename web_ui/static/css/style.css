@@ -1860,6 +1860,85 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
    picker and the Projects menu were simply gone. Not clipped, not awkward:
    unreachable, with no way to send a message and nothing on screen to
    suggest why. So both rows wrap instead. */
+/* ── What the assistant did, between two messages ────────────────────────────
+   A row of chips that fills in while it works and stays afterwards as the
+   record. Colour carries the family; the words carry the meaning, and every
+   chip says both -- colour alone would leave anyone who cannot separate these
+   hues with a row of identical grey pills.
+
+   The hues are set once here and tuned per theme below, so a chip holds its
+   contrast whichever way round the app is. */
+:root {
+    --fam-write: #3f7d3a;
+    --fam-run: #8a5a13;
+    --fam-look: #2c6291;
+    --fam-web: #6b46a8;
+    --fam-think: #a03c78;
+    --fam-see: #16736e;
+    --fam-project: #5c6270;
+}
+html[data-theme="dark"] {
+    --fam-write: #7fd07a;
+    --fam-run: #e0a75a;
+    --fam-look: #79b6e8;
+    --fam-web: #b998ee;
+    --fam-think: #ef92c9;
+    --fam-see: #66cfc7;
+    --fam-project: #a9b1bf;
+}
+
+.activity {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin: 2px 0 10px;
+    padding: 0 2px;
+}
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 11px 4px 9px;
+    border-radius: 999px;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    color: var(--chip-color, var(--fam-project));
+    border: 1px solid color-mix(in srgb, var(--chip-color, var(--fam-project)) 40%, transparent);
+    background: color-mix(in srgb, var(--chip-color, var(--fam-project)) 12%, transparent);
+}
+.chip-glyph { font-size: 1.02em; line-height: 1; }
+.chip-write   { --chip-color: var(--fam-write); }
+.chip-run     { --chip-color: var(--fam-run); }
+.chip-look    { --chip-color: var(--fam-look); }
+.chip-web     { --chip-color: var(--fam-web); }
+.chip-think   { --chip-color: var(--fam-think); }
+.chip-see     { --chip-color: var(--fam-see); }
+.chip-project { --chip-color: var(--fam-project); }
+
+/* Settled: the turn is over and these are history now, so they stop competing
+   with the reply above them. */
+.activity-done .chip { opacity: 0.82; }
+
+.status-glyph {
+    display: inline-block;
+    width: 1.1em;
+    margin-right: 6px;
+    color: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    /* The whole point: a thing landing should feel like it landed. Small,
+       fast, and only on the chip that just changed -- nothing else on the page
+       moves, so there is no drift to be sick over. */
+    .chip-pop { animation: chip-pop 320ms cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+    @keyframes chip-pop {
+        0%   { transform: scale(0.86); opacity: 0.4; }
+        55%  { transform: scale(1.05); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+    .activity .chip { transition: opacity 260ms ease; }
+}
+
 /* ── Settings, over the conversation ─────────────────────────────────────────
    A panel rather than a page. The chat behind it keeps its scroll position, its
    draft and its focus, so opening this costs nothing.

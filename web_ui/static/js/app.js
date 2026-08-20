@@ -1050,19 +1050,38 @@
     }
   }
 
+  let statusText = null;
+  let statusGlyph = null;
+
   function setStatus(text) {
     // The status bar is a live region and `content` events arrive per token,
     // so this is called with "Writing a reply..." hundreds of times a turn.
     // Rewriting the node with the same string can make a screen reader
     // re-announce it, so an unchanged status is left strictly alone.
-    if (statusBar.textContent === text && !statusBar.hidden) return;
-    statusBar.textContent = text;
-    statusBar.hidden = false;
+    if (!statusText) {
+      statusBar.textContent = '';
+      statusGlyph = document.createElement('span');
+      // Decoration. The words beside it say the same thing, and a screen
+      // reader reading a cycling character ten times a second is a torment.
+      statusGlyph.className = 'status-glyph';
+      statusGlyph.setAttribute('aria-hidden', 'true');
+      statusText = document.createElement('span');
+      statusText.className = 'status-text';
+      statusBar.appendChild(statusGlyph);
+      statusBar.appendChild(statusText);
+    }
+    if (statusText.textContent === text && !statusBar.hidden) return;
+    statusText.textContent = text;
+    if (statusBar.hidden) {
+      statusBar.hidden = false;
+      startSpinner(statusGlyph);
+    }
   }
 
   function clearStatus() {
+    stopSpinner();
     statusBar.hidden = true;
-    statusBar.textContent = '';
+    if (statusText) statusText.textContent = '';
   }
 
   // ── Screen reader announcements ───────────────────────────────────────────
@@ -1104,6 +1123,142 @@
     delete_project: 'Removing project',
     list_projects: 'Listing projects',
   };
+
+  // ── What the assistant is doing, while it does it ─────────────────────────
+  //
+  // The assistant works for a minute and then a reply appears, and nothing in
+  // between says that anything happened. This is that minute, made visible: a
+  // row of chips that fills in as each piece of work lands, and stays afterwards
+  // as the record of what went on between two messages.
+  //
+  // Grouped into families rather than shown one tool at a time. "Read 4 files"
+  // is a thing a person can hold in their head; four separate lines saying
+  // `read` are noise, and the user is not supposed to know what a tool is.
+  const TOOL_FAMILY = {
+    write: 'write', edit: 'write',
+    bash: 'run', preview: 'run',
+    read: 'look', grep: 'look', glob: 'look',
+    webfetch: 'web', websearch: 'web',
+    task: 'think', explore: 'think',
+    browser: 'see', capture: 'see',
+    create_project: 'project', open_project: 'project', rename_project: 'project',
+    delete_project: 'project', list_projects: 'project', assign_project: 'project',
+    set_theme: 'project',
+  };
+
+  // Shape and sound per family, from the server so there is only one table.
+  // See agent_server/activity.py.
+  const FAMILY = (function () {
+    try { return JSON.parse(document.getElementById('activity-families').textContent); }
+    catch (e) { return {}; }
+  })();
+
+  function familyOf(name) { return TOOL_FAMILY[name] || 'run'; }
+
+  // A short note per family. Quiet and single -- the working sound has to be
+  // ignorable, because it repeats. The two-note flourish is saved for the end
+  // of the whole turn, where it means something.
+  function cueTool(family) {
+    if (!soundCues) return;
+    const spec = FAMILY[family];
+    blip(spec ? spec.note : 640, 0, 0.09, 0.10);
+  }
+
+  let activity = null;
+
+  function activityStrip() {
+    if (activity && activity.el.isConnected) return activity;
+    const el = document.createElement('div');
+    el.className = 'activity';
+    // Not a live region. A sighted user watches it fill in; a screen reader
+    // gets one tidy sentence at the end of the turn instead of a running
+    // commentary of every file that was opened.
+    el.setAttribute('role', 'list');
+    el.setAttribute('aria-label', 'What the assistant did');
+    activity = { el, counts: {}, chips: {} };
+    if (assistantEl && assistantEl.closest('.message')) {
+      messages.insertBefore(el, assistantEl.closest('.message'));
+    } else {
+      messages.appendChild(el);
+    }
+    return activity;
+  }
+
+  function noteToolDone(name) {
+    const family = familyOf(name);
+    const strip = activityStrip();
+    strip.counts[family] = (strip.counts[family] || 0) + 1;
+    const n = strip.counts[family];
+    const spec = FAMILY[family] || FAMILY.run;
+    let chip = strip.chips[family];
+    if (!chip) {
+      chip = document.createElement('span');
+      chip.className = 'chip chip-' + family;
+      chip.setAttribute('role', 'listitem');
+      chip.innerHTML = '<span class="chip-glyph" aria-hidden="true"></span><span class="chip-text"></span>';
+      chip.querySelector('.chip-glyph').textContent = spec.glyph;
+      strip.chips[family] = chip;
+      strip.el.appendChild(chip);
+    }
+    chip.querySelector('.chip-text').textContent =
+      (n === 1 ? spec.one : spec.many.replace('{n}', n));
+    // Retriggered by removing and re-adding, so the tenth file lands as
+    // visibly as the first.
+    chip.classList.remove('chip-pop');
+    void chip.offsetWidth;
+    chip.classList.add('chip-pop');
+    cueTool(family);
+    scrollToBottom();
+  }
+
+  // One sentence, for the announcer and for anyone who cannot see the chips.
+  function activitySentence() {
+    if (!activity || !Object.keys(activity.counts).length) return '';
+    const parts = Object.entries(activity.counts).map(([family, n]) => {
+      const spec = FAMILY[family] || FAMILY.run;
+      return n === 1 ? spec.one : spec.many.replace('{n}', n);
+    });
+    if (parts.length === 1) return 'I ' + parts[0] + '.';
+    return 'I ' + parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] + '.';
+  }
+
+  function finishActivity() {
+    if (!activity) return;
+    if (!Object.keys(activity.counts).length) {
+      activity.el.remove();
+    } else {
+      activity.el.classList.add('activity-done');
+      activity.el.setAttribute('aria-label', activitySentence());
+    }
+    activity = null;
+  }
+
+  // ── The working glyph ─────────────────────────────────────────────────────
+  //
+  // A character that cycles, which is the cheapest possible "something is
+  // happening": no layout, no compositing, one text node. Stopped entirely for
+  // anyone who has asked for less motion -- for them it simply sits still.
+  const SPINNER = ['\u2735', '\u2736', '\u2737', '\u2738', '\u2739', '\u273a', '\u2739', '\u2738', '\u2737', '\u2736'];
+  const stillPlease = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let spinTimer = 0;
+  let spinAt = 0;
+
+  function startSpinner(el) {
+    stopSpinner();
+    if (!el) return;
+    el.textContent = SPINNER[0];
+    if (stillPlease) return;
+    spinTimer = setInterval(() => {
+      spinAt = (spinAt + 1) % SPINNER.length;
+      el.textContent = SPINNER[spinAt];
+    }, 110);
+  }
+
+  function stopSpinner() {
+    if (spinTimer) clearInterval(spinTimer);
+    spinTimer = 0;
+  }
 
   function clip(s, n) {
     s = String(s || '');
@@ -1420,6 +1575,7 @@
         setStatus(statusForTool(ev.name, ev.args));
         break;
       case 'tool_end':
+        noteToolDone(ev.name);
         if (ev.open_session) {
           pendingOpen = ev.open_session;
           appendAction(ev.open_session);
@@ -1550,12 +1706,20 @@
 
   function endTurn() {
     removeEmptyAssistant();
+    // Before the announcement below, so the chips have settled and the
+    // sentence describes a finished turn rather than one in progress.
+    const did = activitySentence();
+    finishActivity();
     running = false;
     sendBtn.hidden = false;
     stopBtn.hidden = true;
     clearStatus();
     refreshTheme();
     refreshPlay();
+    // One sentence for the whole turn. Someone listening gets "I read 3 files
+    // and ran a command" rather than nothing at all, which is what they got
+    // before, and rather than a running commentary, which would be worse.
+    if (did) announce(did);
   }
 
   function beginTurn() {

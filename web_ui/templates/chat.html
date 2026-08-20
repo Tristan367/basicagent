@@ -2,6 +2,11 @@
 {% block title %}{{ 'Project Manager' if is_home else session.name }}{% endblock %}
 {% block app_title %}{{ 'Project Manager' if is_home else session.name }}{% endblock %}
 {% block content %}
+{# The one copy of the tool families, from agent_server/activity.py. The
+   browser needs them while a turn is running, to count events as they
+   arrive; the server needs them to fold a stored conversation back into
+   the same shape. Two copies would drift the first time a tool was added. #}
+<script type="application/json" id="activity-families">{{ activity_families | safe }}</script>
 <div id="chat-view"
      data-session-id="{{ session.id }}"
      data-is-home="{{ '1' if is_home else '' }}"
