@@ -46,11 +46,19 @@ def _stream(session_id: str) -> StreamingResponse:
 
 
 def _attach(session_id: str) -> StreamingResponse:
+    """Everything this run has said so far, then the rest of it as it happens.
+
+    With `replay=False` a browser that reloaded mid-turn got only the events
+    still to come, and the round it was in the middle of -- which is not saved
+    until it finishes -- was simply lost. The client knows which of these it has
+    already, because the run marks the points where it saved.
+    """
+
     async def generator() -> AsyncIterator[str]:
         if agent.active_run(session_id) is None:
             yield agent.sse({"type": "stream_end"})
             return
-        async for event in agent.subscribe(session_id, replay=False):
+        async for event in agent.subscribe(session_id, replay=True, since_last_save=True):
             yield agent.sse(event)
 
     return StreamingResponse(generator(), media_type="text/event-stream", headers=SSE_HEADERS)

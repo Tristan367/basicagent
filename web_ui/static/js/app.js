@@ -1334,7 +1334,6 @@
     wrap.appendChild(inner);
     messages.appendChild(wrap);
     // Every message goes above the "what I am doing" row, never below it.
-    keepWorkingLast();
     return content;
   }
 
@@ -1356,7 +1355,6 @@
     button.textContent = name ? 'Open ' + name + ' \u2192' : 'Open this project \u2192';
     wrap.appendChild(button);
     messages.appendChild(wrap);
-    keepWorkingLast();
     scrollToBottom();
     return button;
   }
@@ -1428,48 +1426,72 @@
     }
   }
 
-  // ── What the assistant is doing, said in the conversation ─────────────────
-  //
-  // This used to be a line of small grey text in the composer, next to Send.
-  // So the answer to "is this thing broken, or is it working?" lived somewhere
-  // you would only look if you already suspected it was working -- which is
-  // precisely backwards, and worst for the people this app is for.
-  //
-  // It is a row in the conversation now, at the bottom, where the next thing is
-  // going to appear and where the eye already is. It is what the assistant is
-  // doing, so it belongs with everything else the assistant does.
-  let workingRow = null;
-  let workingGlyph = null;
-  let workingWords = null;
-  let workingSpin = 0;
+  /* ── What the assistant is doing, right now ───────────────────────────────
+   *
+   * There were two of these, which is one too many. A big card at the bottom
+   * said "Thinking…" while, directly above it, the thinking block said the same
+   * thing -- and the card looked like something you could open and was not. So
+   * the card is gone, and the one live thing is a chip on the end of the
+   * activity strip saying what is running: the same place the finished work
+   * appears, in the same shape, so there is one thing to look at rather than
+   * two saying the same thing differently.
+   *
+   * Thinking has its own row (see below) and writing needs nothing -- the words
+   * are appearing on screen, which is a better indicator than any label.
+   */
+  let liveChip = null;
+  let liveSpin = 0;
 
-  function setWorking(text) {
-    if (!messages) return;
-    if (!workingRow) {
-      workingRow = document.createElement('div');
-      workingRow.className = 'working';
-      // Announced the way the old status line was: politely, and only when the
-      // words change. The guard below is what stops a screen reader narrating
-      // "Writing a reply" once per token.
-      workingRow.setAttribute('role', 'status');
-      workingRow.setAttribute('aria-live', 'polite');
-      workingGlyph = document.createElement('span');
-      workingGlyph.className = 'working-glyph';
-      // Decoration. The words beside it say the same thing, and a cycling
-      // character read aloud four times a second is a torment.
-      workingGlyph.setAttribute('aria-hidden', 'true');
-      workingWords = document.createElement('span');
-      workingWords.className = 'working-text';
-      workingRow.appendChild(workingGlyph);
-      workingRow.appendChild(workingWords);
-      messages.appendChild(workingRow);
-      workingSpin = startSpinner(workingGlyph);
+  function setLiveWork(text) {
+    const strip = activityStrip();
+    if (!liveChip) {
+      liveChip = document.createElement('span');
+      liveChip.className = 'chip chip-live';
+      // Announced politely, and only when the words change -- the guard below
+      // is what stops a screen reader narrating every file that is opened.
+      liveChip.setAttribute('role', 'status');
+      liveChip.setAttribute('aria-live', 'polite');
+      const glyph = document.createElement('span');
+      glyph.className = 'chip-glyph';
+      glyph.setAttribute('aria-hidden', 'true');
+      const words = document.createElement('span');
+      words.className = 'chip-text';
+      liveChip.appendChild(glyph);
+      liveChip.appendChild(words);
+      strip.el.appendChild(liveChip);
+      liveSpin = startSpinner(glyph);
       scrollToBottom();
     }
-    keepWorkingLast();
-    if (workingWords.textContent === text) return;
-    workingWords.textContent = text;
+    strip.el.appendChild(liveChip);   // always the last chip
+    const words = liveChip.querySelector('.chip-text');
+    if (words.textContent === text) return;
+    words.textContent = text;
     scrollToBottom();
+  }
+
+  /* A rule across the conversation where the user pressed Stop.
+   *
+   * Stopping left no trace at all, so a cut-short turn looked exactly like a
+   * finished one -- and the next thing anybody did was wait for a reply that
+   * was never coming. A rule rather than a message, because it did not happen
+   * in the conversation; it happened to it. The server writes the same mark
+   * against the last row, so it is still there tomorrow.
+   */
+  function markBrokeOff() {
+    if (!messages) return;
+    const rule = document.createElement('div');
+    rule.className = 'broke-off';
+    rule.setAttribute('role', 'separator');
+    rule.textContent = 'You stopped it here';
+    messages.appendChild(rule);
+    announce('Stopped. Say what you would like it to do next.');
+    scrollToBottom();
+  }
+
+  function clearLiveWork() {
+    liveSpin = stopSpinner(liveSpin);
+    if (liveChip && liveChip.parentNode) liveChip.remove();
+    liveChip = null;
   }
 
   /* ── Thinking, while it happens ───────────────────────────────────────────
@@ -1511,7 +1533,6 @@
       thinkingRow.appendChild(thinkingWords);
       messages.appendChild(thinkingRow);
       thinkingSpin = startSpinner(thinkingMark);
-      keepWorkingLast();
       scrollToBottom();
     }
     if (text) thinkingWords.textContent += text;
@@ -1533,30 +1554,13 @@
     thinkingWords = null;
   }
 
-  // Whatever else is added during a turn goes above it, so this stays the last
-  // thing in the conversation -- the place where the next thing will appear.
-  function keepWorkingLast() {
-    if (workingRow && workingRow.parentNode === messages
-        && messages.lastElementChild !== workingRow) {
-      messages.appendChild(workingRow);
-    }
-  }
-
-  function clearWorking() {
-    workingSpin = stopSpinner(workingSpin);
-    if (workingRow && workingRow.parentNode) workingRow.remove();
-    workingRow = null;
-    workingGlyph = null;
-    workingWords = null;
-  }
-
   let statusText = null;
   let statusGlyph = null;
   let statusSpin = 0;
 
   // The composer's own line, for things the composer is doing -- attaching a
   // file, or failing to. What the *assistant* is doing goes in the
-  // conversation; see setWorking above.
+  // conversation; see setLiveWork above.
   function setStatus(text) {
     // The status bar is a live region and `content` events arrive per token,
     // so this is called with "Writing a reply..." hundreds of times a turn.
@@ -1707,7 +1711,6 @@
     // the next thing. Which is also exactly how it reads when the conversation
     // is loaded back from the database -- the two used to disagree.
     messages.appendChild(wrap);
-    keepWorkingLast();
     return activity;
   }
 
@@ -2269,7 +2272,6 @@
   function handleEvent(ev) {
     switch (ev.type) {
       case 'reasoning':
-        setWorking('Thinking\u2026');
         setWorkPhase('thinking');
         noteThinking(ev.text);
         break;
@@ -2287,13 +2289,13 @@
         assistantEl.textContent = assistantBuffer;
         renderMarkdown(assistantEl);
         scrollToBottom();
-        setWorking('Writing a reply\u2026');
+        clearLiveWork();
         setWorkPhase('writing');
         break;
       case 'tool_start':
         finishThinking();
         closeSegment();
-        setWorking(statusForTool(ev.name, ev.args));
+        setLiveWork(statusForTool(ev.name, ev.args));
         setWorkPhase(familyOf(ev.name));
         break;
       case 'tool_end':
@@ -2302,13 +2304,13 @@
           pendingOpen = ev.open_session;
           appendAction(ev.open_session, ev.open_session_name);
         }
-        setWorking('Thinking\u2026');
+        clearLiveWork();
         setWorkPhase('thinking');
         break;
       case 'compacting':
         finishThinking();
         closeSegment();
-        setWorking('Summarising our conversation\u2026');
+        setLiveWork('Summarising our conversation\u2026');
         setWorkPhase('summarising');
         break;
       case 'done':
@@ -2327,12 +2329,35 @@
         endTurn();
         break;
       case 'aborted':
+        markBrokeOff();
         endTurn();
         break;
       case 'stream_end':
         endTurn();
         break;
+      // A message the user typed while this turn was running has just been
+      // folded in. It is a real message now, so the "waiting" mark comes off --
+      // and it stays where it is, which is where the assistant actually read
+      // it: after everything it had already done.
+      case 'queued_message':
+        closeSegment();
+        finishActivity();
+        // Moved to the end before the mark comes off, because the end is where
+        // it was actually read -- it went on screen the moment it was typed,
+        // which was some way back up the turn, and leaving it there would say
+        // the assistant saw it before work it had not done yet. This is also
+        // where the row lands in the database, so a reload agrees.
+        messages.querySelectorAll('.message.pending').forEach((wrap) => {
+          messages.appendChild(wrap);
+          unpend(wrap);
+        });
+        scrollToBottom();
+        break;
       case 'attached':
+      // A mark saying the run has written everything up to this point to the
+      // database. Only a client re-attaching needs it; a live turn is watching
+      // it happen and has drawn it already.
+      case 'saved':
         break;
     }
   }
@@ -2419,7 +2444,7 @@
     lastSaidEl = null;
     finishThinking();
     stopTicks();
-    clearWorking();
+    clearLiveWork();
     maybeAutoOpen();
     scrollToBottom();
   }
@@ -2471,7 +2496,7 @@
     running = false;
     sendBtn.hidden = false;
     stopBtn.hidden = true;
-    clearWorking();
+    clearLiveWork();
     refreshTheme();
     refreshPlay();
     // One sentence for the whole turn. Someone listening gets "I read 3 files
@@ -2487,12 +2512,102 @@
     refreshPlay();
     turnStartedAt = Date.now();
     startTicks();
-    setWorking('Working\u2026');
+  }
+
+  /* A message typed while the assistant is still working.
+   *
+   * It used to be dropped on the floor: the send handler saw a turn running and
+   * simply returned, so you typed, pressed Send, and watched your words vanish.
+   * The server has always been able to hold one and fold it in at the next
+   * boundary; nothing here ever asked it to.
+   *
+   * It goes into the conversation straight away, marked as not sent yet, with
+   * an Undo that takes it back and puts the words in the box. When the
+   * assistant reaches a boundary and picks it up, the mark comes off and it
+   * becomes an ordinary message, in the place in the turn where it was actually
+   * read -- after whatever the assistant had already done by then.
+   */
+  async function queueMessage(text) {
+    let queueId = null;
+    try {
+      const resp = await fetch('/api/sessions/' + sessionId + '/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok || !data || !data.queue_id) throw new Error('not queued');
+      queueId = data.queue_id;
+    } catch (e) {
+      // It never reached the queue, so it is not waiting anywhere. Give the
+      // words back rather than leaving a message on screen that nobody has.
+      textarea.value = text;
+      textarea.dispatchEvent(new Event('input'));
+      showError('That could not be sent. Your message is back in the box.');
+      return;
+    }
+    appendPending(text, queueId);
+  }
+
+  function appendPending(text, queueId) {
+    // appendUser hands back the whole message, not its content.
+    const wrap = appendUser(text);
+    wrap.classList.add('pending');
+    wrap.dataset.queueId = queueId;
+
+    const note = document.createElement('div');
+    note.className = 'pending-note';
+    const said = document.createElement('span');
+    said.textContent = 'Waiting — it is still working';
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'pending-undo';
+    // "Undo", not "revert". Everybody knows what undo means.
+    undo.textContent = 'Undo';
+    undo.setAttribute('aria-label', 'Undo this message and put it back in the box');
+    undo.addEventListener('click', () => undoPending(wrap));
+    note.appendChild(said);
+    note.appendChild(undo);
+    wrap.querySelector('.bubble').appendChild(note);
+    announce('Waiting to send. Press Undo to take it back.');
+    scrollToBottom();
+  }
+
+  async function undoPending(wrap) {
+    const queueId = wrap.dataset.queueId;
+    try {
+      const resp = await fetch(
+        '/api/sessions/' + sessionId + '/queue/' + queueId, { method: 'DELETE' });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        // It went in while the user was reaching for the button. Leave it: it
+        // is a real message now and taking it off the screen would be a lie.
+        showError('Too late — it has already been read.');
+        unpend(wrap);
+        return;
+      }
+      wrap.remove();
+      textarea.value = (data && data.message) || '';
+      textarea.dispatchEvent(new Event('input'));
+      textarea.focus();
+      announce('Taken back. Your message is in the box again.');
+    } catch (e) {
+      showError('That could not be undone.');
+    }
+  }
+
+  function unpend(wrap) {
+    if (!wrap) return;
+    wrap.classList.remove('pending');
+    delete wrap.dataset.queueId;
+    const note = wrap.querySelector('.pending-note');
+    if (note) note.remove();
   }
 
   async function sendMessage(text, images) {
     text = (text || '').trim();
-    if (!text || running) return;
+    if (!text) return;
+    if (running) { queueMessage(text); return; }
     if (!hasKey) {
       window.location.href = '/settings';
       return;
@@ -3822,58 +3937,75 @@
 
   // ── Re-attach to a run that is already going ──────────────────────────────
 
+  /* Pick a running turn back up after a reload.
+   *
+   * This used to watch the stream and do nothing with it but set a status. So
+   * refreshing mid-turn threw away everything the assistant had said and done
+   * since the last thing it had saved -- and since it saves a round at a time,
+   * that is the whole round you were watching. You were left with a spinner and
+   * no account of the work, and the words only came back when the turn ended.
+   *
+   * It now replays the same events through the same handler a live turn uses,
+   * so what you get back is what you would have seen. The server sends its
+   * whole buffer for the run and marks the point it last saved to the database;
+   * everything up to that mark is already on the page, drawn by the server, so
+   * it is skipped and the rest is drawn here.
+   */
   async function reattach() {
     try {
       const state = await fetch('/api/sessions/' + sessionId + '/state').then((r) => r.json());
       if (!state.running) return;
       beginTurn();
-      setWorking('Working\u2026');
+      // The server has already dropped everything it had written to the
+      // database by the time we asked, so what arrives is exactly the part the
+      // page is missing. Straight through the ordinary handler.
       const resp = await fetch('/api/sessions/' + sessionId + '/attach');
       await readSSE(resp, (ev) => {
-        if (ev.type === 'tool_start') setWorking(statusForTool(ev.name, ev.args));
-        else if (ev.type === 'content') setWorking('Writing a reply\u2026');
-        else if (ev.type === 'reasoning') setWorking('Thinking\u2026');
-        else if (ev.type === 'compacting') setWorking('Summarising\u2026');
-        else if (ev.type === 'stream_end') reloadMessages();
+        if (ev.type === 'stream_end') { reloadMessages(); return; }
+        handleEvent(ev);
       });
-    } catch (e) {}
+    } catch (e) { /* the turn will still be there when it ends */ }
   }
 
+  /* Rebuild the log from the server's own rendering of it.
+   *
+   * This used to walk the raw rows and draw them itself, which made it a third
+   * renderer of the same conversation -- and it left out everything that is not
+   * a message. So finishing a turn you had re-attached to replaced a log with
+   * the tool work and the thinking in it with one that had neither: the account
+   * of the turn vanished at the moment the turn ended.
+   */
   async function reloadMessages() {
     try {
-      const rows = await fetch('/api/sessions/' + sessionId + '/messages').then((r) => r.json());
-      messages.innerHTML = '';
-      for (const m of rows) {
-        if (m.kind === 'summary') {
-          appendSummary(m.summary_text || '');
-        } else if (m.role === 'tool') {
-          if (m.open_session) appendAction(m.open_session);
-        } else if (m.role === 'user') {
-          appendUser(m.content || '');
-        } else if (m.role === 'assistant' && (m.content || '').trim()) {
-          const content = bubble('assistant');
-          content.textContent = m.content;
-          renderFinal(content);
-          addLinkPreviews(content);
-        }
-      }
-    } catch (e) {}
+      const html = await fetch('/sessions/' + sessionId + '/body').then((r) => r.text());
+      messages.innerHTML = html;
+      dressMessages(messages);
+    } catch (e) { /* leave what is on screen rather than blanking it */ }
     endTurn();
     scrollToBottom();
   }
 
-  document.querySelectorAll('.content[data-markdown], .summary-text[data-markdown]').forEach((el) => {
-    renderFinal(el);
-    addLinkPreviews(el);
-  });
+  /* Everything the server's markup needs done to it in the browser: markdown
+   * rendered, link cards fetched, and the copy and read-aloud buttons put in
+   * the corner of each bubble.
+   *
+   * One function, taking a root, because the same markup arrives two ways --
+   * with the page, and fetched again when the log has to be rebuilt -- and the
+   * second way used to be a hand-written second renderer that quietly left out
+   * the tool work and the thinking.
+   */
+  function dressMessages(root) {
+    root.querySelectorAll('.content[data-markdown], .summary-text[data-markdown]')
+      .forEach((el) => { renderFinal(el); addLinkPreviews(el); });
+    // Copy is inserted last so it comes first in the DOM (and thus first in tab
+    // order); the play button sits to its left visually.
+    root.querySelectorAll('.message .bubble').forEach((el) => {
+      addPlayButton(el);
+      addCopyButton(el);
+    });
+  }
 
-  // A copy button and a read-aloud button in the corner of every bubble.
-  // Copy is inserted last so it comes first in the DOM (and thus first in tab
-  // order); the play button sits to its left visually.
-  document.querySelectorAll('.message .bubble').forEach((el) => {
-    addPlayButton(el);
-    addCopyButton(el);
-  });
+  dressMessages(document);
   /* A link the assistant wrote, pressed by the user.
    *
    * "Your site is running at http://localhost:8123" is an ordinary thing for it

@@ -255,7 +255,17 @@ def active_run(session_id: str) -> _Run | None:
     return run if run is not None and not run.done.is_set() else None
 
 
-async def subscribe(session_id: str, replay: bool = True) -> AsyncIterator[dict]:
+async def subscribe(
+    session_id: str, replay: bool = True, since_last_save: bool = False
+) -> AsyncIterator[dict]:
+    """This run's events. `replay` includes what has already happened.
+
+    `since_last_save` trims that replay to the part the database does not have
+    yet, which is what a browser that reloaded mid-turn needs: everything before
+    the last save is already on its page, rendered by the server from the rows.
+    Trimmed here rather than by the client, because which events are on disk is
+    something this side knows and the other side would have to be told twice.
+    """
     run = _runs.get(session_id)
     if run is None:
         yield {"type": "stream_end"}
@@ -264,6 +274,10 @@ async def subscribe(session_id: str, replay: bool = True) -> AsyncIterator[dict]
     queue: asyncio.Queue = asyncio.Queue()
     run.subscribers.add(queue)
     backlog = list(run.events) if replay else []
+    if since_last_save:
+        saved = [i for i, e in enumerate(backlog) if e["type"] == "saved"]
+        if saved:
+            backlog = backlog[saved[-1] + 1:]
 
     try:
         if not replay:
@@ -406,6 +420,7 @@ async def _loop(
 
     while True:
         if abort.is_set():
+            await db.mark_interrupted(session_id)
             yield {"type": "aborted"}
             return
 
@@ -524,6 +539,7 @@ async def _loop(
                     reasoning_content=reasoning or None,
                     token_count=provider.count_tokens([{"role": "assistant", "content": content}]),
                 )
+            await db.mark_interrupted(session_id)
             yield {"type": "aborted"}
             return
 
@@ -541,6 +557,10 @@ async def _loop(
             ),
             usage=usage,
         )
+        # Everything up to here is in the database, so a browser that reloads
+        # will already have it from the server's own rendering. The mark tells
+        # a re-attaching client where its page ends and the replay begins.
+        yield {"type": "saved"}
         if usage:
             if usage.get("prompt_tokens"):
                 observe_usage(session["model"], message_chars(messages), usage["prompt_tokens"])
@@ -625,6 +645,7 @@ async def _drain_pending(session: dict, ctx: ToolContext) -> AsyncIterator[dict]
             )
             await _record(session_id, call, result, 0)
             yield _tool_end_event(call, name, result, 0)
+            yield {"type": "saved"}
             continue
 
         began = time.monotonic()
@@ -638,10 +659,12 @@ async def _drain_pending(session: dict, ctx: ToolContext) -> AsyncIterator[dict]
             if not ctx.abort.is_set():
                 raise
             yield _tool_end_event(call, name, result, 0)
+            yield {"type": "saved"}
             continue
         elapsed_ms = int((time.monotonic() - began) * 1000)
         await _record(session_id, call, result, elapsed_ms)
         yield _tool_end_event(call, name, result, elapsed_ms)
+        yield {"type": "saved"}
 
 
 def _parallel_safe(name: str) -> bool:

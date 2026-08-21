@@ -107,6 +107,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("messages", "diff", "TEXT"),
     ("messages", "tool_title", "TEXT"),
     ("messages", "duration_ms", "INTEGER"),
+    # Set on the last thing said before the user pressed Stop, so the break
+    # survives a reload. Without it, a stopped turn looked exactly like a
+    # finished one and the next thing anybody did was wait for a reply that
+    # was never coming.
+    ("messages", "broke_off", "INTEGER NOT NULL DEFAULT 0"),
     ("messages", "file_path", "TEXT"),
     ("messages", "send_reasoning", "INTEGER DEFAULT 1"),
     ("messages", "lang", "TEXT"),
@@ -673,3 +678,20 @@ async def get_all_settings() -> dict[str, str]:
 
 async def delete_setting(key: str):
     await _execute("DELETE FROM settings WHERE key = ?", (key,))
+
+
+async def mark_interrupted(session_id: str) -> int:
+    """Remember that the user stopped the assistant after the latest message.
+
+    On the row rather than as a row of its own: a message of its own would be
+    another thing the model has to be told to ignore, and this is not something
+    anybody said. It is a mark on where the conversation was when it was cut.
+    """
+    row = await _fetchone(
+        "SELECT id FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        (session_id,),
+    )
+    if row is None:
+        return 0
+    await _execute("UPDATE messages SET broke_off = 1 WHERE id = ?", (row["id"],))
+    return row["id"]

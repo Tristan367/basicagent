@@ -188,31 +188,39 @@ def test_words_after_a_tool_start_a_new_message():
     assert "if (!assistantEl)" in content and "bubble('assistant')" in content
 
 
-def test_what_the_assistant_is_doing_is_not_in_the_composer():
-    """It was a line of small grey text next to Send -- so the answer to "is
-    this broken?" was somewhere you would only look if you already suspected it
-    was not."""
+def test_what_the_assistant_is_doing_is_said_once():
+    """There were two: a card at the bottom saying "Thinking", and directly
+    above it the thinking block saying the same thing in a different shape --
+    one of which looked like something you could open and was not."""
     js = _app_js()
     handler = js[js.index("function handleEvent(ev)"):]
     handler = handler[:handler.index("let assistantEl")]
     assert "setStatus(" not in handler, "turn status is back in the composer"
-    assert handler.count("setWorking(") >= 5
+    assert "setWorking(" not in js, "the second indicator is back"
+    assert "\n.working {" not in _css(), "the card it used to live in is back"
+    # The one live thing is a chip on the end of the strip, in the same shape
+    # as the finished work beside it.
+    assert "setLiveWork(statusForTool(" in handler
+    assert "chip-live" in js and ".chip-live {" in _css()
 
 
-def test_the_working_row_stays_the_last_thing_in_the_conversation():
-    """Everything added during a turn has to put it back, or it ends up buried
-    somewhere up the conversation saying the assistant is still working."""
+def test_stopping_leaves_a_mark_that_survives_a_reload():
+    """Pressing Stop left no trace at all, so a cut-short turn looked exactly
+    like a finished one -- and the next thing anybody did was wait for a reply
+    that was never coming."""
+    from pathlib import Path
+
     js = _app_js()
-    assert "function keepWorkingLast()" in js
-    # Every append into the conversation has to be followed by it, inside the
-    # same function. Measured against the next `\n  }` -- the close of a
-    # top-level function in this file, which is indented two spaces.
-    for where in ("function bubble(role)", "function activityStrip()",
-                  "function appendAction("):
-        start = js.index(where)
-        body = js[start:js.index("\n  }", start)]
-        assert "messages.appendChild(" in body, f"{where} no longer appends"
-        assert "keepWorkingLast()" in body, f"nothing restores it in {where}"
+    assert "function markBrokeOff()" in js
+    aborted = js[js.index("case 'aborted':"):]
+    assert "markBrokeOff();" in aborted[:140]
+
+    # And against the row, so it is still there tomorrow.
+    agent = Path("agent_server/agent.py").read_text()
+    assert agent.count("await db.mark_interrupted(session_id)") == agent.count(
+        'yield {"type": "aborted"}'
+    ), "an abort goes unrecorded somewhere"
+    assert "broke-off" in Path("web_ui/templates/chat_messages.html").read_text()
 
 
 def test_the_spinner_is_slow_enough_to_read():
@@ -432,7 +440,7 @@ def test_the_live_thought_turns_and_then_settles():
     and the block itself only existed if you reloaded afterwards. Now it is the
     same row in both, and you watch the mark become a tick."""
     js = _app_js()
-    block = js[js.index("function noteThinking(text)"):js.index("function keepWorkingLast")]
+    block = js[js.index("function noteThinking(text)"):js.index("let statusText")]
     assert "startSpinner(thinkingMark)" in block, "the live mark does not turn"
     assert "thinkingMark.textContent = '✓'" in block, "it never settles into a tick"
     assert "cueThoughtDone()" in block, "nothing marks the moment for the ear"
@@ -553,3 +561,70 @@ def test_the_ticking_resumes_rather_than_restarting_from_scratch():
     block = js[js.index("function releaseSoundsForVoice()"):]
     block = block[:block.index("\n  }")]
     assert "startTicks()" in block
+
+
+# ── a turn you were not watching all of ─────────────────────────────────────
+
+
+def test_reattaching_replays_instead_of_only_showing_a_spinner():
+    """Refreshing mid-turn threw away everything the assistant had said and
+    done since its last save -- which, since it saves a round at a time, is the
+    whole round you were watching. You were left with a spinner and no account
+    of the work, and the words only came back when the turn ended."""
+    from pathlib import Path
+
+    js = _app_js()
+    block = js[js.index("async function reattach()"):]
+    block = block[:block.index("\n  }")]
+    assert "handleEvent(ev)" in block, "the replay is not drawn"
+
+    chat = Path("agent_server/routes/chat.py").read_text()
+    assert "since_last_save=True" in chat, "the whole run would be replayed twice"
+
+    agent = Path("agent_server/agent.py").read_text()
+    assert 'yield {"type": "saved"}' in agent, "nothing marks what is on disk"
+
+
+def test_the_log_is_rebuilt_from_the_servers_own_rendering():
+    """There was a third renderer here that drew the messages and nothing else,
+    so finishing a turn you had re-attached to replaced a log containing the
+    tool work and the thinking with one that had neither."""
+    from pathlib import Path
+
+    js = _app_js()
+    block = js[js.index("async function reloadMessages()"):]
+    block = block[:block.index("\n  }")]
+    assert "'/sessions/' + sessionId + '/body'" in block
+    assert "bubble('assistant')" not in block, "it is drawing messages by hand again"
+
+    pages = Path("agent_server/routes/pages.py").read_text()
+    assert '"/sessions/{session_id}/body"' in pages
+    assert 'name="chat_messages.html"' in pages, "the fragment is not the same template"
+
+
+def test_a_message_typed_while_it_works_is_kept_and_can_be_taken_back():
+    """It used to be dropped on the floor: the send handler saw a turn running
+    and returned, so you typed, pressed Send, and watched your words vanish."""
+    js = _app_js()
+    send = js[js.index("async function sendMessage(text, images)"):]
+    send = send[:send.index("\n    pendingUserMsg")]
+    assert "queueMessage(text)" in send, "a message sent while working is dropped again"
+
+    assert "function appendPending(" in js and "function undoPending(" in js
+    # "Undo", not "revert": everybody knows what undo means.
+    assert "undo.textContent = 'Undo'" in js
+    # And it goes back in the box rather than simply disappearing.
+    back = js[js.index("async function undoPending(wrap)"):]
+    back = back[:back.index("\n  }")]
+    assert "textarea.value" in back and "wrap.remove()" in back
+
+
+def test_a_queued_message_lands_where_it_was_actually_read():
+    """It goes on screen the moment it is typed, which is some way back up the
+    turn. Left there it would say the assistant saw it before work it had not
+    done yet."""
+    js = _app_js()
+    block = js[js.index("case 'queued_message':"):]
+    block = block[:block.index("break;")]
+    assert "messages.appendChild(wrap)" in block
+    assert "unpend(wrap)" in block

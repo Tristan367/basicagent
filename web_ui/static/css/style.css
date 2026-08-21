@@ -2226,45 +2226,84 @@ html[data-theme="dark"] {
 }
 
 /* ── What the assistant is doing, right now ──────────────────────────────────
-   The last thing in the conversation while a turn runs, and gone the moment it
-   ends. It used to be a line of small grey text over in the composer beside
-   Send, where the answer to "is this broken?" was somewhere you would only look
-   if you already knew it was not.
+   One chip on the end of the strip, in the same shape as the finished work
+   beside it. There used to be a whole card below the conversation as well,
+   which meant a turn spent thinking said "Thinking" twice in two different
+   shapes, one of which looked like something you could open and was not.
 
-   So: in the conversation, where the next thing is going to appear; in the
-   accent colour, because it is the only live thing on the screen; and breathing
-   slowly, because a thing that is working should not be perfectly still. */
-.working {
+   Accent-coloured and breathing, because it is the only live thing on screen.
+   Thinking has its own row; writing needs nothing, because the words are
+   appearing, which is a better indicator than any label. */
+.chip-live {
+    --chip-color: var(--accent);
+    font-weight: 600;
+    max-width: 100%;
+    animation: chip-breathe 2.6s ease-in-out infinite;
+}
+@keyframes chip-breathe {
+    0%, 100% { border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+    50%      { border-color: var(--accent); }
+}
+.chip-live .chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── A message that has not been sent yet ────────────────────────────────────
+   Typed while the assistant was still working, and waiting for it to reach a
+   point where it can read one. It used to be dropped without a word.
+
+   Marked with a dashed edge and a line saying so, because the difference
+   between "sent" and "waiting" is the whole question the user has -- and colour
+   alone would not answer it for everybody. */
+.message.pending .bubble {
+    background: transparent;
+    border: 2px dashed var(--user-bubble);
+    color: var(--text);
+}
+.pending-note {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 12px;
-    margin: 4px 0 14px;
-    padding: 12px 18px;
-    border-radius: 14px;
-    border: 2px solid var(--accent-dim);
-    background: color-mix(in srgb, var(--accent) 9%, transparent);
-    color: var(--accent);
-    font-size: 1.02rem;
-    font-weight: 600;
-    /* Nothing to the left of it: it is the assistant's, and it lines up with
-       the assistant's messages rather than sitting in the middle. */
-    align-self: flex-start;
-    max-width: 100%;
-    animation: working-breathe 2.6s ease-in-out infinite;
+    margin-top: 8px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
 }
-@keyframes working-breathe {
-    0%, 100% { border-color: var(--accent-dim); }
-    50%      { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.pending-undo {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.82rem;
+    /* A real target: this is the one control that takes something back. */
+    min-height: 30px;
+    padding: 0 14px;
+    cursor: pointer;
 }
-/* Big enough to read as a turning shape rather than a speck. */
-.working-glyph {
-    font-size: 1.35rem;
-    line-height: 1;
-    width: 1.2em;
-    text-align: center;
-    flex: none;
+.pending-undo:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Where a turn was cut short ──────────────────────────────────────────────
+   A rule across the conversation with the word in the middle of it. Pressing
+   Stop left no trace at all, so the next thing anybody did was wait for a reply
+   that was never coming -- and there was nothing on the screen to say that the
+   assistant had been stopped rather than simply finished.
+
+   A rule rather than a message, because it did not happen in the conversation;
+   it happened *to* it, and everything below the line is after the break. */
+.broke-off {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 2px 0;
+    color: var(--text-dim);
+    font-size: 0.88rem;
 }
-.working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.broke-off::before,
+.broke-off::after {
+    content: "";
+    flex: 1;
+    height: 0;
+    border-top: 1px solid var(--border);
+}
 
 /* A link being opened. Starting a stopped project takes a second or two, and
    in that second nothing else on the screen changes. */

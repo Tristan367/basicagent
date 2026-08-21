@@ -145,8 +145,10 @@ def group(messages: list[dict]) -> list[dict]:
     out: list[dict] = []
     counts: dict[str, int] = {}
     calls: list[dict] = []
+    broke_off = False
 
     def flush():
+        nonlocal broke_off
         if counts:
             # A call that failed still counts towards "read 4 files" -- the work
             # was attempted, and a turn where everything failed would otherwise
@@ -157,9 +159,10 @@ def group(messages: list[dict]) -> list[dict]:
             failed = sum(1 for c in calls if c["failed"])
             out.append({"kind": "activity", "chips": chips(counts),
                         "sentence": sentence(counts, failed), "calls": list(calls),
-                        "failures": failed})
+                        "failures": failed, "broke_off": broke_off})
             counts.clear()
             calls.clear()
+            broke_off = False
 
     for m in messages:
         if _is_working(m):
@@ -169,6 +172,9 @@ def group(messages: list[dict]) -> list[dict]:
                 # Kept alongside the count, so opening the group can say which
                 # four files rather than only that there were four.
                 calls.append(detail(m))
+                # The row this was folded into carries the mark, or the fold
+                # would swallow the fact that the user stopped here.
+                broke_off = broke_off or bool(m.get("broke_off"))
             # A tool that offers the user a button still has to be drawn, so it
             # survives the fold rather than being swallowed by it.
             if m.get("open_session"):

@@ -1,7 +1,7 @@
 """The home (manager) chat, project chats, and the settings page."""
 
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from agent_server import database as db
 from agent_server import parental
@@ -38,6 +38,25 @@ async def session_page(request: Request, session_id: str):
         return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse(
         request=request, name="chat.html", context=await _chat_context(session)
+    )
+
+
+@router.get("/sessions/{session_id}/body")
+async def session_body(request: Request, session_id: str):
+    """The conversation with no page around it.
+
+    Fetched when the browser needs to rebuild the log -- after a turn it was not
+    watching, or one it re-attached to. It renders the same template the page
+    does, from the same context, because the alternative is a second renderer
+    that drifts: there was one, and it drew the messages with none of the tool
+    work or thinking between them, so finishing a turn made the account of that
+    turn disappear.
+    """
+    session = await db.get_session(session_id)
+    if session is None:
+        return HTMLResponse("", status_code=404)
+    return templates.TemplateResponse(
+        request=request, name="chat_messages.html", context=await _chat_context(session)
     )
 
 

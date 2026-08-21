@@ -38,6 +38,12 @@
         </summary>
         <div class="did-body" data-items='{{ m.calls | tojson }}'></div>
     </details>
+    {# The user pressed Stop here. A rule across the conversation rather than a
+       message, because it did not happen *in* the conversation -- it happened
+       to it, and everything below the line is after the break. Without it a
+       stopped turn looked exactly like a finished one, and the next thing
+       anybody did was wait for a reply that was never coming. #}
+    {% if m.broke_off %}<div class="broke-off" role="separator">You stopped it here</div>{% endif %}
   {% elif m.role == 'tool' %}
     {% if m.open_session %}
     <div class="message action" id="msg-{{ m.id }}">
@@ -55,6 +61,12 @@
         <span class="sr-only">You said:</span>
         <div class="bubble"><div class="content" data-markdown>{{ m.content }}</div></div>
     </div>
+    {# The user pressed Stop here. A rule across the conversation rather than a
+       message, because it did not happen *in* the conversation -- it happened
+       to it, and everything below the line is after the break. Without it a
+       stopped turn looked exactly like a finished one, and the next thing
+       anybody did was wait for a reply that was never coming. #}
+    {% if m.broke_off %}<div class="broke-off" role="separator">You stopped it here</div>{% endif %}
   {% elif m.role == 'assistant' %}
     {#
       Thinking, kept but shut.
@@ -83,5 +95,11 @@
         <div class="bubble"><div class="content" data-markdown>{{ m.content }}</div></div>
     </div>
     {% endif %}
+    {# The user pressed Stop here. A rule across the conversation rather than a
+       message, because it did not happen *in* the conversation -- it happened
+       to it, and everything below the line is after the break. Without it a
+       stopped turn looked exactly like a finished one, and the next thing
+       anybody did was wait for a reply that was never coming. #}
+    {% if m.broke_off %}<div class="broke-off" role="separator">You stopped it here</div>{% endif %}
   {% endif %}
 {% endfor %}
