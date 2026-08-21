@@ -436,12 +436,58 @@
   }
 
   let prevRunning = null;
+  /* Put a project made just now into the Projects menu.
+   *
+   * The menu is rendered with the page, so a project the assistant created a
+   * moment ago was not in it until the next navigation -- while the reply on
+   * screen said "it is in your list". It was not, and the one thing the user
+   * cannot do is go and look on disk.
+   *
+   * Added rather than rebuilt: the menu carries unread and working marks that
+   * would flicker if it were thrown away and redrawn every two and a half
+   * seconds. The list is short and the order is by name, as the server sends
+   * it, so a new one simply goes where it belongs.
+   */
+  function addNewProjects(data) {
+    const menu = document.getElementById('sessions-menu');
+    if (!menu) return;
+    const have = new Set(
+      [...menu.querySelectorAll('[data-session-id]')].map((b) => b.dataset.sessionId));
+    const fresh = data.filter((s) => !have.has(s.id));
+    if (!fresh.length) return;
+
+    const empty = menu.querySelector('.sessions-empty');
+    if (empty) empty.remove();
+    const separator = menu.querySelector('.sessions-sep');
+    for (const s of fresh) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.nav = '/sessions/' + s.id;
+      button.dataset.sessionId = s.id;
+      const dot = document.createElement('span');
+      dot.className = 'session-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      dot.hidden = true;
+      const label = document.createElement('span');
+      label.className = 'session-label';
+      label.textContent = s.name;
+      const status = document.createElement('span');
+      status.className = 'sr-only session-status';
+      button.appendChild(dot);
+      button.appendChild(label);
+      button.appendChild(status);
+      // Above the rule, with the projects; below it is "New empty project".
+      menu.insertBefore(button, separator);
+    }
+  }
+
   async function refreshActivity() {
     let data;
     try { data = await fetch('/api/sessions/status').then((r) => r.json()); } catch (e) { return; }
     const seen = lastSeen();
     const byId = {};
     data.forEach((s) => { byId[s.id] = s; });
+    addNewProjects(data);
 
     document.querySelectorAll('#sessions-menu [data-session-id]').forEach((a) => {
       const id = a.dataset.sessionId;

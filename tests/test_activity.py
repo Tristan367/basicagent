@@ -628,3 +628,15 @@ def test_a_queued_message_lands_where_it_was_actually_read():
     block = block[:block.index("break;")]
     assert "messages.appendChild(wrap)" in block
     assert "unpend(wrap)" in block
+
+
+def test_a_project_made_this_minute_appears_without_a_reload():
+    """The menu is rendered with the page, so a project the assistant created a
+    moment ago was not in it until the next navigation -- while the reply on
+    screen said "it is in your list". It was not, and going to look on disk is
+    the one thing this user cannot do."""
+    js = _app_js()
+    assert "function addNewProjects(data)" in js
+    poll = js[js.index("async function refreshActivity()"):]
+    poll = poll[:poll.index("\n  }")]
+    assert "addNewProjects(data)" in poll, "nothing adds them while the page is open"
