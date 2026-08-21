@@ -189,3 +189,33 @@ def test_the_guide_opens_as_an_overlay_not_a_fold_in_the_column():
     # would be pinned to the settings column instead of the window.
     page = body[body.index('<div id="settings-page">'):]
     assert page.index('id="walkthrough-modal"') > page.index('id="to-top-btn"')
+
+
+async def test_saving_the_first_key_fixes_home_without_a_restart(db, builtin_providers,
+                                                                 monkeypatch):
+    """The repair used to run only at startup, so the very first key of a fresh
+    install was saved, accepted, and ignored: back on the front page the user
+    said hello and was told "No API key is set up yet. Add one in Settings to
+    get started." -- the step they had just finished. Nothing said to restart
+    the app, and nobody this app is for would think of it."""
+    import httpx
+
+    from agent_server.main import app
+
+    for provider in builtin_providers.values():
+        monkeypatch.setattr(provider, "api_key", lambda: "")
+    await ensure_home_session()
+    await db.update_session(HOME_SESSION_ID, provider="deepseek", model="deepseek-v4-pro")
+
+    # Saving a key is what the user does next, so the key has to become real to
+    # the provider exactly as it would after the form writes it.
+    monkeypatch.setattr(
+        builtin_providers["gemini"], "api_key", lambda: "k"
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        await c.post("/_settings", data={"gemini_api_key": "k"})
+
+    home = await db.get_session(HOME_SESSION_ID)
+    assert home["provider"] == "gemini", \
+        "the front page still had no working AI until the app was restarted"

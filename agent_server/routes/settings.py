@@ -53,7 +53,27 @@ async def save_settings(request: Request):
     model = str(form.get("default_model", "")).strip()
     if model:
         await db.set_setting("default_model", model)
+    await _repoint_home()
     return RedirectResponse("/settings", status_code=303)
+
+
+async def _repoint_home() -> None:
+    """Move the home assistant onto whatever the user can now reach.
+
+    The home session's provider is decided when the session is built, and the
+    repair that moves it off a provider with no key ran only at startup. So the
+    first key of a fresh install was saved, accepted, and ignored: the user went
+    back to the front page, said hello, and was told "No API key is set up yet.
+    Add one in Settings to get started." -- which is the step they had just
+    finished. Nothing on screen said to restart the app, and nobody this app is
+    for would think of it.
+
+    Cheap and idempotent, and it only ever moves a session that cannot work
+    where it is, so a deliberate choice is never overridden.
+    """
+    from agent_server.system_prompt import ensure_home_session
+
+    await ensure_home_session()
 
 
 @router.post("/_settings/custom_endpoint")
@@ -113,6 +133,7 @@ async def save_custom_endpoint(
     await db.save_custom_endpoint(name, base_url, api_key,
                                   models[0] if models else "", models)
     await load_custom_endpoint_providers()
+    await _repoint_home()
     return RedirectResponse(f"/settings?checked={status}", status_code=303)
 
 
@@ -155,6 +176,9 @@ async def delete_custom_endpoint(name: str = Form(""), parent_password: str = Fo
     if name.strip():
         await db.delete_custom_endpoint(name.strip())
         await load_custom_endpoint_providers()
+        # Removing the endpoint the home assistant was running on leaves it
+        # pointing at a provider that no longer exists.
+        await _repoint_home()
     return RedirectResponse("/settings", status_code=303)
 
 
