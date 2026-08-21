@@ -214,13 +214,27 @@
                     </button>
                 </div>
                 <p class="hint">Nothing in it is changed or moved — the assistant reads
-                what is there and works in place. If the folder is not there yet, say
-                where it should go and it will be made.</p>
+                what is there and works in place. If there is no folder there, you will
+                be asked before one is made.</p>
             </div>
             {% endif %}
 
             <p class="hint" id="new-project-error" hidden style="color: var(--danger)"></p>
-            <div class="quit-actions">
+
+            {# A folder that is not there is asked about, never assumed. It is
+               far more often a typo in a path than a folder somebody meant to
+               make -- and quietly creating "Porject" leaves them with an empty
+               project beside their real one and no idea why it is empty. #}
+            <div id="new-project-missing" hidden>
+                <p class="hint">There is no folder called
+                <strong id="new-project-missing-path"></strong> yet.</p>
+                <div class="quit-actions">
+                    <button type="button" class="btn-primary" id="new-project-make">Make that folder</button>
+                    <button type="button" class="btn-neutral" id="new-project-back">Change it</button>
+                </div>
+            </div>
+
+            <div class="quit-actions" id="new-project-actions">
                 <button type="button" class="btn-primary" id="new-project-create">Create it</button>
                 <button type="button" class="btn-stop" id="new-project-cancel">Cancel</button>
             </div>

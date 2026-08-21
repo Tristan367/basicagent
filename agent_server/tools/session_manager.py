@@ -16,7 +16,32 @@ from agent_server.tools.base import ToolContext, ToolResult
 
 
 def _slug(raw: str) -> str:
+    """A folder name from a project name. Never shown to the user."""
     return re.sub(r"[^a-z0-9-]+", "-", raw.strip().lower()).strip("-")[:40] or "project"
+
+
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_RUNS = re.compile(r"\s+")
+
+
+def clean_name(raw: str) -> str:
+    """A project name, tidied rather than rewritten.
+
+    Somebody naming a project is not naming a file and should not have to think
+    like one. So: the ends are trimmed, runs of whitespace collapse to one
+    space, and the two characters that would make a mess of a path are dropped.
+    Everything else survives exactly as typed -- spaces, capitals, apostrophes,
+    punctuation, other alphabets, emoji.
+
+    The folder is a separate question, answered by `_slug` above, and the user
+    never sees it. Turning "Mum's holiday photos" into "mums-holiday-photos" on
+    screen does not read as tidying up; it reads as the app being broken, and
+    the person it reads that way to is exactly who this app is for.
+    """
+    # A space, not nothing: a name pasted out of a document arrives with tabs
+    # and newlines in it, and deleting those runs the words together.
+    cleaned = _CONTROL.sub(" ", raw or "").replace("/", " ").replace("\\", " ")
+    return _RUNS.sub(" ", cleaned).strip()
 
 
 def _profile(ctx: ToolContext) -> str:
@@ -92,7 +117,7 @@ async def create_project(
     for_child: bool = False, **_
 ) -> ToolResult:
     title = f"create project {name[:40]}"
-    name = (name or "").strip()
+    name = clean_name(name)
     if not name:
         return ToolResult.error("a project name is required", title)
 
@@ -178,8 +203,8 @@ async def open_project(ctx: ToolContext, *, name: str, **_) -> ToolResult:
 
 async def rename_project(ctx: ToolContext, *, name: str, new_name: str, **_) -> ToolResult:
     title = f"rename project {name[:40]}"
-    name = (name or "").strip()
-    new_name = (new_name or "").strip()
+    name = clean_name(name)
+    new_name = clean_name(new_name)
     if not name or not new_name:
         return ToolResult.error("both the current and new names are required", title)
     session = await db.get_session_by_name(name, profile=_visible(ctx))

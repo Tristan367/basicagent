@@ -43,9 +43,9 @@ async def create_session(payload: dict):
     from pathlib import Path as _Path
 
     from agent_server.config import PROJECTS_DIR
-    from agent_server.tools.session_manager import _git_init, _slug
+    from agent_server.tools.session_manager import _git_init, _slug, clean_name
 
-    name = str(payload.get("name") or "").strip()
+    name = clean_name(str(payload.get("name") or ""))
     if not name:
         raise HTTPException(400, "Give the project a name.")
     if len(name) > 120:
@@ -70,11 +70,6 @@ async def create_session(payload: dict):
         if folder == _Path.home() or folder.parent == folder:
             raise HTTPException(400, "Pick a folder inside your home directory, not the whole of it.")
         if not folder.is_dir():
-            # Naming a folder that is not there yet is how somebody starts a
-            # project, not a mistake -- so make it, as long as the place to put
-            # it already exists. One level only, deliberately: a path with a
-            # typo halfway along should come back as a question rather than as
-            # five new directories nobody asked for.
             if folder.exists():
                 raise HTTPException(400, "There is a file at that path, not a folder.")
             if not folder.parent.is_dir():
@@ -82,6 +77,14 @@ async def create_session(payload: dict):
                     400, f"There is no folder at {folder}, and nothing at "
                          f"{folder.parent} to make one in."
                 )
+            # A missing folder is asked about, never assumed. It is far more
+            # often a typo in a path than a folder somebody meant to create --
+            # and quietly making `/home/me/Porject` leaves them with an empty
+            # project next to their real one and no idea why it is empty.
+            #
+            # 409 is the signal to ask; the answer comes back as `make_folder`.
+            if not payload.get("make_folder"):
+                raise HTTPException(409, f"There is no folder at {folder} yet.")
             try:
                 folder.mkdir()
             except OSError as e:
@@ -235,9 +238,11 @@ async def switch_model(session_id: str, request: Request, payload: dict):
 
 @router.patch("/{session_id}")
 async def update_session(session_id: str, payload: dict):
+    from agent_server.tools.session_manager import clean_name
+
     await _require(session_id)
     updates = {}
-    if (name := (payload.get("name") or "").strip()):
+    if (name := clean_name(str(payload.get("name") or ""))):
         updates["name"] = name
     if "description" in payload:
         updates["description"] = (payload.get("description") or "").strip() or None
@@ -319,3 +324,72 @@ async def preview_stop(session_id: str):
     await _require(session_id)
     await preview.stop(session_id)
     return {"ok": True, "running": False}
+
+
+# ── A link the user pressed in a reply ──────────────────────────────────────
+#
+# The assistant writes "your site is running at http://localhost:8123", which is
+# an ordinary thing to write and a perfectly reasonable thing to press. Pressing
+# it opened the user's normal browser, which -- if the project had since been
+# stopped -- showed a connection error and nothing else. Somebody who is not
+# technical has no way to know that the page is fine and the server is off, let
+# alone that the fix is to press Play first.
+#
+# So a link to this machine is not a link. It is another way of saying "show me
+# my project", and it does what Play does: starts it if it is not up, and puts
+# it in the project's own window. No rule in the system prompt needed, and the
+# assistant can write the address whenever it likes.
+
+
+@router.post("/{session_id}/open-link")
+async def open_link(session_id: str, payload: dict):
+    from agent_server import preview
+    from agent_server.routes.files import open_in_browser
+
+    session = await _require(session_id)
+    url = str(payload.get("url") or "").strip()
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(400, "That is not an address this app can open.")
+
+    child = await parental.child_mode_enabled()
+
+    if not preview.is_this_machine(url):
+        # Out to the web. In child mode there is nowhere for it to go: the
+        # project window refuses anything off this machine however the address
+        # arrives, and handing it to the real browser would walk straight round
+        # the one thing a parent is trusting this app about.
+        if child:
+            raise HTTPException(
+                403, "That link goes out to the internet, which is turned off just now."
+            )
+        if await open_in_browser(url):
+            return {"ok": True, "where": "browser"}
+        raise HTTPException(501, "This computer has no browser the app could open.")
+
+    # This machine: the project. Start it first if it is not already up, which
+    # is the whole point -- otherwise this is a connection error with no
+    # explanation attached.
+    started = False
+    if not preview.is_running(session_id):
+        command = (session.get("preview_command") or "").strip()
+        if not command:
+            raise HTTPException(
+                409,
+                "Nothing is running at that address yet, and this project has no "
+                "way to start recorded. Ask the assistant to run it.",
+            )
+        try:
+            await preview.start(
+                session_id, command, url, session["project_dir"], confine=child,
+            )
+            started = True
+        except preview.PreviewError as e:
+            raise HTTPException(500, str(e).splitlines()[0]) from e
+    else:
+        try:
+            await preview.show(session_id, url, confine=child)
+        except preview.PreviewError as e:
+            raise HTTPException(500, str(e).splitlines()[0]) from e
+
+    return {"ok": True, "where": "project", "started": started,
+            "running": preview.is_running(session_id)}

@@ -192,17 +192,34 @@ def test_using_your_own_folder_is_off_until_you_ask_for_it():
 
 # ── a folder that is not there yet ─────────────────────────────────────────
 #
-# Naming a folder that does not exist is how somebody starts a project. Refusing
-# it meant leaving the app, opening a file manager, making the folder, coming
-# back and pointing at it.
+# Naming a folder that does not exist is sometimes how somebody starts a
+# project, and much more often a typo in a path. So it is asked about, never
+# assumed: quietly creating "Porject" leaves them with an empty project beside
+# their real one and no idea why it is empty.
 
 
-async def test_a_folder_that_is_not_there_yet_is_made(client, tmp_path):
+async def test_a_missing_folder_is_a_question_not_a_new_folder(client, tmp_path):
     wanted = tmp_path / "brand-new-thing"
     resp = await make(client, name="Brand new", folder=str(wanted))
+    assert resp.status_code == 409
+    assert not wanted.exists(), "it made the folder without asking"
+    assert str(wanted) in resp.json()["detail"]
+
+
+async def test_saying_yes_makes_it(client, tmp_path):
+    wanted = tmp_path / "brand-new-thing"
+    resp = await make(client, name="Brand new", folder=str(wanted), make_folder=True)
     assert resp.status_code == 200
     assert wanted.is_dir()
     assert resp.json()["project_dir"] == str(wanted.resolve())
+
+
+async def test_saying_yes_to_a_typo_still_only_makes_one_level(client, tmp_path):
+    """The answer is to that folder, not to a whole path of them."""
+    deep = tmp_path / "not" / "there"
+    resp = await make(client, name="Typo", folder=str(deep), make_folder=True)
+    assert resp.status_code == 400
+    assert not (tmp_path / "not").exists()
 
 
 async def test_only_one_level_is_made(client, tmp_path):
@@ -232,3 +249,54 @@ async def test_the_home_directory_is_still_refused_even_though_it_exists(client)
     for where in (Path.home(), Path("/")):
         resp = await make(client, name="Everything", folder=str(where))
         assert resp.status_code == 400
+
+
+# ── what a project may be called ───────────────────────────────────────────
+#
+# Somebody naming a project is not naming a file and should not have to think
+# like one. Turning "Mum's holiday photos" into "mums-holiday-photos" on screen
+# does not read as tidying up -- it reads as the app being broken, to exactly
+# the person this app is for.
+
+
+def test_a_name_keeps_its_spaces_capitals_and_punctuation():
+    from agent_server.tools.session_manager import clean_name
+
+    for name in ("Mum's holiday photos", "Space Invaders 2", "Tristan & Anthony",
+                 "Recipe book (2026)", "Ålesund trip", "my game 🎮"):
+        assert clean_name(name) == name
+
+
+def test_the_ends_are_trimmed_and_runs_of_space_collapse():
+    from agent_server.tools.session_manager import clean_name
+
+    assert clean_name("  My   website  ") == "My website"
+    assert clean_name("A\tb\nc") == "A b c"
+
+
+def test_the_characters_that_would_make_a_mess_of_a_path_go():
+    from agent_server.tools.session_manager import clean_name
+
+    assert clean_name("../../etc") == ".. .. etc"
+    assert clean_name("a/b\\c") == "a b c"
+    assert clean_name("bell\x07here") == "bell here"
+
+
+def test_a_name_of_nothing_but_space_is_still_nothing():
+    from agent_server.tools.session_manager import clean_name
+
+    assert clean_name("   ") == ""
+    assert clean_name("///") == ""
+
+
+async def test_the_name_you_typed_is_the_name_you_get(client, projects_dir):
+    resp = await make(client, name="  Mum's   holiday photos ")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Mum's holiday photos"
+
+
+async def test_the_folder_is_slugged_even_though_the_name_is_not(client, projects_dir):
+    """The folder is a separate question, and the user never sees it."""
+    resp = await make(client, name="Mum's holiday photos")
+    assert resp.json()["name"] == "Mum's holiday photos"
+    assert resp.json()["project_dir"].endswith("mum-s-holiday-photos")

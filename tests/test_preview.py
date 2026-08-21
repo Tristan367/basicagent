@@ -17,6 +17,7 @@ import sys
 import textwrap
 
 import pytest
+from fastapi import HTTPException
 
 from agent_server import preview
 
@@ -233,3 +234,175 @@ def test_play_is_not_another_triangle_in_the_composer():
     draft = tools[tools.index('id="read-draft-btn"'):]
     draft = draft[:draft.index("</button>")]
     assert "M8 5v14l11-7z" not in draft, "read-my-message is a play triangle again"
+
+
+# ── a link the user pressed in a reply ──────────────────────────────────────
+#
+# "Your site is running at http://localhost:8123" is an ordinary thing for the
+# assistant to write and a perfectly reasonable thing to press. It used to open
+# the user's normal browser, which -- if the project had since been stopped --
+# showed a connection error and nothing else. Somebody who is not technical has
+# no way to know the page is fine and the server is off, let alone that the fix
+# is to find Play and press that first.
+
+
+def test_an_address_on_this_machine_is_recognised():
+    from agent_server import preview
+
+    for url in ("http://localhost:8123", "http://127.0.0.1:5173/index.html",
+                "http://[::1]:3000", "http://my-app.localhost:8080"):
+        assert preview.is_this_machine(url), url
+
+
+def test_an_address_out_on_the_web_is_not():
+    from agent_server import preview
+
+    for url in ("https://google.com", "http://example.com:8123",
+                "https://raw.githubusercontent.com/x/y"):
+        assert not preview.is_this_machine(url), url
+
+
+def test_things_that_are_not_addresses_are_not_this_machine():
+    """`_is_local` says yes to about: and data: because it is answering "may
+    the window load this"; this one is answering "is this the project", and the
+    answers are different."""
+    from agent_server import preview
+
+    for url in ("about:blank", "data:text/html,hi", "file:///etc/passwd", "", "javascript:x"):
+        assert not preview.is_this_machine(url), url
+
+
+@pytest.fixture
+async def linked(db, tmp_path):
+    root = tmp_path / "proj"
+    root.mkdir()
+    session = await db.create_session(name="Linked", project_dir=str(root))
+    await db.update_session(session["id"], preview_command="run-me",
+                            preview_url="http://localhost:8123")
+    return session["id"]
+
+
+async def test_pressing_a_project_link_starts_it_when_it_is_not_running(linked, monkeypatch):
+    """The whole point. Otherwise this is a connection error with no
+    explanation attached."""
+    from agent_server import preview
+    from agent_server.routes import sessions
+
+    started = {}
+
+    async def fake_start(session_id, command, url, cwd, confine=False, **kw):
+        started.update(session_id=session_id, command=command, url=url, confine=confine)
+        return "ok"
+
+    monkeypatch.setattr(preview, "start", fake_start)
+    monkeypatch.setattr(preview, "is_running", lambda sid: False)
+
+    out = await sessions.open_link(linked, {"url": "http://localhost:8123/about.html"})
+    assert out["started"] is True
+    assert started["command"] == "run-me"
+    assert started["url"] == "http://localhost:8123/about.html", \
+        "it went to the address that was pressed, not the project's front page"
+
+
+async def test_pressing_a_project_link_while_it_runs_just_shows_it(linked, monkeypatch):
+    """No restart. The user is often looking at the window while they press."""
+    from agent_server import preview
+    from agent_server.routes import sessions
+
+    shown = {}
+    started = []
+
+    async def fake_show(session_id, url, confine=False):
+        shown.update(session_id=session_id, url=url)
+
+    async def fake_start(*a, **k):
+        started.append(a)
+        return "ok"
+
+    monkeypatch.setattr(preview, "show", fake_show)
+    monkeypatch.setattr(preview, "start", fake_start)
+    monkeypatch.setattr(preview, "is_running", lambda sid: True)
+
+    out = await sessions.open_link(linked, {"url": "http://localhost:8123/"})
+    assert out["started"] is False
+    assert shown["url"] == "http://localhost:8123/"
+    assert not started, "it restarted a project that was already running"
+
+
+async def test_a_project_link_with_nothing_to_start_says_so(db, tmp_path, monkeypatch):
+    from agent_server import preview
+    from agent_server.routes import sessions
+
+    session = await db.create_session(name="Nothing", project_dir=str(tmp_path))
+    monkeypatch.setattr(preview, "is_running", lambda sid: False)
+    with pytest.raises(HTTPException) as excinfo:
+        await sessions.open_link(session["id"], {"url": "http://localhost:9999/"})
+    assert excinfo.value.status_code == 409
+
+
+async def test_a_link_out_to_the_web_goes_to_the_users_own_browser(linked, monkeypatch):
+    from agent_server.routes import files, sessions
+
+    opened = []
+
+    async def fake_open(url):
+        opened.append(url)
+        return True
+
+    monkeypatch.setattr(files, "open_in_browser", fake_open)
+    out = await sessions.open_link(linked, {"url": "https://example.com/docs"})
+    assert out["where"] == "browser"
+    assert opened == ["https://example.com/docs"]
+
+
+async def test_in_child_mode_a_link_out_to_the_web_goes_nowhere(linked, db, monkeypatch):
+    """The project window refuses anything off this machine however the address
+    arrives. Handing it to the real browser instead would walk straight around
+    the one thing a parent is trusting this app about."""
+    from agent_server.routes import files, sessions
+
+    opened = []
+
+    async def fake_open(url):
+        opened.append(url)
+        return True
+
+    monkeypatch.setattr(files, "open_in_browser", fake_open)
+    await db.set_setting("child_mode", "1")
+    try:
+        with pytest.raises(HTTPException) as excinfo:
+            await sessions.open_link(linked, {"url": "https://example.com"})
+        assert excinfo.value.status_code == 403
+        assert not opened, "it opened the web anyway"
+    finally:
+        await db.set_setting("child_mode", "0")
+
+
+async def test_a_child_pressing_their_own_project_link_still_works(linked, db, monkeypatch):
+    from agent_server import preview
+    from agent_server.routes import sessions
+
+    confined = {}
+
+    async def fake_start(session_id, command, url, cwd, confine=False, **kw):
+        confined["confine"] = confine
+        return "ok"
+
+    monkeypatch.setattr(preview, "start", fake_start)
+    monkeypatch.setattr(preview, "is_running", lambda sid: False)
+    await db.set_setting("child_mode", "1")
+    try:
+        out = await sessions.open_link(linked, {"url": "http://localhost:8123/"})
+        assert out["ok"] is True
+        assert confined["confine"] is True, "the window was opened unconfined for a child"
+    finally:
+        await db.set_setting("child_mode", "0")
+
+
+async def test_something_that_is_not_a_web_address_is_refused(linked):
+    from agent_server.routes import sessions
+
+    for url in ("file:///etc/passwd", "javascript:alert(1)", "", "ftp://x"):
+        with pytest.raises(HTTPException) as excinfo:
+            await sessions.open_link(linked, {"url": url})
+        assert excinfo.value.status_code == 400

@@ -2063,6 +2063,51 @@ html[data-theme="dark"] {
    with the reply above them. */
 .activity-done .chip { opacity: 0.82; }
 
+/* ── What the assistant is doing, right now ──────────────────────────────────
+   The last thing in the conversation while a turn runs, and gone the moment it
+   ends. It used to be a line of small grey text over in the composer beside
+   Send, where the answer to "is this broken?" was somewhere you would only look
+   if you already knew it was not.
+
+   So: in the conversation, where the next thing is going to appear; in the
+   accent colour, because it is the only live thing on the screen; and breathing
+   slowly, because a thing that is working should not be perfectly still. */
+.working {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0 14px;
+    padding: 12px 18px;
+    border-radius: 14px;
+    border: 2px solid var(--accent-dim);
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    color: var(--accent);
+    font-size: 1.02rem;
+    font-weight: 600;
+    /* Nothing to the left of it: it is the assistant's, and it lines up with
+       the assistant's messages rather than sitting in the middle. */
+    align-self: flex-start;
+    max-width: 100%;
+    animation: working-breathe 2.6s ease-in-out infinite;
+}
+@keyframes working-breathe {
+    0%, 100% { border-color: var(--accent-dim); }
+    50%      { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+}
+/* Big enough to read as a turning shape rather than a speck. */
+.working-glyph {
+    font-size: 1.35rem;
+    line-height: 1;
+    width: 1.2em;
+    text-align: center;
+    flex: none;
+}
+.working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* A link being opened. Starting a stopped project takes a second or two, and
+   in that second nothing else on the screen changes. */
+.link-opening { opacity: 0.55; cursor: progress; }
+
 .status-glyph {
     display: inline-block;
     width: 1.1em;

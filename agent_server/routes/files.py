@@ -302,6 +302,30 @@ async def reveal(payload: dict):
     )
 
 
+async def open_in_browser(url: str) -> bool:
+    """Hand an address to whatever browser the user actually uses.
+
+    For a link in a reply that points out to the web. The app's own window is
+    not the place for it -- it is a window onto this app, and navigating it
+    away is a one-way trip with no address bar to come back from.
+    """
+    if sys.platform.startswith("win"):
+        try:
+            os.startfile(url)  # type: ignore[attr-defined]
+            return True
+        except OSError:
+            return False
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            opener, url,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        return await asyncio.wait_for(proc.wait(), timeout=5) == 0
+    except (OSError, TimeoutError):
+        return False
+
+
 # ── Choosing a folder ────────────────────────────────────────────────────────
 #
 # Typing a path is a thing you can only do if you already know it, which is the

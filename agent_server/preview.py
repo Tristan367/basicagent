@@ -174,6 +174,23 @@ def _is_local(url: str) -> bool:
     return host in LOCAL_HOSTS or host.endswith(".localhost")
 
 
+def is_this_machine(url: str) -> bool:
+    """Whether an address is one this project could be serving.
+
+    The public half of `_is_local`, minus the schemes that are not addresses at
+    all. Used to decide whether a link in a reply is a way into the user's own
+    project -- in which case pressing it should behave like pressing Play --
+    or a link out to the web.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url or "")
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    return host in LOCAL_HOSTS or host.endswith(".localhost")
+
+
 async def _launch(session_id: str, url: str, confine: bool):
     """An ordinary browser window, pointed at the project.
 
@@ -390,6 +407,15 @@ async def start(session_id: str, command: str, url: str = "", cwd: str = "",
             # looking for a bug that is not there.
             return f"Running: {command}\n{e}"
         return f"Running: {command}\nThe user is now looking at {url}."
+
+
+async def show(session_id: str, url: str, confine: bool = False):
+    """Point this project's window at an address, without touching the process.
+
+    For a link the user pressed in a reply, where the project is already up.
+    """
+    async with _lock:
+        await _show(session_id, url, confine)
 
 
 async def stop(session_id: str) -> str:

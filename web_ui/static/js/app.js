@@ -644,6 +644,11 @@
     const cancelBtn = document.getElementById('new-project-cancel');
     const ownEl = document.getElementById('new-project-own-folder');
     const browseBtn = document.getElementById('new-project-browse');
+    const missingBox = document.getElementById('new-project-missing');
+    const missingPath = document.getElementById('new-project-missing-path');
+    const makeBtn = document.getElementById('new-project-make');
+    const backBtn = document.getElementById('new-project-back');
+    const actionsBox = document.getElementById('new-project-actions');
     let returnTo = null;
     let pickerChecked = false;
 
@@ -703,6 +708,7 @@
       nameEl.value = '';
       if (folderEl) folderEl.value = '';
       if (ownEl) ownEl.checked = false;
+      stopAsking();
       refreshWhere();
       checkPicker();
       modal.hidden = false;
@@ -716,7 +722,23 @@
       if (returnTo && returnTo.isConnected) returnTo.focus();
     }
 
-    async function create() {
+    // Asking about a folder that is not there, rather than making it. The
+    // normal buttons step aside while the question is on screen so there is
+    // only ever one thing to answer.
+    function askAboutFolder(path) {
+      missingPath.textContent = path;
+      missingBox.hidden = false;
+      actionsBox.hidden = true;
+      makeBtn.focus();
+      announce('There is no folder called ' + path + ' yet. Make that folder, or change it.');
+    }
+
+    function stopAsking() {
+      missingBox.hidden = true;
+      actionsBox.hidden = false;
+    }
+
+    async function create(makeFolder) {
       const name = nameEl.value.trim();
       if (!name) { showError('Give it a name first.'); nameEl.focus(); return; }
       const own = !!(ownEl && ownEl.checked);
@@ -727,31 +749,44 @@
         return;
       }
       createBtn.disabled = true;
+      makeBtn.disabled = true;
       showError('');
       try {
         const resp = await fetch('/api/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, folder }),
+          body: JSON.stringify({ name, folder, make_folder: !!makeFolder }),
         });
         const data = await resp.json().catch(() => null);
+        // 409 means the folder is not there. Not an error -- a question.
+        if (resp.status === 409) { askAboutFolder(folder); return; }
         if (!resp.ok) {
+          stopAsking();
           showError((data && data.detail) || 'That did not work.');
           return;
         }
         window.location.href = '/sessions/' + data.id;
       } catch (e) {
+        stopAsking();
         showError('That did not work. Please try again.');
       } finally {
         createBtn.disabled = false;
+        makeBtn.disabled = false;
       }
     }
 
     openBtn.addEventListener('click', open);
     cancelBtn.addEventListener('click', close);
-    createBtn.addEventListener('click', create);
+    createBtn.addEventListener('click', () => create(false));
+    makeBtn.addEventListener('click', () => create(true));
+    backBtn.addEventListener('click', () => {
+      stopAsking();
+      if (folderEl) { folderEl.focus(); folderEl.select(); }
+    });
     if (ownEl) {
       ownEl.addEventListener('change', () => {
+        // A different folder is a different question, so an unanswered one goes.
+        stopAsking();
         refreshWhere();
         // Ticking it is asking to name a folder, so put the cursor where the
         // folder goes rather than leaving it on the box that was just ticked.
@@ -765,11 +800,14 @@
       // pressing Enter on Choose used to make the project instead of opening
       // the chooser, which is the one moment it must not.
       if (e.key === 'Enter' && e.target !== createBtn && e.target !== browseBtn
-          && e.target !== cancelBtn) {
+          && e.target !== cancelBtn && e.target !== makeBtn && e.target !== backBtn) {
         e.preventDefault();
-        create();
+        create(false);
       }
     });
+
+    // Typing a new path answers the question by replacing it.
+    if (folderEl) folderEl.addEventListener('input', stopAsking);
 
     // Dropping a folder fills the path in. The same gesture as attaching one to
     // a message, which is the only way most people here would think to say
@@ -1262,9 +1300,74 @@
     }
   }
 
+  // ── What the assistant is doing, said in the conversation ─────────────────
+  //
+  // This used to be a line of small grey text in the composer, next to Send.
+  // So the answer to "is this thing broken, or is it working?" lived somewhere
+  // you would only look if you already suspected it was working -- which is
+  // precisely backwards, and worst for the people this app is for.
+  //
+  // It is a row in the conversation now, at the bottom, where the next thing is
+  // going to appear and where the eye already is. It is what the assistant is
+  // doing, so it belongs with everything else the assistant does.
+  let workingRow = null;
+  let workingGlyph = null;
+  let workingWords = null;
+  let workingSpin = 0;
+
+  function setWorking(text) {
+    if (!messages) return;
+    if (!workingRow) {
+      workingRow = document.createElement('div');
+      workingRow.className = 'working';
+      // Announced the way the old status line was: politely, and only when the
+      // words change. The guard below is what stops a screen reader narrating
+      // "Writing a reply" once per token.
+      workingRow.setAttribute('role', 'status');
+      workingRow.setAttribute('aria-live', 'polite');
+      workingGlyph = document.createElement('span');
+      workingGlyph.className = 'working-glyph';
+      // Decoration. The words beside it say the same thing, and a cycling
+      // character read aloud four times a second is a torment.
+      workingGlyph.setAttribute('aria-hidden', 'true');
+      workingWords = document.createElement('span');
+      workingWords.className = 'working-text';
+      workingRow.appendChild(workingGlyph);
+      workingRow.appendChild(workingWords);
+      messages.appendChild(workingRow);
+      workingSpin = startSpinner(workingGlyph);
+      scrollToBottom();
+    }
+    keepWorkingLast();
+    if (workingWords.textContent === text) return;
+    workingWords.textContent = text;
+    scrollToBottom();
+  }
+
+  // Whatever else is added during a turn goes above it, so this stays the last
+  // thing in the conversation -- the place where the next thing will appear.
+  function keepWorkingLast() {
+    if (workingRow && workingRow.parentNode === messages
+        && messages.lastElementChild !== workingRow) {
+      messages.appendChild(workingRow);
+    }
+  }
+
+  function clearWorking() {
+    workingSpin = stopSpinner(workingSpin);
+    if (workingRow && workingRow.parentNode) workingRow.remove();
+    workingRow = null;
+    workingGlyph = null;
+    workingWords = null;
+  }
+
   let statusText = null;
   let statusGlyph = null;
+  let statusSpin = 0;
 
+  // The composer's own line, for things the composer is doing -- attaching a
+  // file, or failing to. What the *assistant* is doing goes in the
+  // conversation; see setWorking above.
   function setStatus(text) {
     // The status bar is a live region and `content` events arrive per token,
     // so this is called with "Writing a reply..." hundreds of times a turn.
@@ -1286,12 +1389,12 @@
     statusText.textContent = text;
     if (statusBar.hidden) {
       statusBar.hidden = false;
-      startSpinner(statusGlyph);
+      statusSpin = startSpinner(statusGlyph);
     }
   }
 
   function clearStatus() {
-    stopSpinner();
+    statusSpin = stopSpinner(statusSpin);
     statusBar.hidden = true;
     if (statusText) statusText.textContent = '';
   }
@@ -1388,11 +1491,20 @@
     el.setAttribute('role', 'list');
     el.setAttribute('aria-label', 'What the assistant did');
     activity = { el, counts: {}, chips: {} };
-    if (assistantEl && assistantEl.closest('.message')) {
-      messages.insertBefore(el, assistantEl.closest('.message'));
-    } else {
-      messages.appendChild(el);
-    }
+    // At the end, always.
+    //
+    // It used to go in *before* the assistant's bubble, and the bubble was one
+    // bubble for the whole turn -- so every chip for a turn piled into a single
+    // strip pinned above the first thing the assistant said, and the words all
+    // ran together underneath it as one wall of text. You could not tell which
+    // sentence caused which work, and on a long turn the chips were a screen
+    // and a half above where you were reading.
+    //
+    // Now the turn reads in the order it happened: said this, did that, said
+    // the next thing. Which is also exactly how it reads when the conversation
+    // is loaded back from the database -- the two used to disagree.
+    messages.appendChild(el);
+    keepWorkingLast();
     return activity;
   }
 
@@ -1453,23 +1565,30 @@
   const SPINNER = ['\u2735', '\u2736', '\u2737', '\u2738', '\u2739', '\u273a', '\u2739', '\u2738', '\u2737', '\u2736'];
   const stillPlease = window.matchMedia
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let spinTimer = 0;
   let spinAt = 0;
+  // A step every quarter second, not every tenth. At 110ms it was a flicker
+  // rather than a movement -- too fast to read as one shape turning into
+  // another, which is the only thing that makes it say "working" rather than
+  // "something is wrong with the screen".
+  const SPIN_MS = 240;
 
+  // Returns its own handle rather than sharing one. Two things can be spinning
+  // at once -- the assistant working, and a file being attached while it does
+  // -- and with a single shared timer the second one starting silently stopped
+  // the first.
   function startSpinner(el) {
-    stopSpinner();
-    if (!el) return;
+    if (!el) return 0;
     el.textContent = SPINNER[0];
-    if (stillPlease) return;
-    spinTimer = setInterval(() => {
+    if (stillPlease) return 0;
+    return setInterval(() => {
       spinAt = (spinAt + 1) % SPINNER.length;
       el.textContent = SPINNER[spinAt];
-    }, 110);
+    }, SPIN_MS);
   }
 
-  function stopSpinner() {
-    if (spinTimer) clearInterval(spinTimer);
-    spinTimer = 0;
+  function stopSpinner(handle) {
+    if (handle) clearInterval(handle);
+    return 0;
   }
 
   function clip(s, n) {
@@ -1772,37 +1891,50 @@
   function handleEvent(ev) {
     switch (ev.type) {
       case 'reasoning':
-        setStatus('Thinking\u2026');
+        setWorking('Thinking\u2026');
         break;
       case 'content':
-        if (needsBreak) { assistantBuffer += '\n\n'; needsBreak = false; }
+        // A new stretch of words after some work means a new message, not more
+        // of the last one. That is how it is stored, and how it reads back.
+        if (!assistantEl) {
+          finishActivity();
+          assistantEl = bubble('assistant');
+          assistantBuffer = '';
+          keepWorkingLast();
+        }
         assistantBuffer += ev.text;
+        turnText += ev.text;
         assistantEl.textContent = assistantBuffer;
         renderMarkdown(assistantEl);
         scrollToBottom();
-        setStatus('Writing a reply\u2026');
+        setWorking('Writing a reply\u2026');
         break;
       case 'tool_start':
-        needsBreak = true;
-        setStatus(statusForTool(ev.name, ev.args));
+        closeSegment();
+        setWorking(statusForTool(ev.name, ev.args));
         break;
       case 'tool_end':
         noteToolDone(ev.name);
         if (ev.open_session) {
           pendingOpen = ev.open_session;
           appendAction(ev.open_session, ev.open_session_name);
+          keepWorkingLast();
         }
-        setStatus('Thinking\u2026');
+        setWorking('Thinking\u2026');
         break;
       case 'compacting':
-        needsBreak = true;
-        setStatus('Summarising our conversation\u2026');
+        closeSegment();
+        setWorking('Summarising our conversation\u2026');
         break;
       case 'done':
         finishAssistant(ev);
         break;
       case 'error':
-        if (assistantBuffer) finishAssistant(ev);
+        // Anything said this turn, not just the stretch in progress. With the
+        // reply split into several messages, a failure after the first one had
+        // been finished left `assistantBuffer` empty -- so this took the user's
+        // message back out from under a reply that was still on the screen.
+        if (turnText.trim()) finishAssistant(ev);
         else {
           showError(ev.message);
           revertFailedTurn();
@@ -1821,9 +1953,40 @@
   }
 
   let assistantEl = null;
+  // The stretch of words being written right now. `turnText` is everything the
+  // assistant has said this turn, across all of them, which is what gets
+  // announced once at the end.
   let assistantBuffer = '';
-  let needsBreak = false;
+  let turnText = '';
+  let lastSaidEl = null;
   let pendingUserMsg = null;
+
+  /* Finish the stretch of words currently being written.
+   *
+   * Called when the assistant stops talking and starts working, and again at
+   * the end of the turn. An empty one -- the assistant reached straight for a
+   * tool without saying anything -- leaves nothing behind. */
+  function closeSegment() {
+    if (!assistantEl) return null;
+    const el = assistantEl;
+    const text = assistantBuffer;
+    assistantEl = null;
+    assistantBuffer = '';
+    if (!text.trim()) {
+      const msg = el.closest('.message');
+      if (msg && msg.parentNode) msg.remove();
+      return null;
+    }
+    // From the raw text, not from the element: by now the element holds
+    // already-rendered HTML, and re-rendering its textContent would strip every
+    // markdown construct out of it.
+    el.innerHTML = window.md.render(text);
+    upgradeFileRefs(el);
+    addLinkPreviews(el);
+    speak(text, el.closest('.bubble'));
+    lastSaidEl = el;
+    return el;
+  }
 
   // Take back the user's message when a send failed, so the conversation reads
   // as if it was never sent. Called together with removeEmptyAssistant().
@@ -1844,40 +2007,33 @@
 
   function finishAssistant(ev) {
     pendingUserMsg = null;
-    if (assistantEl && assistantBuffer.trim()) {
-      // Render from the raw buffer, not from the element: by the time the turn
-      // ends the element holds already-rendered HTML, and re-rendering its
-      // textContent would strip every markdown construct.
-      assistantEl.innerHTML = window.md.render(assistantBuffer);
-      upgradeFileRefs(assistantEl);
-      speak(assistantBuffer, assistantEl.closest('.bubble'));
-      addLinkPreviews(assistantEl);
-      // Announce the finished reply once. Skipped when read-aloud is on,
-      // because Kokoro is about to say the same words and two voices talking
-      // over each other is worse than either alone.
-      if (!ttsAutoEnabled) announce(assistantBuffer);
+    closeSegment();
+    if (turnText.trim()) {
+      // Announce the finished reply once, for the whole turn rather than each
+      // stretch of it. Skipped when read-aloud is on, because Kokoro is saying
+      // the same words and two voices over each other is worse than either.
+      if (!ttsAutoEnabled) announce(turnText);
       // Only for a turn slow enough that the user may have looked away, and
       // never when read-aloud is on -- the reply speaking is itself the signal.
       if (soundCues && !ttsAutoEnabled && turnStartedAt &&
           Date.now() - turnStartedAt >= SOUND.minTurnMs) {
         cueDone();
       }
-    } else {
-      removeEmptyAssistant();
     }
     if (ev.type === 'done' && turnStartedAt) {
       const secs = Math.max(1, Math.round((Date.now() - turnStartedAt) / 1000));
       const note = document.createElement('span');
       note.className = 'worked-note';
       note.textContent = secs === 1 ? 'Worked for 1 second' : 'Worked for ' + secs + ' seconds';
-      const bubble = assistantEl ? assistantEl.closest('.bubble') : null;
+      // On the last thing it said, which is where the eye ends up.
+      const bubble = lastSaidEl ? lastSaidEl.closest('.bubble') : null;
       if (bubble) bubble.appendChild(note);
     }
     turnStartedAt = 0;
-    assistantEl = null;
-    assistantBuffer = '';
+    turnText = '';
+    lastSaidEl = null;
     stopTicks();
-    clearStatus();
+    clearWorking();
     maybeAutoOpen();
     scrollToBottom();
   }
@@ -1925,7 +2081,7 @@
     running = false;
     sendBtn.hidden = false;
     stopBtn.hidden = true;
-    clearStatus();
+    clearWorking();
     refreshTheme();
     refreshPlay();
     // One sentence for the whole turn. Someone listening gets "I read 3 files
@@ -1941,7 +2097,7 @@
     refreshPlay();
     turnStartedAt = Date.now();
     startTicks();
-    setStatus('Working\u2026');
+    setWorking('Working\u2026');
   }
 
   async function sendMessage(text, images) {
@@ -1952,9 +2108,13 @@
       return;
     }
     pendingUserMsg = appendUser(text);
-    assistantEl = bubble('assistant');
+    // No bubble yet. One is made the moment the assistant actually says
+    // something, so a turn that starts by reading four files does not sit there
+    // showing an empty speech bubble while it works.
+    assistantEl = null;
     assistantBuffer = '';
-    needsBreak = false;
+    turnText = '';
+    lastSaidEl = null;
     beginTurn();
     try {
       const resp = await fetch('/api/sessions/' + sessionId + '/chat', {
@@ -2908,6 +3068,8 @@
   const micLabel = micBtn ? micBtn.querySelector('.mic-label') : null;
   let micOn = view.dataset.sttEnabled === '1';
   let listening = false;
+  // Set by Enter on the Talk button, answered in finishDictation().
+  let sendWhenDictationEnds = false;
   let ws = null;
   let stream = null;
   let streamCtx = null;
@@ -2954,6 +3116,25 @@
   if (micBtn && sttAvailable) {
     setMicUI();
     micBtn.addEventListener('click', toggleDictation);
+    /* Enter sends, from the Talk button as much as from the message box.
+     *
+     * You press Talk, you say your piece, and then the obvious key does the
+     * obvious thing -- except it did not: focus was still on Talk, so Enter
+     * activated the button and toggled the microphone back on. The only way
+     * out was to find Send, which for somebody navigating by keyboard means
+     * tabbing past every control on the row, and for somebody who cannot see
+     * the screen means knowing it is there at all.
+     *
+     * Space still toggles, which is what Space does to a button everywhere. */
+    micBtn.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      if (!listening) { form.requestSubmit(); return; }
+      // Stop first, and send once the last words have actually arrived --
+      // sending here would cut off the end of the sentence.
+      sendWhenDictationEnds = true;
+      stopDictation();
+    });
   }
 
   // Space toggles dictation when not typing in the box; Escape stops both
@@ -3123,12 +3304,21 @@
     if (micBtn) micBtn.classList.remove('recording');
     if (micLabel) micLabel.textContent = 'Talk';
     textarea.placeholder = 'Type or speak your message';
-    if (!running) clearStatus();  // keep the AI's "Working…" status if a turn is live
+    // The composer's own line only. What the assistant is doing lives in the
+    // conversation now and is not this function's business either way.
+    clearStatus();
     resumePending();
     // Deliberately do NOT focus the textarea here: if the user toggled dictation
     // with Space (while not typing), stealing focus back would make the next
     // Space type a literal space instead of toggling again.
     textarea.scrollTop = textarea.scrollHeight;
+    // Both routes out of dictation land here, and both land here only once the
+    // transcript has been written into the box -- which is why "send when this
+    // is done" is answered from here rather than from the key that asked.
+    if (sendWhenDictationEnds) {
+      sendWhenDictationEnds = false;
+      setTimeout(() => form.requestSubmit(), 0);
+    }
   }
 
   // ── TTS toggle ────────────────────────────────────────────────────────────
@@ -3224,13 +3414,13 @@
       const state = await fetch('/api/sessions/' + sessionId + '/state').then((r) => r.json());
       if (!state.running) return;
       beginTurn();
-      setStatus('Working\u2026');
+      setWorking('Working\u2026');
       const resp = await fetch('/api/sessions/' + sessionId + '/attach');
       await readSSE(resp, (ev) => {
-        if (ev.type === 'tool_start') setStatus(statusForTool(ev.name, ev.args));
-        else if (ev.type === 'content') setStatus('Writing a reply\u2026');
-        else if (ev.type === 'reasoning') setStatus('Thinking\u2026');
-        else if (ev.type === 'compacting') setStatus('Summarising\u2026');
+        if (ev.type === 'tool_start') setWorking(statusForTool(ev.name, ev.args));
+        else if (ev.type === 'content') setWorking('Writing a reply\u2026');
+        else if (ev.type === 'reasoning') setWorking('Thinking\u2026');
+        else if (ev.type === 'compacting') setWorking('Summarising\u2026');
         else if (ev.type === 'stream_end') reloadMessages();
       });
     } catch (e) {}
@@ -3271,6 +3461,55 @@
     addPlayButton(el);
     addCopyButton(el);
   });
+  /* A link the assistant wrote, pressed by the user.
+   *
+   * "Your site is running at http://localhost:8123" is an ordinary thing for it
+   * to write and a perfectly reasonable thing to press. It used to open the
+   * user's normal browser -- which, if the project had since been stopped,
+   * showed a connection error and nothing else. Somebody who is not technical
+   * has no way to know the page is fine and the server is off, let alone that
+   * the fix is to find Play and press that first.
+   *
+   * So a link to this machine is not really a link: it is another way of saying
+   * "show me my project", and it now does what Play does. Anything pointing out
+   * to the web goes to the user's own browser, which is where a link out
+   * belongs -- and in child mode, nowhere.
+   *
+   * Doing it here rather than by telling the assistant not to write addresses:
+   * sometimes it genuinely needs to, a rule it has to remember is a rule it
+   * will forget, and this is the app's job either way. */
+  messages.addEventListener('click', async (e) => {
+    const link = e.target.closest('a[href^="http"]');
+    if (!link) return;
+    e.preventDefault();
+    const url = link.href;
+    link.classList.add('link-opening');
+    try {
+      const resp = await fetch('/api/sessions/' + sessionId + '/open-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        showError((data && data.detail) || 'That link would not open.');
+        return;
+      }
+      if (data.where === 'project') {
+        announce(data.started
+          ? 'Your project has been started, and is open in its own window.'
+          : 'Your project is open in its own window.');
+        refreshPlay();
+      } else {
+        announce('Opened in your browser.');
+      }
+    } catch (err) {
+      showError('That link would not open.');
+    } finally {
+      link.classList.remove('link-opening');
+    }
+  });
+
   document.addEventListener('click', (e) => {
     const playBtn = e.target.closest('.play-btn');
     if (playBtn) {

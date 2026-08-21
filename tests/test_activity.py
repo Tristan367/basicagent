@@ -147,3 +147,64 @@ def test_the_browser_gets_the_same_table_the_server_uses():
 
     # It has to survive being embedded in a page.
     assert "</script>" not in json.dumps(activity.FAMILIES)
+
+
+# ── the same order live as when it is loaded back ───────────────────────────
+#
+# The two used to disagree completely. Reloading a conversation interleaved it
+# correctly -- said this, did that, said the next thing -- but while the turn
+# was actually running there was one bubble for everything the assistant said
+# and one activity strip pinned above it, so all the chips piled up at the top
+# and all the words ran together into a wall underneath. You could not tell
+# which sentence caused which work.
+
+
+def _app_js() -> str:
+    from pathlib import Path
+
+    return Path("web_ui/static/js/app.js").read_text()
+
+
+def test_the_live_strip_is_appended_rather_than_put_above_the_reply():
+    js = _app_js()
+    block = js[js.index("function activityStrip()"):]
+    block = block[:block.index("function noteToolDone")]
+    assert "messages.appendChild(el)" in block
+    assert "insertBefore" not in block, "the strip goes above the words again"
+
+
+def test_words_after_a_tool_start_a_new_message():
+    """Which is how they are stored, and so how they read back. One bubble for
+    the whole turn is what made it a wall of text."""
+    js = _app_js()
+    handler = js[js.index("function handleEvent(ev)"):]
+    handler = handler[:handler.index("let assistantEl")]
+    assert "closeSegment();" in handler, "nothing ends the current message"
+    content = handler[handler.index("case 'content':"):handler.index("case 'tool_start':")]
+    assert "if (!assistantEl)" in content and "bubble('assistant')" in content
+
+
+def test_what_the_assistant_is_doing_is_not_in_the_composer():
+    """It was a line of small grey text next to Send -- so the answer to "is
+    this broken?" was somewhere you would only look if you already suspected it
+    was not."""
+    js = _app_js()
+    handler = js[js.index("function handleEvent(ev)"):]
+    handler = handler[:handler.index("let assistantEl")]
+    assert "setStatus(" not in handler, "turn status is back in the composer"
+    assert handler.count("setWorking(") >= 5
+
+
+def test_the_working_row_stays_the_last_thing_in_the_conversation():
+    js = _app_js()
+    assert "function keepWorkingLast()" in js
+    # Everything added during a turn has to put it back, or it ends up buried.
+    for after in ("messages.appendChild(el);", "appendAction(ev.open_session"):
+        idx = js.index(after)
+        assert "keepWorkingLast()" in js[idx:idx + 320], f"nothing restores it after {after}"
+
+
+def test_the_spinner_is_slow_enough_to_read():
+    js = _app_js()
+    line = next(ln for ln in js.splitlines() if "SPIN_MS" in ln and "=" in ln)
+    assert int(line.split("=")[1].strip().rstrip(";")) >= 200
