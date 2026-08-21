@@ -3108,6 +3108,14 @@
       }
       accepted = true;
       await readSSE(resp, handleEvent);
+      // A stream can also just stop, with no error to catch and no `done` to
+      // act on: the server shut down tidily, or something in between gave up on
+      // a connection that had been quiet for four minutes. Reading it simply
+      // ends. Without this the turn never finished on this side -- Stop stayed
+      // on screen, the ticking carried on, and the page waited for a reply that
+      // had already been written. Silent forever, which for somebody listening
+      // rather than watching is the worst way there is to fail.
+      if (running) { endTurn(); await recover(); }
     } catch (e) {
       if (!accepted) {
         showError('I could not send that message. Please try again.');
@@ -3121,8 +3129,29 @@
       // was being written, and it took their message off the page as well.
       pendingUserMsg = null;
       endTurn();
-      reattach(true);
+      await recover();
     }
+  }
+
+  /* Pick a turn back up after the connection to the app went away.
+   *
+   * It usually comes straight back -- the server was restarted, the machine
+   * slept for a moment -- so this keeps trying for half a minute before it says
+   * anything. The alternative is telling somebody who cannot reload a page that
+   * they should reload the page.
+   */
+  const RECOVER_WAITS = [400, 1000, 2000, 4000, 8000, 15000];
+
+  async function recover() {
+    for (const wait of RECOVER_WAITS) {
+      if (await reattach(true)) return true;
+      await new Promise((done) => setTimeout(done, wait));
+    }
+    showError(
+      'I lost my connection to the app. Nothing you said has been lost — it '
+      + 'will all be here when the app is running again.'
+    );
+    return false;
   }
 
   // ── Play and stop ─────────────────────────────────────────────────────────
@@ -4436,8 +4465,13 @@
    * it is skipped and the rest is drawn here.
    */
   async function reattach(afterDrop) {
+    let reached = false;
     try {
       const state = await fetch('/api/sessions/' + sessionId + '/state').then((r) => r.json());
+      // Whether the app answered at all, which is a different question from
+      // whether there was anything to watch. `recover` above keeps trying until
+      // this is true, so it must not be set before the app has actually spoken.
+      reached = true;
       if (!state.running) {
         // Nothing live to watch. On a page load that is the ordinary case and
         // there is nothing to do -- the server has just drawn the whole log.
@@ -4445,7 +4479,7 @@
         // this page could not see it, so the end of it is missing from what is
         // on screen and has to be fetched.
         if (afterDrop) reloadMessages();
-        return;
+        return reached;
       }
       beginTurn();
       // The server has already dropped everything it had written to the
@@ -4456,7 +4490,15 @@
         if (ev.type === 'stream_end') { reloadMessages(); return; }
         handleEvent(ev);
       });
-    } catch (e) { /* the turn will still be there when it ends */ }
+      // As above: this stream can end without saying so too, and `beginTurn`
+      // has already put the page into its working state.
+      if (running) endTurn();
+    } catch (e) {
+      // Whatever is on screen stays. But the page must not be left waiting on a
+      // connection that has gone.
+      if (running) endTurn();
+    }
+    return reached;
   }
 
   /* Rebuild the log from the server's own rendering of it.

@@ -609,7 +609,36 @@ def test_a_message_the_server_accepted_is_never_taken_back_off_the_screen():
     assert caught.index("if (!accepted)") < caught.index("revertFailedTurn"), (
         "the catch reverts without checking whether the server took the message"
     )
-    assert "reattach(true)" in caught, "a dropped stream is not picked back up"
+    assert "recover()" in caught, "a dropped stream is not picked back up"
+
+
+def test_a_stream_that_simply_stops_does_not_leave_the_page_working_forever():
+    """A stream can end with no error to catch and no `done` to act on -- the
+    server shut down tidily, or something in between gave up on a connection
+    that had been quiet for four minutes. Reading it just ends. The turn then
+    never finished on this side: Stop stayed on screen, the ticking carried on,
+    and the page waited for a reply that had already been written."""
+    js = _app_js()
+    for name in ("async function sendMessage(", "async function reattach("):
+        block = js[js.index(name):]
+        block = block[:block.index("\n  }")]
+        after_read = block.split("readSSE(", 1)[1]
+        assert "if (running)" in after_read, f"{name} can stall silently"
+        assert "endTurn()" in after_read, name
+
+
+def test_a_lost_connection_is_waited_out_before_anybody_is_told():
+    """It usually comes straight back -- a restart, a machine that slept for a
+    moment. Telling somebody who cannot reload a page that they should reload
+    the page is not a recovery."""
+    js = _app_js()
+    block = js[js.index("async function recover("):]
+    block = block[:block.index("\n  }")]
+    assert "RECOVER_WAITS" in block
+    waits = js[js.index("const RECOVER_WAITS ="):]
+    waits = waits[:waits.index("\n")]
+    total = sum(int(n) for n in __import__("re").findall(r"\d+", waits))
+    assert total >= 20_000, f"it gives up after {total}ms, which is no wait at all"
 
 
 def test_a_send_that_never_landed_gives_the_words_back():
