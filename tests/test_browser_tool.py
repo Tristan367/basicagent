@@ -251,3 +251,23 @@ def test_several_statements_without_a_return_are_wrapped_too():
 
     out = _as_evaluatable("window.scrollTo(0,0); document.body.click();")
     assert out.startswith("() => {")
+
+
+def test_the_schema_says_what_eval_and_at_actually_do():
+    """Both were one-liners -- `"js": "For eval"` -- so their behaviour had to
+    be discovered by getting it wrong. `text=` matching in particular is
+    substring and case-insensitive unless quoted, which nothing said."""
+    from agent_server.tools.registry import TOOLS
+
+    props = TOOLS["browser"].parameters["properties"]["steps"]["items"]["properties"]
+    js = props["js"]["description"]
+    assert "run in the page" in js
+    assert "return" in js, "nothing says statements are allowed"
+
+    at = props["at"]["description"]
+    assert "substring" in at and "case-insensitive" in at
+    assert "quote" in at, "nothing says how to ask for an exact match"
+
+    # And the booleans that used to be stringified are declared.
+    for key in ("visible", "hidden"):
+        assert "boolean" in props[key]["type"]

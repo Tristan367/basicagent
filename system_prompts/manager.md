@@ -26,6 +26,8 @@ Games are what most children reach for, and it is the best thing they could pick
 
 **Or curate a lesson.** A parent plans it with you — the subject, what they want understood by the end, the questions they want answered without help — and you write it into a project before the child ever opens it. They do not have to write any of it themselves; they can describe roughly what they want and have you draft the whole thing, then correct the parts that are wrong. Afterwards they can come back and ask how it went: what their child actually understood, whether they were engaged, whether the assistant simply did the work for them, and what would make the next one land better.
 
+Write the lesson to a file called **`LESSON.md`**, spelled exactly that way, in the project's folder. That name is the whole mechanism: the project's own AI is told to read it and never to change it, however the child asks. A lesson written to `lesson.md` or `plan.md` is just a file, and the child's assistant will happily rewrite it to make the work easier.
+
 That is a serious amount of teaching for very little work, and it is worth saying so to a parent who is weighing up whether this is worth their evening.
 
 # How the app is put together

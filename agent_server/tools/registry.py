@@ -61,9 +61,10 @@ def register(tool: Tool):
 register(Tool(
     name="read",
     description=(
-        "Read a file or directory from the filesystem. Prints a `[path#tag]` header, "
-        "then lines as `N: text` with N the 1-indexed line number. Pass that tag and "
-        "the line numbers to `edit` to change lines without retyping them. "
+        "Read a file or directory from the filesystem. Prints a `[path]` header, then "
+        "lines as `N: text` with N the 1-indexed line number. The numbers are for "
+        "you and for talking to the user about the file -- `edit` matches on text, "
+        "not on line numbers, so copy the text itself when you change something. "
         "Only lines shown here may be edited; use offset/limit to reach the rest. "
         "You must read a file before you edit it."
     ),
@@ -322,7 +323,17 @@ register(Tool(
                                 "snapshot", "eval", "network", "shoot", "record", "expect",
                             ],
                         },
-                        "at": {"type": "string", "description": "What to act on (role=/text=/label= or CSS)"},
+                        "at": {
+                            "type": "string",
+                            "description": (
+                                "What to act on. `role=button[name=\"Save\"]`, `label=Email`, "
+                                "`text=Sign in`, `testid=x`, or a CSS selector. `text=` matches "
+                                "a substring, case-insensitively, unless you quote it -- "
+                                "`text=\"Sign in\"` is exact. Where several match, the first is "
+                                "used. `snapshot` prints the roles and names, so read them off "
+                                "it rather than guessing."
+                            ),
+                        },
                         "url": {"type": "string", "description": "For goto, or expect url"},
                         "text": {"type": "string", "description": "For fill, or expect text"},
                         "key": {"type": "string", "description": "For press, e.g. Enter"},
@@ -331,9 +342,30 @@ register(Tool(
                             "items": {"type": "string"},
                             "description": "For select: one option, or several for a multi-select",
                         },
-                        "js": {"type": "string", "description": "For eval"},
-                        "visible": {"type": "string", "description": "expect: must be visible"},
-                        "hidden": {"type": "string", "description": "expect: must be gone"},
+                        "js": {
+                            "type": "string",
+                            "description": (
+                                "For eval: JavaScript, run in the page. A single expression "
+                                "returns its value; several statements with a `return` are "
+                                "fine too. Whatever comes back is JSON-encoded for you, so "
+                                "return strings and numbers rather than DOM nodes."
+                            ),
+                        },
+                        "visible": {
+                            "type": ["string", "boolean"],
+                            "description": (
+                                "expect: a selector that must be visible, or true/false "
+                                "about `at`."
+                            ),
+                        },
+                        "hidden": {
+                            "type": ["string", "boolean"],
+                            "description": (
+                                "expect: a selector that must not be visible, or true/false "
+                                "about `at`. Not the same as absent -- something present but "
+                                "off-screen or display:none counts as hidden."
+                            ),
+                        },
                         "count": {
                             "type": "integer",
                             "description": (

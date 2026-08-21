@@ -640,3 +640,18 @@ def test_a_project_made_this_minute_appears_without_a_reload():
     poll = js[js.index("async function refreshActivity()"):]
     poll = poll[:poll.index("\n  }")]
     assert "addNewProjects(data)" in poll, "nothing adds them while the page is open"
+
+
+def test_a_lesson_outranks_the_delivery_contract():
+    """The prompt drills "never yield while actionable work remains", which in a
+    lesson project is exactly backwards. Watched live: a child said "can i see
+    the game", and the assistant built the whole thing itself, tested it itself,
+    and handed it over -- ignoring a lesson plan that said to build it with her.
+    The parent's review caught it; the prompt should have prevented it."""
+    from pathlib import Path
+
+    prompt = Path("system_prompts/agent.md").read_text()
+    where = prompt.index("NEVER yield while actionable work remains")
+    after = prompt[where:where + 900]
+    assert "LESSON.md" in after, "nothing tells it a lesson is different"
+    assert "inverted" in after or "the child doing the work" in after

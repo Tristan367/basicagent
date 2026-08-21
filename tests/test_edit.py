@@ -261,3 +261,16 @@ def test_there_is_one_kind_of_subagent():
     assert "task" in TOOLS
     for path in ("system_prompts/agent.md", "agent_server/activity.py"):
         assert "explore" not in Path(path).read_text(), path
+
+
+def test_read_does_not_document_a_mechanism_that_no_longer_exists():
+    """It still said "pass that tag and the line numbers to `edit`" long after
+    `edit` stopped taking either. Caught by asking the model what confused it,
+    which is a better bug-finder than reading the file again."""
+    from agent_server.tools.registry import TOOLS
+
+    said = TOOLS["read"].description
+    assert "tag" not in said
+    assert "line numbers to `edit`" not in said
+    # And it says what the numbers are actually for.
+    assert "matches on text" in said
