@@ -448,21 +448,5 @@
     </div>
 </div>
 
-<div class="modal-backdrop" id="password-modal" role="dialog" aria-modal="true" aria-label="Parent password" hidden>
-    <div class="welcome-card quit-card">
-        <h2 id="password-modal-title">Parent password</h2>
-        <p id="password-modal-text">Enter the parent password.</p>
-        <input type="password" id="password-input" class="modal-input" autocomplete="new-password" aria-label="Parent password">
-        {# Only shown when a password is being *set*. A password box hides its
-           own typos, and getting one wrong here locks the parent out of their
-           own settings for a full day. #}
-        <input type="password" id="password-confirm-input" class="modal-input"
-               autocomplete="new-password" aria-label="Type the password again" hidden
-               placeholder="Type it again">
-        <p class="hint" id="password-modal-note" hidden>If you ever forget this password, you can reset it after a 24-hour wait.</p>
-        <p class="hint" id="password-modal-error" hidden style="color: var(--danger)"></p>
-        <div class="quit-actions">
-            <button type="button" class="btn-primary" id="password-confirm">Continue</button>
-            <button type="button" class="btn-stop" id="password-cancel">Cancel</button>
-        </div>
-    </div>
+{# The parent-password box lives in base.html: the assistant can ask to turn
+   child mode on from the chat, where this panel has not been loaded. #}

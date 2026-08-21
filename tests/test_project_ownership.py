@@ -17,7 +17,7 @@ from agent_server.tools.base import ToolContext
 from agent_server.tools.session_manager import (
     assign_project,
     create_project,
-    delete_project,
+    delete_projects,
     list_projects,
 )
 
@@ -111,9 +111,13 @@ async def test_the_parent_sees_the_childs_projects_and_the_child_does_not_see_th
 
 
 async def test_a_child_cannot_delete_a_project_that_is_not_theirs(parent, child):
+    """The child's manager sees only the child's projects, so a parent's is not
+    a name it can even reach -- and the tool proposes rather than deletes, so a
+    proposal is as far as anything gets in either case."""
     await create_project(parent, name="Important work")
-    result = await delete_project(child, name="Important work")
+    result = await delete_projects(child, names=["Important work"])
     assert result.is_error
+    assert result.action is None, "a child was offered a button to remove it"
     assert await db.get_session_by_name("Important work", profile=None) is not None
 
 

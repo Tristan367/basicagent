@@ -221,26 +221,71 @@ async def rename_project(ctx: ToolContext, *, name: str, new_name: str, **_) -> 
     )
 
 
-async def delete_project(ctx: ToolContext, *, name: str, **_) -> ToolResult:
-    title = f"delete project {name[:40]}"
-    name = (name or "").strip()
-    if not name:
-        return ToolResult.error("a project name is required", title)
-    session = await db.get_session_by_name(name, profile=_visible(ctx))
-    if session is None:
-        return ToolResult.error(f"there is no project named '{name}'", title)
-    from agent_server import preview
+async def delete_projects(
+    ctx: ToolContext, *, names: list | None = None, every_one: bool = False, **_
+) -> ToolResult:
+    """Propose removing projects. Never removes anything on its own.
 
-    await preview.stop(session["id"])
-    await db.delete_session(session["id"])
-    # The files are deliberately left in place: deleting a project should never
-    # delete the user's work by surprise.
+    Doing this by hand is the case that hurts: somebody with a hundred
+    half-started projects has a hundred buttons to find and press, and that is
+    exactly the person who cannot press buttons. Gathering them up is a
+    sentence, and the assistant is good at it.
+
+    But it is also the only destructive thing on this screen, and a model that
+    has misheard "delete the old website ones" will gather up the wrong list
+    with complete confidence. So the tool ends at a list and a question. The
+    names go on screen, the user says yes, and the browser does the deleting.
+    """
+    title = "remove projects"
+    visible = await db.list_sessions(profile=_visible(ctx))
+    by_name = {s["name"].strip().lower(): s for s in visible}
+
+    if every_one:
+        chosen, missing = list(visible), []
+    else:
+        wanted = [str(n).strip() for n in (names or []) if str(n).strip()]
+        if not wanted:
+            return ToolResult.error(
+                "pass `names` (the projects to remove) or `every_one: true`", title
+            )
+        chosen, missing, seen = [], [], set()
+        for want in wanted:
+            found = by_name.get(want.lower())
+            if found is None:
+                missing.append(want)
+            elif found["id"] not in seen:
+                seen.add(found["id"])
+                chosen.append(found)
+
+    if missing and not chosen:
+        available = ", ".join(s["name"] for s in visible) or "(no projects yet)"
+        return ToolResult.error(
+            f"no project named {' or '.join(repr(m) for m in missing)}. "
+            f"Existing projects: {available}", title
+        )
+    if not chosen:
+        return ToolResult(output="There are no projects to remove.", title="nothing to remove")
+
+    note = ""
+    if missing:
+        note = (f" There is nothing called {' or '.join(repr(m) for m in missing)}, so "
+                f"that is not in the list -- say so.")
+    count = len(chosen)
     return ToolResult(
         output=(
-            f"Removed project '{name}' from the list. Its files were left in place "
-            f"at {session['project_dir']} in case the user wants them back."
+            f"Asked about removing {count} project{'' if count == 1 else 's'}: "
+            + ", ".join(f"'{s['name']}'" for s in chosen[:20])
+            + (f", and {count - 20} more" if count > 20 else "")
+            + f".{note} A box is now on screen listing them, and NOTHING has been "
+              f"removed yet -- it happens only if the user presses the button in it. "
+              f"Say what you have lined up and leave the decision to them. Their "
+              f"files are never touched either way; only the entry in the list goes."
         ),
-        title=f"Removed '{name}'",
+        title=f"Asked about removing {count} project{'' if count == 1 else 's'}",
+        action={
+            "kind": "delete_projects",
+            "sessions": [{"id": s["id"], "name": s["name"]} for s in chosen],
+        },
     )
 
 
@@ -286,15 +331,3 @@ async def assign_project(ctx: ToolContext, *, name: str, to: str = "child", **_)
     else:
         note = f"'{name}' has been taken back out of the child's list."
     return ToolResult(output=note, title=title)
-
-
-async def set_theme(ctx: ToolContext, *, theme: str, **_) -> ToolResult:
-    title = f"switch to {theme} mode"
-    theme = (theme or "").strip().lower()
-    if theme not in ("light", "dark"):
-        return ToolResult.error("theme must be 'light' or 'dark'", title)
-    await db.set_setting("theme", theme)
-    return ToolResult(
-        output=f"Switched the app to {theme} mode. Tell the user it is done.",
-        title=f"Switched to {theme} mode",
-    )

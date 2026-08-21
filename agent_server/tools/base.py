@@ -70,6 +70,15 @@ class ToolResult:
     # not go in `output` -- they are sent to the model as pictures, so it can
     # look at what it just did rather than read a path and take it on trust.
     images: list[str] = field(default_factory=list)
+    # Something for the user to answer, put on screen by the UI: a password box
+    # for child mode, a "delete these 27 projects?" confirmation. Display-only,
+    # never sent to the model.
+    #
+    # The point is that some things must not be done on the assistant's say-so
+    # alone. It can raise the question -- which is the part that is hard to do
+    # by hand when there are a hundred projects -- and the person at the
+    # keyboard answers it. `{"kind": "...", ...}`; see `runAction` in app.js.
+    action: dict | None = None
 
     @classmethod
     def error(cls, message: str, title: str = "", usage: dict | None = None) -> "ToolResult":

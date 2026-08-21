@@ -30,6 +30,7 @@ FAMILIES: dict[str, dict] = {
     "think":   {"glyph": "✲", "one": "researched",          "many": "researched {n} things",  "note": 820},
     "see":     {"glyph": "▣", "one": "checked the screen",  "many": "checked {n} times",      "note": 620},
     "project": {"glyph": "❖", "one": "sorted the project",  "many": "sorted the project",     "note": 700},
+    "setting": {"glyph": "⚙", "one": "changed a setting",   "many": "changed {n} settings",   "note": 480},
 }
 
 TOOL_FAMILY: dict[str, str] = {
@@ -40,8 +41,12 @@ TOOL_FAMILY: dict[str, str] = {
     "task": "think",
     "browser": "see", "capture": "see",
     "create_project": "project", "open_project": "project", "rename_project": "project",
-    "delete_project": "project", "list_projects": "project", "assign_project": "project",
-    "set_theme": "project",
+    "delete_projects": "project", "list_projects": "project", "assign_project": "project",
+    # Working the settings page on the user's behalf. Its own family rather
+    # than "sorted the project": turning the ticking off is not project work,
+    # and a chip saying so would be a small lie about what just happened.
+    "show_settings": "setting", "set_appearance": "setting", "set_voice": "setting",
+    "set_sounds": "setting", "set_child_mode": "setting",
 }
 
 DEFAULT_FAMILY = "run"

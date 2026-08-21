@@ -186,10 +186,15 @@ async def test_closing_the_app_leaves_nothing_behind(project):
 async def test_deleting_a_project_stops_what_it_was_running(project, tmp_path, monkeypatch):
     """Afterwards nothing knows the project existed, so its server would hold
     the port until the app closes -- and the user has no terminal to kill it
-    from. The stop has to happen before the row goes."""
+    from. The stop has to happen before the row goes.
+
+    Through the bulk-remove route, which is where removal actually happens: the
+    assistant's `delete_projects` only ever proposes a list, and the button in
+    that box calls this."""
     from agent_server import database
+    from agent_server.routes.sessions import remove_sessions
     from agent_server.tools.base import ToolContext
-    from agent_server.tools.session_manager import create_project, delete_project
+    from agent_server.tools.session_manager import create_project
 
     await database.init_db()
     ctx = ToolContext(session_id="home", project_dir=project, abort=asyncio.Event())
@@ -202,7 +207,7 @@ async def test_deleting_a_project_stops_what_it_was_running(project, tmp_path, m
                         f"http://127.0.0.1:{port}", project)
     assert running_servers() == before + 1
 
-    await delete_project(ctx, name="Doomed")
+    await remove_sessions({"ids": [session["id"]]})
     await asyncio.sleep(0.4)
     assert running_servers() == before, "the project was deleted but its server lived on"
     await database.close()

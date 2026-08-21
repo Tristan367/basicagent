@@ -7,6 +7,13 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_server.tools.app_settings import (
+    set_appearance,
+    set_child_mode,
+    set_sounds,
+    set_voice,
+    show_settings,
+)
 from agent_server.tools.base import ToolContext, ToolResult
 from agent_server.tools.bash import run_bash
 from agent_server.tools.browser import browser as browser_tool
@@ -17,11 +24,10 @@ from agent_server.tools.search import glob_search, grep_search
 from agent_server.tools.session_manager import (
     assign_project,
     create_project,
-    delete_project,
+    delete_projects,
     list_projects,
     open_project,
     rename_project,
-    set_theme,
 )
 from agent_server.tools.task import run_task
 from agent_server.tools.web import webfetch, websearch
@@ -475,17 +481,29 @@ register(Tool(
 ))
 
 register(Tool(
-    name="delete_project",
+    name="delete_projects",
     description=(
-        "Remove a project from the list. This does NOT delete the user's files — it "
-        "only removes the project entry."
+        "Ask the user to confirm removing one or more projects from the list. This "
+        "does NOT remove anything by itself and never deletes the user's files — it "
+        "puts the names on screen with a button, and the user decides. Use it for "
+        "one project or for a hundred; gathering up 'all the ones about cats' is "
+        "the whole point. Say what you have lined up; do not claim it is done."
     ),
     parameters={
         "type": "object",
-        "properties": {"name": {"type": "string", "description": "Project name"}},
-        "required": ["name"],
+        "properties": {
+            "names": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Exact project names, as `list_projects` gives them",
+            },
+            "every_one": {
+                "type": "boolean",
+                "description": "Every project the user has. Ignores `names`.",
+            },
+        },
     },
-    handler=delete_project,
+    handler=delete_projects,
 ))
 
 register(Tool(
@@ -511,23 +529,124 @@ register(Tool(
     handler=assign_project,
 ))
 
+# ── The settings page, as sentences ─────────────────────────────────────────
+#
+# Everything on that page a user can safely hand over. An API key is the one
+# thing that is not here: pasted into a chat it would be written into the
+# history, sent to the model, and folded into the next summary.
+
 register(Tool(
-    name="set_theme",
+    name="show_settings",
     description=(
-        "Switch the app between light and dark mode. Use when the user asks to "
-        "change how the app looks. theme is 'light' or 'dark'."
+        "Read back how the app is currently set up: light or dark, text size, "
+        "read-aloud and its voice, dictation, sounds, child mode. Check this "
+        "before any 'a bit louder/bigger/faster' request, so you are changing "
+        "from where it actually is."
+    ),
+    parameters={"type": "object", "properties": {}},
+    handler=show_settings,
+))
+
+register(Tool(
+    name="set_appearance",
+    description=(
+        "Change how the app looks. Takes effect on their screen immediately, so "
+        "say it is done — never tell them to do anything themselves."
     ),
     parameters={
         "type": "object",
-        "properties": {"theme": {"type": "string", "enum": ["light", "dark"]}},
-        "required": ["theme"],
+        "properties": {
+            "theme": {"type": "string", "enum": ["light", "dark"]},
+            "text_size": {
+                "type": "string",
+                "description": (
+                    "'bigger', 'smaller', 'reset', or a percentage like '125'. "
+                    "Ranges from 70 to 160."
+                ),
+            },
+            "colour": {
+                "type": "string",
+                "description": (
+                    "The app's accent colour, by name -- blue, purple, pink, red, "
+                    "orange, teal, grey, brown, green -- or 'default'. A name it "
+                    "does not know comes back with the list."
+                ),
+            },
+        },
     },
-    handler=set_theme,
+    handler=set_appearance,
+))
+
+register(Tool(
+    name="set_voice",
+    description=(
+        "Change anything about voice and speech: whether replies are read aloud, "
+        "which voice reads them, how fast and how loud, whether the microphone "
+        "button is offered, and screen-reader mode. Only what you pass is changed."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "read_aloud": {"type": "boolean", "description": "Read replies aloud"},
+            "voice": {
+                "type": "string",
+                "description": (
+                    "A voice by name as the user would say it ('Emma', 'a British "
+                    "man'). A wrong one comes back with the full list."
+                ),
+            },
+            "speed": {"type": "number", "description": "0.5 to 2.0; 1.25 is normal"},
+            "volume": {"type": "number", "description": "0 to 1"},
+            "dictation": {"type": "boolean", "description": "Offer the Talk button"},
+            "screen_reader": {
+                "type": "boolean",
+                "description": (
+                    "The user has their own screen reader, so the app stays quiet "
+                    "and lets it do the talking."
+                ),
+            },
+        },
+    },
+    handler=set_voice,
+))
+
+register(Tool(
+    name="set_sounds",
+    description=(
+        "Change the app's own sound effects: the chime when a job finishes and the "
+        "tone when something fails, the ticking while it works, and how loud both "
+        "are. Not the reading voice — that is `set_voice`."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "chimes": {"type": "boolean", "description": "Finished and failed tones"},
+            "ticking": {"type": "boolean", "description": "Ticking while it works"},
+            "volume": {"type": "number", "description": "0 to 1"},
+        },
+    },
+    handler=set_sounds,
+))
+
+register(Tool(
+    name="set_child_mode",
+    description=(
+        "Ask to switch child mode on or off. Puts a password box on screen and "
+        "goes no further — the parent's password is typed there, never into the "
+        "chat. Never ask for the password yourself, and never repeat one back."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {"on": {"type": "boolean", "description": "True for on"}},
+        "required": ["on"],
+    },
+    handler=set_child_mode,
 ))
 
 MANAGER_TOOLS = frozenset({
     "create_project", "list_projects", "open_project", "rename_project",
-    "delete_project", "assign_project", "set_theme",
+    "delete_projects", "assign_project",
+    "show_settings", "set_appearance", "set_voice", "set_sounds", "set_child_mode",
 })
 
 # Tools the home session may use in addition to the manager tools: enough to
@@ -549,7 +668,16 @@ MANAGER_EXTRA_TOOLS = frozenset({
 # Manager tools a child's own home session must not be offered. Withheld rather
 # than refused at the handler: a tool in the list is a tool the model will try,
 # and spending a round trip to be told no is worse than never seeing it.
-PARENT_ONLY_TOOLS = frozenset({"assign_project"})
+#
+# `set_child_mode` is here even though it is safe on its own -- it only ever
+# raises a password box, and without the password nothing happens. But a child's
+# own assistant offering to switch its safety mode off, and putting up a box
+# inviting a guess at the password, is not a thing it should do. The button in
+# Settings is still there for whoever knows the password.
+#
+# The rest of the settings tools are NOT withheld. A child asking for bigger
+# text or a different voice should get it, the same as anybody.
+PARENT_ONLY_TOOLS = frozenset({"assign_project", "set_child_mode"})
 
 
 def allowed_tool_names(session: dict) -> list[str]:

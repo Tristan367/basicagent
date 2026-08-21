@@ -149,19 +149,9 @@ function initSettings() {
     });
 
     // Accent colour: green by default, or a custom colour of the user's choosing.
-    function applyAccent(hex) {
-        const root = document.documentElement;
-        const vars = ['--accent', '--accent-btn', '--user-bubble', '--focus', '--accent-dim'];
-        if (!hex) {
-            vars.forEach((v) => root.style.removeProperty(v));
-        } else {
-            root.style.setProperty('--accent', hex);
-            root.style.setProperty('--accent-btn', hex);
-            root.style.setProperty('--user-bubble', hex);
-            root.style.setProperty('--focus', hex);
-            root.style.setProperty('--accent-dim', 'color-mix(in srgb, ' + hex + ' 18%, transparent)');
-        }
-    }
+    // The applying itself lives in app.js, because the assistant can be asked
+    // for it from a chat where this script has never run.
+    const applyAccent = (hex) => window.__applyAccent(hex);
     async function saveAccent(hex) {
         const fd = new FormData();
         fd.append('accent', hex);
@@ -299,9 +289,11 @@ function initSettings() {
         // itself was applied at page load, so the number beside them is
         // whatever the template hard-coded. Put the real one there.
         if (window.__showZoom) window.__showZoom();
-        if (out) out.addEventListener('click', () => window.__applyZoom(window.__readZoom() - 0.1));
-        if (inc) inc.addEventListener('click', () => window.__applyZoom(window.__readZoom() + 0.1));
-        if (reset) reset.addEventListener('click', () => window.__applyZoom(1));
+        // Saved to the server as well as locally, so that "make the writing
+        // bigger" is something the assistant can be asked for.
+        if (out) out.addEventListener('click', () => window.__saveZoom(window.__readZoom() - 0.1));
+        if (inc) inc.addEventListener('click', () => window.__saveZoom(window.__readZoom() + 0.1));
+        if (reset) reset.addEventListener('click', () => window.__saveZoom(1));
     })();
 
     // ── Back to top ────────────────────────────────────────────────────────────
@@ -329,60 +321,11 @@ function initSettings() {
 
     // ── Parental controls ──────────────────────────────────────────────────────
     (function () {
-        const modal = document.getElementById('password-modal');
-        const confirmInput = document.getElementById('password-confirm-input');
-        const title = document.getElementById('password-modal-title');
-        const text = document.getElementById('password-modal-text');
-        const note = document.getElementById('password-modal-note');
-        const err = document.getElementById('password-modal-error');
-        const input = document.getElementById('password-input');
-        const confirmBtn = document.getElementById('password-confirm');
-        const cancelBtn = document.getElementById('password-cancel');
-        if (!modal) return;
-
-        let action = null;   // function(password) -> Promise<{ok, reason?}>
-
-        // `showForgotNote` marks the prompts that *set* a password rather than
-        // check one, and those are the ones that ask for it twice.
-        function openPrompt(titleText, bodyText, showForgotNote, onConfirm) {
-            title.textContent = titleText;
-            text.textContent = bodyText;
-            note.hidden = !showForgotNote;
-            err.hidden = true;
-            err.textContent = '';
-            input.value = '';
-            confirmInput.value = '';
-            confirmInput.hidden = !showForgotNote;
-            action = onConfirm;
-            window.__openModal(modal, input);
-        }
-        function closePrompt() {
-            action = null;
-            window.__closeModal();
-        }
-        confirmBtn.addEventListener('click', async () => {
-            const password = input.value.trim();
-            if (!password) { err.textContent = 'Please type a password.'; err.hidden = false; return; }
-            if (!confirmInput.hidden && confirmInput.value.trim() !== password) {
-                err.textContent = 'The two passwords are not the same. Try again.';
-                err.hidden = false;
-                confirmInput.value = '';
-                confirmInput.focus();
-                return;
-            }
-            const result = await action(password);
-            if (result && result.ok) {
-                closePrompt();
-                if (result.reload) location.reload();
-            } else if (result && result.reason === 'no_key') {
-                err.textContent = 'Set up an AI first: once child mode is on, API keys are locked.';
-                err.hidden = false;
-            } else if (result && result.reason === 'password') {
-                err.textContent = 'That password is not right.';
-                err.hidden = false;
-            }
-        });
-        cancelBtn.addEventListener('click', closePrompt);
+        // The password box itself, and everything it does with what is typed
+        // into it, lives in app.js: the assistant can also ask for child mode
+        // from the chat, where this panel has never been loaded.
+        const openPrompt = window.__passwordPrompt;
+        if (!openPrompt) return;
 
         function post(url, body) {
             return fetch(url, {
@@ -393,22 +336,10 @@ function initSettings() {
         }
 
         const enableBtn = document.getElementById('child-enable');
-        if (enableBtn) enableBtn.addEventListener('click', () => {
-            openPrompt('Turn on child mode', 'Choose a parent password. You will need it to change the AI or turn child mode off.', true, async (password) => {
-                const r = await post('/api/child/enable', { password });
-                if (r.ok) return { ok: true, reload: true };
-                return { ok: false, reason: r.reason };
-            });
-        });
+        if (enableBtn) enableBtn.addEventListener('click', () => window.__askChildMode(true));
 
         const disableBtn = document.getElementById('child-disable');
-        if (disableBtn) disableBtn.addEventListener('click', () => {
-            openPrompt('Turn off child mode', 'Enter the parent password.', false, async (password) => {
-                const r = await post('/api/child/disable', { password });
-                if (r.ok) return { ok: true, reload: true };
-                return { ok: false, reason: r.reason };
-            });
-        });
+        if (disableBtn) disableBtn.addEventListener('click', () => window.__askChildMode(false));
 
         const forgotBtn = document.getElementById('child-forgot');
         if (forgotBtn) forgotBtn.addEventListener('click', async () => {

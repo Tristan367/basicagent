@@ -253,7 +253,11 @@ async def save_prefs(request: Request):
     if (voice := str(form.get("tts_voice", "")).strip()):
         await db.set_setting("tts_voice", voice)
     for key, low, high in (
-        ("tts_speed", 0.5, 2.0), ("tts_volume", 0.0, 1.0), ("sound_volume", 0.0, 1.0)
+        ("tts_speed", 0.5, 2.0), ("tts_volume", 0.0, 1.0), ("sound_volume", 0.0, 1.0),
+        # The browser applies and remembers this itself; the copy here exists so
+        # the assistant can be asked to make the writing bigger. Same bounds as
+        # `__applyZoom`, or the two would disagree about what was set.
+        ("zoom", 0.7, 1.6),
     ):
         if key in form:
             value = _number(str(form.get(key, "")), low, high)
@@ -384,11 +388,35 @@ async def child_verify(request: Request):
 
 @router.get("/api/theme")
 async def get_theme():
-    from agent_server.config import APP_VERSION, DEFAULT_THEME
+    """Everything the open page can change about itself without reloading.
+
+    Still called `theme` because that is all it carried at first. The list grew
+    when the assistant was given the settings page to work: it can now be asked
+    to turn read-aloud on or make the text bigger, and a change the user has to
+    reload to see is not a change they asked for. The chat re-reads this at the
+    end of every turn and applies whatever moved.
+    """
+    from agent_server.config import APP_VERSION, DEFAULT_THEME, contrast_text
 
     return {
         "theme": await db.get_setting("theme", DEFAULT_THEME),
         "version": APP_VERSION,
+        "zoom": await db.get_setting("zoom", ""),
+        "accent": await db.get_setting("accent", ""),
+        # Worked out here rather than in the browser: getting the contrast wrong
+        # makes the user's own messages unreadable, and one implementation of it
+        # is enough.
+        "accent_text": (contrast_text(accent)
+                        if (accent := await db.get_setting("accent", "")) else ""),
+        "tts_auto": await db.get_setting("tts_auto", "0") == "1",
+        "tts_voice": await db.get_setting("tts_voice", ""),
+        "tts_speed": await db.get_setting("tts_speed", "1.25"),
+        "tts_volume": await db.get_setting("tts_volume", "0.75"),
+        "sound_cues": await db.get_setting("sound_cues", "1") == "1",
+        "sound_ticks": await db.get_setting("sound_ticks", "0") == "1",
+        "sound_volume": await db.get_setting("sound_volume", "0.4"),
+        "stt_enabled": await db.get_setting("stt_enabled", "1") == "1",
+        "child_mode": await parental.child_mode_enabled(),
     }
 
 

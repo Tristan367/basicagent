@@ -655,3 +655,39 @@ def test_a_lesson_outranks_the_delivery_contract():
     after = prompt[where:where + 900]
     assert "LESSON.md" in after, "nothing tells it a lesson is different"
     assert "inverted" in after or "the child doing the work" in after
+
+
+def test_every_family_has_a_colour_and_every_tool_has_a_family():
+    """A family added on the server with no `--fam-` behind it renders as a row
+    of colourless pills, and a tool missing from the table quietly reports
+    itself as "ran a command" -- which for `set_voice` is simply untrue."""
+    from pathlib import Path
+
+    css = Path("web_ui/static/css/style.css").read_text()
+    app_js = Path("web_ui/static/js/app.js").read_text()
+    for family in activity.FAMILIES:
+        assert f"--fam-{family}:" in css, family
+        assert f".chip-{family} " in css, family
+
+    from agent_server.tools.registry import TOOLS
+
+    for name in TOOLS:
+        assert name in activity.TOOL_FAMILY, f"{name} has no family on the server"
+        assert f"{name}: '" in app_js, f"{name} has no family in the browser"
+
+
+def test_the_two_family_tables_agree():
+    """One on the server for the reloaded conversation, one in the browser for
+    the live one. The same work has to read the same way both times."""
+    import re
+    from pathlib import Path
+
+    js = Path("web_ui/static/js/app.js").read_text()
+    block = js[js.index("const TOOL_FAMILY = {"):]
+    block = block[:block.index("};")]
+    in_browser = dict(re.findall(r"(\w+):\s*'(\w+)'", block))
+    for name, family in in_browser.items():
+        # `explore` is gone from the server and harmless to leave listed here.
+        if name not in activity.TOOL_FAMILY:
+            continue
+        assert activity.TOOL_FAMILY[name] == family, name

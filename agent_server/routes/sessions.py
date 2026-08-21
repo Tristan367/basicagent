@@ -271,6 +271,35 @@ async def update_session(session_id: str, payload: dict):
     return await db.update_session(session_id, **updates)
 
 
+@router.post("/remove")
+async def remove_sessions(payload: dict):
+    """Remove several projects at once, once the user has said yes.
+
+    The assistant can gather up "all the ones about cats" and put the names on
+    screen (`delete_projects`), but it stops there: this is what the button in
+    that box calls. Nothing here is reachable from the model.
+
+    One project that cannot be removed does not stop the rest -- with a hundred
+    of them, failing the lot because one row has already gone is the worse
+    outcome by far. What was removed and what was not both come back.
+    """
+    ids = [str(i) for i in (payload.get("ids") or [])]
+    removed, kept = [], []
+    for session_id in ids:
+        session = await db.get_session(session_id)
+        if session is None or session.get("kind") == "manager":
+            kept.append(session_id)
+            continue
+        agent.request_abort(session_id)
+        from agent_server import preview
+
+        await preview.stop(session_id)
+        await db.delete_session(session_id)
+        agent.forget_session(session_id)
+        removed.append(session["name"])
+    return {"ok": True, "removed": removed, "kept": len(kept)}
+
+
 @router.delete("/{session_id}")
 async def delete_session(session_id: str):
     session = await _require(session_id)

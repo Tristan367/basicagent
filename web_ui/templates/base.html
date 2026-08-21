@@ -10,7 +10,10 @@
     <script src="/static/vendor/highlight/highlight.min.js?v={{ version }}"></script>
     <script src="/static/js/markdown.js?v={{ version }}"></script>
 </head>
-<body>
+{# `has-parent-password` tells the password box which question to ask: choose a
+   new one, or type the one you set before. Switching child mode off clears the
+   password, so "on" is not always "set". #}
+<body class="{% if child_mode %}child-mode {% endif %}{% if has_parent_password %}has-parent-password{% endif %}">
     <a class="skip-link" id="skip-link" href="{% if is_settings %}#main-content{% elif stt.available %}#mic-btn{% else %}#chat-textarea{% endif %}">
         {% if is_settings %}Skip to content{% elif stt.available %}Skip to Talk{% else %}Skip to chat{% endif %}
     </a>
@@ -132,6 +135,30 @@
                       d="M9.4 21v-7.2h5.2V21"/>
             </svg>
             {% endif %}{% block app_title %}Assistant{% endblock %}</h1>
+        {#
+          You are in child mode.
+
+          Words, not a picture. Every icon for this is some version of a
+          teddy bear, and a teenager building a game does not need a teddy bear
+          on their screen telling them which version of the app they are allowed
+          to have. "Child mode" is the plain fact, said once, quietly.
+
+          A button rather than a label, because the useful thing to do with it
+          is go and change it -- and it is safe for anyone to press: turning
+          child mode off needs the parent's password wherever you ask from.
+
+          Always in the markup and hidden when off, so switching it on reaches a
+          page that is already open without a reload.
+        #}
+        <button type="button" class="child-badge" id="child-badge"
+                {% if not child_mode %}hidden{% endif %}
+                title="You are in child mode. Open Settings to turn it off — it needs the parent password.">
+            Child mode
+        </button>
+        {# After the marker, not before it. Before, it only ate into the title,
+           which is elastic and simply gave the space back -- the marker did not
+           move. #}
+        <div class="bar-gap" aria-hidden="true"></div>
         <div class="app-bar-side app-bar-right">
             <button type="button" class="app-bar-btn quit-x" id="quit-btn" title="Quit" aria-label="Quit">
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -154,6 +181,56 @@
             </div>
         </div>
     </div>
+
+    {#
+      "Remove these 27 projects?"
+
+      The assistant can gather a list up -- which is the part that is miserable
+      by hand, and impossible for somebody who cannot work a mouse -- but it
+      cannot act on it. The names are all here, every one, in a box that scrolls
+      rather than a count to be taken on trust: agreeing to "27 projects" is not
+      agreeing to anything, and the one you would have kept is always in there.
+    #}
+    <div class="modal-backdrop" id="remove-modal" role="dialog" aria-modal="true"
+         aria-label="Remove projects" hidden>
+        <div class="welcome-card quit-card">
+            <h2 id="remove-modal-title">Remove these projects?</h2>
+            <p class="hint">Your files are not touched. Only the entry in your list of
+            projects goes, and the folder stays exactly where it is.</p>
+            <ul class="remove-list" id="remove-list"></ul>
+            <p class="hint" id="remove-modal-error" hidden style="color: var(--danger)"></p>
+            <div class="quit-actions">
+                <button type="button" class="btn-danger" id="remove-confirm">Remove them</button>
+                <button type="button" class="btn-stop" id="remove-cancel">Keep them</button>
+            </div>
+        </div>
+    </div>
+
+    {# The parent password, asked for wherever it is needed.
+
+       It used to live in the settings panel's own markup, which is fetched only
+       when that panel is opened -- so the assistant, which can now be asked to
+       turn child mode on from the chat, had nowhere to put the question. Here it
+       is on every page, and the settings panel reaches for this one too. #}
+<div class="modal-backdrop" id="password-modal" role="dialog" aria-modal="true" aria-label="Parent password" hidden>
+    <div class="welcome-card quit-card">
+        <h2 id="password-modal-title">Parent password</h2>
+        <p id="password-modal-text">Enter the parent password.</p>
+        <input type="password" id="password-input" class="modal-input" autocomplete="new-password" aria-label="Parent password">
+        {# Only shown when a password is being *set*. A password box hides its
+           own typos, and getting one wrong here locks the parent out of their
+           own settings for a full day. #}
+        <input type="password" id="password-confirm-input" class="modal-input"
+               autocomplete="new-password" aria-label="Type the password again" hidden
+               placeholder="Type it again">
+        <p class="hint" id="password-modal-note" hidden>If you ever forget this password, you can reset it after a 24-hour wait.</p>
+        <p class="hint" id="password-modal-error" hidden style="color: var(--danger)"></p>
+        <div class="quit-actions">
+            <button type="button" class="btn-primary" id="password-confirm">Continue</button>
+            <button type="button" class="btn-stop" id="password-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
 
     {#
       Settings, over the conversation rather than instead of it. The chat stays

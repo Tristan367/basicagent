@@ -157,6 +157,47 @@ body {
     border-bottom: var(--seam) solid var(--border);
 }
 
+/* Sits the child-mode marker about three quarters of the way along, rather
+   than jammed against the quit button in the corner where it reads as one more
+   piece of window furniture. Shrinks away first when the bar runs out of room:
+   the marker itself matters, the space before it does not. */
+.bar-gap { flex: 0 1 clamp(0px, 14vw, 180px); }
+.child-badge[hidden] + .bar-gap { display: none; }
+
+.child-badge {
+    align-self: center;
+    flex: none;
+    margin-right: 8px;
+    padding: 3px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    font-family: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.child-badge:hover { color: var(--accent); border-color: var(--accent); }
+
+/* The names in "remove these 27 projects?". Scrolls rather than growing, so a
+   hundred of them still leaves the two buttons on screen -- a confirmation you
+   have to scroll to reach is not a confirmation. */
+.remove-list {
+    margin: 10px 0 4px;
+    padding: 8px 10px 8px 26px;
+    max-height: 34vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--code-bg);
+    color: var(--text);
+    text-align: left;
+    font-size: 0.92rem;
+    line-height: 1.7;
+}
+
 /* The Projects menu hangs out of the bar, so it is stuck in the bar's layer --
    and the settings panel (60) is above it. With Settings open, pressing
    Projects lit the button up and dropped a menu nobody could see, behind the
@@ -2054,6 +2095,7 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     --fam-think: #a03c78;
     --fam-see: #16736e;
     --fam-project: #5c6270;
+    --fam-setting: #7a5a86;
 }
 html[data-theme="dark"] {
     --fam-write: #7fd07a;
@@ -2063,6 +2105,7 @@ html[data-theme="dark"] {
     --fam-think: #ef92c9;
     --fam-see: #66cfc7;
     --fam-project: #a9b1bf;
+    --fam-setting: #c9a6d6;
 }
 
 .activity {
@@ -2096,6 +2139,7 @@ html[data-theme="dark"] {
 .chip-think   { --chip-color: var(--fam-think); }
 .chip-see     { --chip-color: var(--fam-see); }
 .chip-project { --chip-color: var(--fam-project); }
+.chip-setting { --chip-color: var(--fam-setting); }
 /* Not a family: a count of the calls in this group that did not work. The chips
    count work attempted, so a turn where everything failed still shows what was
    tried -- but "wrote a file", when the write was refused, needs saying. */

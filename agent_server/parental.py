@@ -117,3 +117,13 @@ async def override_elapsed() -> bool:
 
 async def parent_password_correct(password: str) -> bool:
     return verify_password(password, await db.get_setting("parent_password_hash", ""))
+
+
+async def parent_password_set() -> bool:
+    """Whether there is a password to be asked for, or one to be chosen.
+
+    Turning child mode on for the first time sets it; turning it on again after
+    it has been off does not, because switching off clears it. The dialog needs
+    to know which of those two questions to ask.
+    """
+    return bool(await db.get_setting("parent_password_hash", ""))

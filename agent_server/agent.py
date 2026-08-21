@@ -736,6 +736,11 @@ def _tool_end_event(call: dict, name: str, result: ToolResult, elapsed_ms: int) 
         "duration_ms": elapsed_ms,
         "open_session": result.open_session,
         "open_session_name": result.open_session_name,
+        # Deliberately live-only, and never written to the messages table. An
+        # action is a question waiting for an answer; a saved one would come
+        # back on every reload, asking again about a deletion the user settled
+        # a week ago.
+        "action": result.action,
     }
 
 

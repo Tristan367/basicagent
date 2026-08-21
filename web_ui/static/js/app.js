@@ -20,11 +20,50 @@
     setTimeout(() => root.classList.remove('theme-shifting'), 1100);
   };
 
-  async function refreshTheme() {
+  /* Pull whatever the server now says the page should look and sound like, and
+   * apply it where it stands.
+   *
+   * Called at the end of every turn, because the assistant can be asked to
+   * change any of this -- "read your replies to me", "make the writing bigger",
+   * "turn that ticking off" -- and a change you have to reload to see is not a
+   * change anybody asked for. It is also how a second window catches up.
+   *
+   * Everything here is idempotent, and each apply checks whether the value
+   * actually moved: this runs after every turn, and re-setting the volume on a
+   * turn that never touched it would fight the slider under the user's hand. */
+  async function refreshSettings() {
+    let data;
     try {
-      const data = await fetch('/api/theme').then((r) => r.json());
-      window.__shiftTheme(data.theme);
-    } catch (e) {}
+      data = await fetch('/api/theme').then((r) => r.json());
+    } catch (e) { return; }
+    window.__shiftTheme(data.theme);
+    window.__applyAccent(data.accent, data.accent_text);
+    if (data.zoom && Math.abs(parseFloat(data.zoom) - window.__readZoom()) > 0.001) {
+      window.__applyZoom(parseFloat(data.zoom));
+    }
+    if (typeof applyChatSettings === 'function') applyChatSettings(data);
+    // The settings panel is fetched once and kept, so its controls still show
+    // whatever was true when it was built. Opening it after asking for light
+    // mode showed Dark as the chosen one, which reads as the app having ignored
+    // what it just did.
+    document.querySelectorAll('.theme-opt').forEach((b) => {
+      const mine = b.dataset.theme === data.theme;
+      b.classList.toggle('active', mine);
+      b.setAttribute('aria-pressed', mine ? 'true' : 'false');
+    });
+    for (const [id, on] of [['tts_auto', data.tts_auto], ['stt_enabled', data.stt_enabled],
+                            ['sound_cues', data.sound_cues], ['sound_ticks', data.sound_ticks]]) {
+      const box = document.querySelector('input[type="checkbox"][name="' + id + '"]');
+      if (box) box.checked = !!on;
+    }
+    for (const [id, value] of [['tts_speed', data.tts_speed], ['tts_volume', data.tts_volume],
+                               ['sound_volume', data.sound_volume]]) {
+      const slider = document.querySelector('input[name="' + id + '"]');
+      // Never while it is being dragged: the value under the user's hand wins.
+      if (slider && document.activeElement !== slider) slider.value = value;
+    }
+    const voice = document.querySelector('select[name="tts_voice"]');
+    if (voice && data.tts_voice && document.activeElement !== voice) voice.value = data.tts_voice;
   }
 
   // ── Microphone chooser (any page that shows one) ──────────────────────────
@@ -95,6 +134,20 @@
     window.__showZoom();
     window.__measureLayout();
     return z;
+  };
+  /* The size the user chose, told to the server as well.
+   *
+   * localStorage alone is enough to remember it between launches, and that is
+   * all this was for. But the assistant can be asked to make the writing
+   * bigger, and it has no way to reach a browser's private store -- so the
+   * server has to know the number too. The page is rendered with it, so there
+   * is no flash and no round trip on the way in; this is only the way out. */
+  window.__saveZoom = function (z) {
+    const applied = window.__applyZoom(z);
+    const body = new FormData();
+    body.append('zoom', String(applied));
+    fetch('/_settings/prefs', { method: 'POST', body }).catch(() => {});
+    return applied;
   };
   // How wide the page actually is, in the units the layout is written in --
   // which is the window divided by the zoom, not the window. The one decision
@@ -209,6 +262,101 @@
     // webcam would stay live -- and its light stay on -- until the tab closed.
     el.dispatchEvent(new CustomEvent('modalclosed'));
     return true;
+  };
+
+  /* The accent colour, applied to a page that is already open.
+   *
+   * Here rather than in the settings script for the same reason as the password
+   * box below: the assistant can be asked to make the app blue from the chat,
+   * where that script has never run. The server renders these same properties
+   * inline on `<html>` for a fresh page; this is the live path.
+   *
+   * `textHex` is what to write ON the accent -- the server works it out, because
+   * getting the contrast wrong makes the user's own messages unreadable and
+   * there is no reason for two implementations of it to drift. */
+  window.__applyAccent = function (hex, textHex) {
+    const root = document.documentElement;
+    const vars = ['--accent', '--accent-btn', '--user-bubble', '--focus',
+                  '--accent-dim', '--user-bubble-text'];
+    if (!hex) { vars.forEach((v) => root.style.removeProperty(v)); return; }
+    root.style.setProperty('--accent', hex);
+    root.style.setProperty('--accent-btn', hex);
+    root.style.setProperty('--user-bubble', hex);
+    root.style.setProperty('--focus', hex);
+    root.style.setProperty('--accent-dim', 'color-mix(in srgb, ' + hex + ' 18%, transparent)');
+    if (textHex) root.style.setProperty('--user-bubble-text', textHex);
+  };
+
+  /* ── The parent password box ────────────────────────────────────────────
+   *
+   * Lives here rather than in the settings panel's own script, because there
+   * are now two places that ask for it: the buttons in Settings, and the
+   * assistant when it is asked to turn child mode on or off. The panel's
+   * markup is fetched only when the panel is opened, so a copy in there was
+   * unreachable from the chat.
+   *
+   * `wantsConfirm` marks the prompts that *set* a password rather than check
+   * one; those ask for it twice. A password box hides its own typos, and a
+   * mistake here locks the parent out of their own settings for a day.
+   */
+  window.__passwordPrompt = function (titleText, bodyText, wantsConfirm, onConfirm) {
+    const modal = document.getElementById('password-modal');
+    if (!modal) return;
+    const q = (id) => document.getElementById(id);
+    const input = q('password-input');
+    const twice = q('password-confirm-input');
+    const err = q('password-modal-error');
+    q('password-modal-title').textContent = titleText;
+    q('password-modal-text').textContent = bodyText;
+    q('password-modal-note').hidden = !wantsConfirm;
+    err.hidden = true;
+    err.textContent = '';
+    input.value = '';
+    twice.value = '';
+    twice.hidden = !wantsConfirm;
+
+    const confirmBtn = q('password-confirm');
+    const cancelBtn = q('password-cancel');
+
+    function finish() {
+      confirmBtn.removeEventListener('click', submit);
+      cancelBtn.removeEventListener('click', finish);
+      input.removeEventListener('keydown', onKey);
+      twice.removeEventListener('keydown', onKey);
+      window.__closeModal();
+    }
+    async function submit() {
+      const password = input.value.trim();
+      if (!password) { fail('Please type a password.'); return; }
+      if (!twice.hidden && twice.value.trim() !== password) {
+        fail('The two passwords are not the same. Try again.');
+        twice.value = '';
+        twice.focus();
+        return;
+      }
+      const result = await onConfirm(password);
+      if (result && result.ok) {
+        finish();
+        if (result.reload) location.reload();
+      } else if (result && result.reason === 'no_key') {
+        fail('Set up an AI first: once child mode is on, API keys are locked.');
+      } else if (result && result.reason === 'password') {
+        fail('That password is not right.');
+      } else if (result) {
+        fail('That did not work. Please try again.');
+      }
+    }
+    function fail(message) { err.textContent = message; err.hidden = false; }
+    // Enter submits, from either box. Typing a password and pressing Enter is
+    // what everybody does, and it did nothing at all here.
+    function onKey(e) { if (e.key === 'Enter') { e.preventDefault(); submit(); } }
+
+    confirmBtn.addEventListener('click', submit);
+    cancelBtn.addEventListener('click', finish);
+    input.addEventListener('keydown', onKey);
+    twice.addEventListener('keydown', onKey);
+    modal.addEventListener('modalclosed', finish, { once: true });
+    window.__openModal(modal, input);
   };
 
   // `inert` covers modern engines; this keeps Tab inside the dialog on anything
@@ -453,6 +601,13 @@
     if (!menu) return;
     const have = new Set(
       [...menu.querySelectorAll('[data-session-id]')].map((b) => b.dataset.sessionId));
+    // Gone ones go too. The menu only ever grew, so a project removed
+    // anywhere -- here, in Settings, or through the assistant -- stayed on this
+    // list until the page was reloaded, and pressing it led to a dead session.
+    const alive = new Set(data.map((s) => s.id));
+    menu.querySelectorAll('[data-session-id]').forEach((b) => {
+      if (!alive.has(b.dataset.sessionId)) b.remove();
+    });
     const fresh = data.filter((s) => !have.has(s.id));
     if (!fresh.length) return;
 
@@ -1083,6 +1238,9 @@
 
     triggers.forEach((t) => t.addEventListener('click', () => (isOpen() ? close() : open())));
     if (closeBtn) closeBtn.addEventListener('click', () => close());
+    // So the child-mode marker, and the assistant's own answers, can send
+    // somebody to the right place rather than describing where it is.
+    window.__openSettings = open;
 
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || !isOpen()) return;
@@ -1098,6 +1256,63 @@
       if (triggers.some((t) => t.contains(e.target))) return;
       if (e.target.closest('#chat-form, #messages')) close(false);
     });
+  })();
+
+  /* ── Child mode: the marker, and the one way to change it ────────────────
+   *
+   * Both directions need the parent's password -- one to set it, the other to
+   * prove who is asking -- and it is only ever typed into the box. The
+   * assistant can raise the question (`set_child_mode`), and the settings panel
+   * has buttons for it, but this is the only code that does it, so there is one
+   * place where the rule lives. */
+  (function () {
+    const badge = document.getElementById('child-badge');
+    if (badge) {
+      badge.addEventListener('click', () => {
+        if (window.__openSettings) window.__openSettings();
+      });
+    }
+
+    window.__markChildMode = function (on) {
+      if (badge) badge.hidden = !on;
+      document.body.classList.toggle('child-mode', !!on);
+    };
+
+    window.__askChildMode = function (on) {
+      if (!window.__passwordPrompt) return;
+      const post = (url, body) => fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then((r) => r.json()).catch(() => ({ ok: false, reason: 'network' }));
+
+      // Turning it on for the first time *sets* the password, so it is asked
+      // for twice; switching off only checks one that already exists. The
+      // server knows which, and says so on the page.
+      const setting = on && !document.body.classList.contains('has-parent-password');
+      if (on) {
+        window.__passwordPrompt(
+          'Turn on child mode',
+          setting
+            ? 'Choose a parent password. You will need it to change the AI or turn child mode off again.'
+            : 'Enter the parent password you set before.',
+          setting,
+          async (password) => {
+            const r = await post('/api/child/enable', { password });
+            return r.ok ? { ok: true, reload: true } : { ok: false, reason: r.reason };
+          },
+        );
+      } else {
+        window.__passwordPrompt(
+          'Turn off child mode', 'Enter the parent password.', false,
+          async (password) => {
+            const r = await post('/api/child/disable', { password });
+            return r.ok ? { ok: true, reload: true } : { ok: false, reason: r.reason };
+          },
+        );
+      }
+    };
+
   })();
 
   // ── Chat (chat pages only) ────────────────────────────────────────────────
@@ -1696,8 +1911,9 @@
     task: 'think', explore: 'think',
     browser: 'see', capture: 'see',
     create_project: 'project', open_project: 'project', rename_project: 'project',
-    delete_project: 'project', list_projects: 'project', assign_project: 'project',
-    set_theme: 'project',
+    delete_projects: 'project', list_projects: 'project', assign_project: 'project',
+    show_settings: 'setting', set_appearance: 'setting', set_voice: 'setting',
+    set_sounds: 'setting', set_child_mode: 'setting',
   };
 
   // Shape and sound per family, from the server so there is only one table.
@@ -2107,9 +2323,44 @@
     const btn = document.getElementById('tts-btn');
     if (btn) btn.setAttribute('aria-pressed', ttsAutoEnabled ? 'true' : 'false');
   }
-  const ttsVoice = view.dataset.ttsVoice;
-  const ttsSpeed = parseFloat(view.dataset.ttsSpeed || '1.25');
+  // Not constants any more: the assistant can be asked to change the voice or
+  // the speed, and the change has to reach the page that is already open.
+  let ttsVoice = view.dataset.ttsVoice;
+  let ttsSpeed = parseFloat(view.dataset.ttsSpeed || '1.25');
   let ttsVolume = parseFloat(view.dataset.ttsVolume || '0.75');
+
+  /* The settings the chat itself holds in variables, brought back in line with
+   * the server. See `refreshSettings`, which fetches and calls this.
+   *
+   * Only what actually moved, and never while the thing it controls is in use:
+   * changing the read-aloud volume mid-sentence would step on a slider the user
+   * may have their hand on, and re-announcing the button state every turn would
+   * make a screen reader say "read aloud, pressed" after every reply. */
+  function applyChatSettings(s) {
+    soundCues = !!s.sound_cues;
+    soundTicks = !!s.sound_ticks;
+    const vol = parseFloat(s.sound_volume);
+    if (Number.isFinite(vol)) soundVolume = vol;
+
+    if (s.tts_voice) ttsVoice = s.tts_voice;
+    const speed = parseFloat(s.tts_speed);
+    if (Number.isFinite(speed)) ttsSpeed = speed;
+    const loud = parseFloat(s.tts_volume);
+    if (Number.isFinite(loud)) ttsVolume = loud;
+
+    if (!!s.tts_auto !== ttsAutoEnabled) {
+      ttsAutoEnabled = !!s.tts_auto;
+      const btn = document.getElementById('tts-btn');
+      if (btn) {
+        btn.setAttribute('aria-pressed', ttsAutoEnabled ? 'true' : 'false');
+        btn.classList.toggle('tts-off', !ttsAutoEnabled);
+      }
+      // Switched off while it was talking: stop, rather than finish the reply
+      // the user has just asked you to stop reading.
+      if (!ttsAutoEnabled) stopSpeech();
+    }
+    window.__markChildMode(!!s.child_mode);
+  }
   let ttsChain = Promise.resolve();
   let currentAudio = null;
   // Every live audio element, so stopping can silence them all at once — never
@@ -2360,6 +2611,7 @@
   }
 
   let pendingOpen = null;
+  let pendingAction = null;
 
   function handleEvent(ev) {
     switch (ev.type) {
@@ -2396,6 +2648,10 @@
           pendingOpen = ev.open_session;
           appendAction(ev.open_session, ev.open_session_name);
         }
+        // Something for the user to answer. Held until the turn ends rather
+        // than thrown up mid-sentence: a dialog that lands while the assistant
+        // is still explaining what it is for covers the explanation.
+        if (ev.action) pendingAction = ev.action;
         clearLiveWork();
         setWorkPhase('thinking');
         break;
@@ -2538,6 +2794,7 @@
     stopTicks();
     clearLiveWork();
     maybeAutoOpen();
+    runPendingAction();
     scrollToBottom();
   }
 
@@ -2564,6 +2821,98 @@
     button.focus({ preventScroll: true });
     scrollToBottom();
     announce(button.textContent.trim() + '. Press Enter to open it.');
+  }
+
+  /* A question the assistant raised for the user to answer.
+   *
+   * Deliberately the only route by which any of this happens. The assistant can
+   * work most of the settings page directly, because none of it does damage and
+   * all of it is undoable by asking again -- but removing projects and changing
+   * child mode are not that, and a model that has misheard "delete the old
+   * website ones" gathers up the wrong list with total confidence. So for those
+   * two, its tool ends at a proposal and the person at the keyboard decides.
+   *
+   * At the end of the turn, so the reply explaining the box has been said
+   * before the box covers it. */
+  function runPendingAction() {
+    const action = pendingAction;
+    pendingAction = null;
+    if (!action) return;
+    if (action.kind === 'child_mode') {
+      if (window.__askChildMode) window.__askChildMode(!!action.on);
+    } else if (action.kind === 'delete_projects') {
+      askRemoveProjects(action.sessions || []);
+    }
+  }
+
+  function askRemoveProjects(sessions) {
+    const modal = document.getElementById('remove-modal');
+    if (!modal || !sessions.length) return;
+    const list = document.getElementById('remove-list');
+    const err = document.getElementById('remove-modal-error');
+    const confirmBtn = document.getElementById('remove-confirm');
+    const cancelBtn = document.getElementById('remove-cancel');
+    const n = sessions.length;
+
+    document.getElementById('remove-modal-title').textContent =
+      n === 1 ? 'Remove this project?' : 'Remove these ' + n + ' projects?';
+    err.hidden = true;
+    list.textContent = '';
+    // Every name, not a count. "27 projects" is not something anybody can agree
+    // to, and the one they would have kept is always somewhere in the list.
+    for (const s of sessions) {
+      const li = document.createElement('li');
+      li.textContent = s.name;
+      list.appendChild(li);
+    }
+    // Says how many, so it is still an answerable question with your eyes shut.
+    confirmBtn.textContent = n === 1 ? 'Remove it' : 'Remove all ' + n;
+
+    function finish() {
+      confirmBtn.removeEventListener('click', go);
+      cancelBtn.removeEventListener('click', finish);
+      window.__closeModal();
+    }
+    async function go() {
+      confirmBtn.disabled = true;
+      let result;
+      try {
+        result = await fetch('/api/sessions/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: sessions.map((s) => s.id) }),
+        }).then((r) => r.json());
+      } catch (e) {
+        result = null;
+      }
+      confirmBtn.disabled = false;
+      if (!result || !result.ok) {
+        err.textContent = 'That did not work. Nothing was removed.';
+        err.hidden = false;
+        return;
+      }
+      finish();
+      const gone = (result.removed || []).length;
+      showToast(gone === 1 ? 'Removed 1 project.' : 'Removed ' + gone + ' projects.');
+      announce(gone === 1 ? 'One project removed.' : gone + ' projects removed.');
+      // The menu at the top still lists every one of them. The poller would
+      // catch up within a couple of seconds; taking them out now means the
+      // list is never briefly a lie about what the user just did.
+      const menu = document.getElementById('sessions-menu');
+      if (menu) {
+        for (const s of sessions) {
+          const row = menu.querySelector('[data-session-id="' + s.id + '"]');
+          if (row) row.remove();
+        }
+      }
+    }
+
+    confirmBtn.addEventListener('click', go);
+    cancelBtn.addEventListener('click', finish);
+    modal.addEventListener('modalclosed', finish, { once: true });
+    // Onto "Keep them". The safe answer is the one the keyboard lands on, and
+    // this box can appear without anybody having asked for it by hand.
+    window.__openModal(modal, cancelBtn);
   }
 
   function showError(text) {
@@ -2595,7 +2944,7 @@
     sendBtn.hidden = false;
     stopBtn.hidden = true;
     clearLiveWork();
-    refreshTheme();
+    refreshSettings();
     refreshPlay();
     // One sentence for the whole turn. Someone listening gets "I read 3 files
     // and ran a command" rather than nothing at all, which is what they got
@@ -4384,8 +4733,8 @@
     if (go) {
       const zoomOut = document.getElementById('welcome-zoom-out');
       const zoomIn = document.getElementById('welcome-zoom-in');
-      if (zoomOut) zoomOut.addEventListener('click', () => window.__applyZoom(window.__readZoom() - 0.1));
-      if (zoomIn) zoomIn.addEventListener('click', () => window.__applyZoom(window.__readZoom() + 0.1));
+      if (zoomOut) zoomOut.addEventListener('click', () => window.__saveZoom(window.__readZoom() - 0.1));
+      if (zoomIn) zoomIn.addEventListener('click', () => window.__saveZoom(window.__readZoom() + 0.1));
     }
     // Dismissing the welcome screen means it has been seen -- by whichever
     // route. It used to be remembered only if you also noticed and ticked a
