@@ -83,24 +83,30 @@ register(Tool(
 register(Tool(
     name="edit",
     description=(
-        "Apply changes to an existing file. Prefer the tagged-line mode: call `read` "
-        "first, then pass the tag it printed plus startLine/endLine, with the "
-        "replacement in newText. NEVER invent a tag — copy the one you were given. "
-        "Fallback: oldString/newString for exact text replacement."
+        "Replace exact text in a file you have read. `oldString` must appear in the "
+        "file character for character -- copy it from what `read` printed, including "
+        "indentation, rather than retyping it from memory.\n"
+        "It must also be unique: include a line or two either side until it is, or "
+        "pass replaceAll=true to change every occurrence.\n"
+        "If it is not found, nothing is written and the file is untouched -- the "
+        "usual cause is whitespace, a tab where the file has spaces or a trailing "
+        "space you dropped. Look at the text again rather than guessing a variation.\n"
+        "You can only edit lines `read` actually displayed. Re-read with an offset to "
+        "reach lines you have not seen.\n"
+        "Each edit returns the changed region as it now stands, so you can see where "
+        "your text landed without re-reading.\n"
+        "Several edits to one file in a single batch are fine: each names its own "
+        "place, so they do not interfere."
     ),
     parameters={
         "type": "object",
         "properties": {
             "filePath": {"type": "string", "description": "Path to the file"},
-            "tag": {"type": "string", "description": "4-char tag from the [path#tag] header of your `read`"},
-            "startLine": {"type": "integer", "description": "1-indexed first line to replace"},
-            "endLine": {"type": "integer", "description": "1-indexed last line to replace"},
-            "newText": {"type": "string", "description": "Replacement lines"},
-            "oldString": {"type": "string", "description": "Exact text to replace (fallback)"},
-            "newString": {"type": "string", "description": "Replacement text for oldString mode"},
+            "oldString": {"type": "string", "description": "Exact text to replace, copied from the file"},
+            "newString": {"type": "string", "description": "What to put in its place (empty to delete)"},
             "replaceAll": {"type": "boolean", "description": "Replace every occurrence"},
         },
-        "required": ["filePath"],
+        "required": ["filePath", "oldString", "newString"],
     },
     handler=edit_file,
 ))
@@ -222,24 +228,6 @@ register(Tool(
         "properties": {
             "description": {"type": "string", "description": "3-5 word label"},
             "prompt": {"type": "string", "description": "Complete instructions"},
-        },
-        "required": ["description", "prompt"],
-    },
-    handler=run_task,
-    parallel_safe=True,
-))
-
-register(Tool(
-    name="explore",
-    description=(
-        "Dispatch a narrow subagent to search the codebase for specific facts — "
-        "file locations, class definitions, call sites. Read-only, lighter than `task`."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "description": {"type": "string", "description": "3-5 word label"},
-            "prompt": {"type": "string", "description": "Specific question with expected output format"},
         },
         "required": ["description", "prompt"],
     },
@@ -563,7 +551,7 @@ def get_tool(name: str) -> Tool | None:
 async def _subagent_guard(name: str, args: dict, ctx: ToolContext) -> ToolResult | None:
     """Subagents are read-only and must not write outside the project.
 
-    A subagent runs autonomously inside `task`/`explore` and cannot prompt the
+    A subagent runs autonomously inside `task` and cannot prompt the
     user, so it gets a hard boundary rather than the (absent) permission gate.
     """
     if ctx.subagent_tier <= 0:

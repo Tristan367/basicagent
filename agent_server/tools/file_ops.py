@@ -97,36 +97,38 @@ def _write_file_text(path: Path, content: str, has_bom: bool, line_ending: str):
     path.write_bytes(data)
 
 
-def _normalise_for_tag(content: str) -> str:
+def _normalise(content: str) -> str:
     """Ignore trailing whitespace and line endings when fingerprinting.
 
-    A CRLF file, or one the reader trimmed for display, would otherwise produce
-    a tag that never matches what was shown.
+    A CRLF file, or one the reader trimmed for display, would otherwise look
+    changed when it is not.
     """
     return "\n".join(line.rstrip(" \t\r") for line in content.splitlines())
 
 
-def file_tag(content: str) -> str:
-    """4-hex fingerprint of the whole file.
+def fingerprint(content: str) -> str:
+    """Whole-file fingerprint, for noticing the file change underneath us.
 
-    One tag per file, not one hash per line. Per-line hashes cost about six
-    characters of every line -- some 2,500 tokens on a 2,000-line read, on every
-    read, forever -- and they answer the wrong question. The risk is not "did
-    line 40 change", it is "did the file shift so line 40 is now something
-    else", and a per-line hash is satisfied by any duplicate line elsewhere in
-    the file. Every `}` and every blank line collides. A whole-file tag makes
-    any drift anywhere invalidate every anchor, which is the conservative
-    answer, and the error then says to re-read.
+    Internal. The model never sees this and never passes it back -- it exists
+    only so `edit` can tell "you are working from a stale reading" apart from
+    "your text does not match", because the fix differs: re-read in the first
+    case, look harder in the second.
+
+    It used to be printed to the model as a `[path#tag]` header and required
+    back on every edit. See `edit_file` for why that is gone.
     """
-    return hashlib.blake2b(_normalise_for_tag(content).encode(), digest_size=2).hexdigest()
+    return hashlib.blake2b(_normalise(content).encode(), digest_size=2).hexdigest()
 
 
 @dataclass
 class Snapshot:
-    """What a session was actually shown of a file, and when."""
+    """What a session was actually shown of a file.
 
-    tag: str
-    content: str
+    Holding this *is* the record that the session has read the file, so there
+    is one answer to that question rather than two that can disagree.
+    """
+
+    fingerprint: str
     seen: set[int]  # 1-based line numbers displayed, not merely present
 
 
@@ -135,23 +137,30 @@ _snapshots: dict[tuple[str, str], Snapshot] = {}
 
 
 def _record_snapshot(session_id: str, path: Path, content: str, seen: set[int]) -> str:
-    tag = file_tag(content)
+    mark = fingerprint(content)
     key = (session_id, str(path))
     previous = _snapshots.get(key)
     # Reading a second window of the same unchanged file adds to what has been
     # seen rather than replacing it, so a two-part read can be edited as one.
-    if previous is not None and previous.tag == tag:
+    if previous is not None and previous.fingerprint == mark:
         seen = previous.seen | seen
-    _snapshots[key] = Snapshot(tag=tag, content=content, seen=seen)
-    return tag
+    _snapshots[key] = Snapshot(fingerprint=mark, seen=seen)
+    return mark
+
+
+def _snapshot(session_id: str, path: Path) -> Snapshot | None:
+    return _snapshots.get((session_id, str(path)))
 
 
 def clear_read_cache(session_id: str = ""):
     """Release the read-tracking for a session, or all of them."""
     if session_id:
         _read_files.pop(session_id, None)
+        for key in [k for k in _snapshots if k[0] == session_id]:
+            del _snapshots[key]
     else:
         _read_files.clear()
+        _snapshots.clear()
 
 
 def mark_read(session_id: str, path: Path):
@@ -220,13 +229,11 @@ async def read_file(
         numbered.append(f"{idx + 1}: {line}")
         code_lines.append(line)
 
-    tag = _record_snapshot(ctx.session_id, path, content, set(range(start + 1, end + 1)))
+    _record_snapshot(ctx.session_id, path, content, set(range(start + 1, end + 1)))
 
-    # The tag goes in a header, once, rather than on every line. `edit` requires
-    # it back, which is what proves the edit is anchored to this reading of the
-    # file and not to a guess or to a stale one.
-    header = f"[{_display(path, ctx)}#{tag}]"
-    output = header + "\n" + "\n".join(numbered)
+    # The path, and nothing else. There used to be a `#tag` here that `edit`
+    # demanded back; see `edit_file` for why it is gone.
+    output = f"[{_display(path, ctx)}]\n" + "\n".join(numbered)
     if end < total:
         output += (
             f"\n\n... ({total - end:,} more lines not shown; continue with "
@@ -260,69 +267,89 @@ def _shift_seen(snapshot, start: int, replaced: int, inserted: int) -> set[int]:
     return moved | set(range(start, start + max(inserted, 1)))
 
 
-def _check_anchor(
-    session_id: str, path: Path, content: str, tag: str, start: int, end: int
-) -> str:
-    """Why this edit must not be applied, or "" if it may be.
+def _match_spans(content: str, needle: str, every: bool) -> list[tuple[int, int]]:
+    """The 1-based line range each occurrence of `needle` covers.
 
-    Three distinct failures, told apart because the fix differs:
-      - no tag at all, or lines without one
-      - a tag that is not this file's current state
-      - lines the caller was never shown
+    A needle ending in a newline stops at the *start* of the following line and
+    does not cover it. Counting newlines alone claimed one line too many, which
+    on a match at the end of a file named a line that does not exist.
     """
-    if not tag:
-        return (
-            "no tag given. `read` prints one as [path#tag] above the lines; pass "
-            "it back so the edit is anchored to what you actually saw."
-        )
-    if not start:
-        return "startLine is required with a tag."
+    spans: list[tuple[int, int]] = []
+    at = 0
+    height = needle.count("\n") - (1 if needle.endswith("\n") else 0)
+    while True:
+        found = content.find(needle, at)
+        if found < 0:
+            return spans
+        first = content.count("\n", 0, found) + 1
+        spans.append((first, first + max(0, height)))
+        if not every:
+            return spans
+        at = found + max(1, len(needle))
 
-    lines = content.splitlines()
-    if start < 1 or start > len(lines):
-        return f"startLine {start} is outside {path}, which has {len(lines)} lines."
-    if end and end < start:
-        # Swapping these silently deleted a span the caller never named.
-        return (
-            f"endLine {end} is above startLine {start}. Give them in the order "
-            "they appear."
-        )
-    if end and end > len(lines):
-        return f"endLine {end} is past the end of {path} ({len(lines)} lines)."
 
-    snapshot = _snapshots.get((session_id, str(path)))
-    current = file_tag(content)
+def _unseen_lines(snapshot: Snapshot, spans: list[tuple[int, int]]) -> list[int]:
+    """Lines an edit would touch that the caller was never actually shown.
 
-    if snapshot is None:
-        return (
-            f"no read of {path} in this session to anchor to. Read it, then use "
-            "the tag it prints."
-        )
-    if tag != current:
-        # Distinguish a tag that was never real from one the file has outgrown.
-        # The first means the tag was invented or copied from another file; the
-        # second means someone edited underneath us. Same symptom, different fix.
-        if tag == snapshot.tag:
-            return (
-                f"{path} has changed since you read it (tag was {tag}, now "
-                f"{current}). Read it again -- the line numbers you have may no "
-                "longer point at the same code."
-            )
-        return (
-            f"tag {tag} is not a tag this session was given for {path}. The "
-            f"current one is {current}. Do not construct or guess a tag: read "
-            "the file and copy the one in the header."
-        )
+    This is the one guarantee the retired tag scheme had that plain string
+    matching does not: matching text proves *where* an edit lands, not that
+    anyone looked at it. Reading the first 50 lines of a 400-line file and then
+    replacing a string that happens to occur at line 300 is still editing blind.
+    """
+    wanted: set[int] = set()
+    for first, last in spans:
+        wanted |= set(range(first, last + 1))
+    return sorted(wanted - snapshot.seen)
 
-    unseen = sorted(n for n in range(start, (end or start) + 1) if n not in snapshot.seen)
-    if unseen:
-        shown = f"{min(snapshot.seen)}-{max(snapshot.seen)}" if snapshot.seen else "none"
-        return (
-            f"lines {unseen[0]}-{unseen[-1]} were not shown to you (you have seen "
-            f"{shown}). Editing a line you have not read is guessing. Re-read with "
-            f"offset={unseen[0]} first."
-        )
-    return ""
+
+ECHO_CONTEXT = 3
+ECHO_MAX_CHANGED = 40
+
+
+def _echo_region(lines: list[str], start: int, count: int) -> tuple[str, set[int]]:
+    """The edited region of the *updated* file, numbered, with a little context.
+
+    The diff a tool returns is display-only and never reaches the model, so an
+    edit that landed in the wrong place used to be invisible until the next
+    read -- which is exactly when it is most expensive to discover. Showing the
+    result back means a misfire is caught on the spot, and the numbers are
+    post-edit, so nobody has to do the shift arithmetic in their head.
+
+    Returns the text and the line numbers it displays, which become seen.
+    """
+    total = len(lines)
+    if not total:
+        return "(the file is now empty)", set()
+    first = max(1, start - ECHO_CONTEXT)
+    last = min(total, start + count - 1 + ECHO_CONTEXT)
+    if last < first:
+        return "", set()
+
+    if count > ECHO_MAX_CHANGED:
+        head = ECHO_MAX_CHANGED // 2
+        keep = sorted(set(range(first, start + head)) | set(range(start + count - head, last + 1)))
+    else:
+        keep = list(range(first, last + 1))
+
+    out, shown, previous = [], set(), 0
+    for n in keep:
+        if previous and n > previous + 1:
+            out.append("   ...")
+        line = lines[n - 1]
+        if len(line) > MAX_LINE_CHARS:
+            line = line[:MAX_LINE_CHARS] + "... [line truncated]"
+        out.append(f"{n}: {line}")
+        shown.add(n)
+        previous = n
+    return "\n".join(out), shown
+
+
+# Parameters `edit` used to take, when it anchored on a whole-file fingerprint
+# and a line range. A conversation that predates the change is full of calls in
+# that shape -- and a transcript is the strongest few-shot prompt there is, so a
+# model reading its own history will keep making them however clear the schema
+# is. Named here so the error can say what actually happened.
+_RETIRED_ARGS = ("tag", "startLine", "endLine", "newText")
 
 
 async def edit_file(
@@ -332,14 +359,47 @@ async def edit_file(
     oldString: str = "",
     newString: str = "",
     replaceAll: bool = False,
-    tag: str = "",
-    startLine: int = 0,
-    endLine: int = 0,
-    newText: str = "",
-    **_,
+    **legacy,
 ) -> ToolResult:
+    """Replace exact text in a file.
+
+    Matching on the text itself rather than on line numbers is what makes this
+    safe: an edit can only land where its text actually occurs, so the failure
+    mode is a loud "not found" that changes nothing, rather than a silent write
+    to the wrong place.
+
+    This used to anchor on a `[path#tag]` fingerprint plus a line range, and it
+    was a bad idea for a reason worth writing down. The tag changed on every
+    write. A model that read a file and then -- correctly, and as encouraged --
+    issued eight edits in one batch had the first one succeed and rotate the
+    tag, and the other seven rejected for carrying "the wrong" tag: the very tag
+    the tool had just given it. The error even accused it of guessing. Eight
+    calls' worth of work thrown away, and the model went looking for a bug in
+    its own reasoning that was never there.
+
+    Text costs nothing to think about -- copy what you just read -- and eight
+    string edits in one batch simply work, because each one names its own place.
+    """
     path = ctx.resolve(filePath)
     title = _title_path(path)
+
+    # Answer the old shape by name rather than with "oldString is required",
+    # which is true but reads as though the call was malformed and invites the
+    # same call again with a guess bolted on.
+    used = [name for name in _RETIRED_ARGS if legacy.get(name) not in (None, "", 0)]
+    if used and not oldString:
+        return ToolResult.error(
+            f"`edit` no longer takes {', '.join(used)}. It used to anchor on a "
+            "[path#tag] fingerprint plus a line range; it now replaces exact text, "
+            "because a line number that is wrong writes to the wrong place while "
+            "text that does not match writes nothing.\n"
+            "Pass `oldString` -- copied character for character from what `read` "
+            "printed, including indentation -- and `newString`. Add a line either "
+            "side if it is not unique, or replaceAll=true.\n"
+            "Earlier calls in this conversation use the old form. They were correct "
+            "when they were made; ignore them and do not copy their shape.",
+            title,
+        )
 
     if is_denied(path):
         return ToolResult.error(f"refusing to edit a protected system path: {path}", title)
@@ -347,9 +407,13 @@ async def edit_file(
         return ToolResult.error(f"file not found: {path}. Use `write` to create it.", title)
     if not path.is_file():
         return ToolResult.error(f"not a file: {path}", title)
-    if not has_read(ctx.session_id, path):
+
+    snapshot = _snapshot(ctx.session_id, path)
+    if snapshot is None:
         return ToolResult.error(
-            f"you must read {path} before editing it", title
+            f"you have not read {path} in this session. Read it once first; after "
+            "that you can edit it repeatedly without re-reading.",
+            title,
         )
 
     try:
@@ -357,65 +421,25 @@ async def edit_file(
     except Exception as e:
         return ToolResult.error(f"reading file: {e}", title)
 
-    # ── tagged-line mode: anchor edits on the tag from the read that showed them ──
-    if tag or startLine:
-        problem = _check_anchor(ctx.session_id, path, content, tag, startLine, endLine)
-        if problem:
-            return ToolResult.error(problem, title)
-
-        lines = content.splitlines()
-        start_idx = startLine - 1
-        end_idx = (endLine or startLine) - 1
-
-        replaced_lines = end_idx - start_idx + 1
-        replacement_lines = len(newText.splitlines()) if newText else 0
-        new_lines = (
-            lines[:start_idx] + (newText.splitlines() if newText else []) + lines[end_idx + 1:]
-        )
-        updated = "\n".join(new_lines)
-        if content.endswith("\n"):
-            updated += "\n"
-
-        try:
-            _write_file_text(path, updated, has_bom, line_ending)
-        except Exception as e:
-            return ToolResult.error(f"writing file: {e}", title)
-
-        # The tag has changed, so re-snapshot and hand the new one back. Without
-        # this every edit would force a re-read before the next one.
-        shift = replacement_lines - replaced_lines
-        seen = _shift_seen(_snapshots.get((ctx.session_id, str(path))), start_idx + 1, replaced_lines, replacement_lines)
-        new_tag = _record_snapshot(ctx.session_id, path, updated, seen)
-
-        diff = unified_diff(content, updated, _display(path, ctx))
-        summary = (
-            f"Edited {path}: replaced {replaced_lines} line"
-            f"{'s' if replaced_lines != 1 else ''} at {startLine}"
-            + (f"-{endLine}" if endLine and endLine != startLine else "")
-            + (f" with {replacement_lines}" if replacement_lines != replaced_lines else "")
-            + f".\n[{_display(path, ctx)}#{new_tag}] <- use this tag for your next edit"
-        )
-        if shift:
-            summary += (
-                f"\nLines below {startLine} have moved by {shift:+d}; the numbers above "
-                "are already adjusted."
-            )
-        return ToolResult(
-            output=summary, title=title,
-            diff=diff, lang=lang_for_path(path),
-        )
-
-    # ── exact-string mode ──
     if not oldString:
-        return ToolResult.error("provide oldString, or tag with startLine", title)
+        return ToolResult.error("oldString is required: the exact text to replace", title)
     if oldString == newString:
         return ToolResult.error("oldString and newString are identical", title)
 
     count = content.count(oldString)
     if count == 0:
+        # Two different problems with the same symptom, and different fixes.
+        if fingerprint(content) != snapshot.fingerprint:
+            return ToolResult.error(
+                f"oldString not found, and {path} has changed on disk since you read "
+                "it -- the user or another process edited it. Re-read it and match "
+                "the current text.",
+                title,
+            )
         return ToolResult.error(
-            f"oldString not found in {path}. The file may have changed since you read it; "
-            "read it again and match the exact text including indentation.",
+            f"oldString not found in {path}. Nothing was written. Copy the text "
+            "exactly as `read` printed it, including indentation -- a tab where the "
+            "file has spaces, or a missing trailing space, is enough to miss.",
             title,
         )
     if count > 1 and not replaceAll:
@@ -425,17 +449,58 @@ async def edit_file(
             title,
         )
 
-    updated = content.replace(oldString, newString) if replaceAll else content.replace(oldString, newString, 1)
+    spans = _match_spans(content, oldString, replaceAll)
+    unseen = _unseen_lines(snapshot, spans)
+    if unseen:
+        shown = f"{min(snapshot.seen)}-{max(snapshot.seen)}" if snapshot.seen else "none"
+        return ToolResult.error(
+            f"line{'s' if len(unseen) > 1 else ''} {unseen[0]}"
+            + (f"-{unseen[-1]}" if len(unseen) > 1 else "")
+            + f" of {path} were never shown to you (you have seen {shown}), so this "
+            f"edit would be a guess. Re-read with offset={unseen[0]} first.",
+            title,
+        )
+
+    updated = (
+        content.replace(oldString, newString) if replaceAll
+        else content.replace(oldString, newString, 1)
+    )
     try:
         _write_file_text(path, updated, has_bom, line_ending)
     except Exception as e:
         return ToolResult.error(f"writing file: {e}", title)
 
     replaced = count if replaceAll else 1
-    line_no = content[: content.index(oldString)].count("\n") + 1
+    first_line, last_line = spans[0]
+    new_lines = updated.splitlines()
+    # Both spans measured against what actually happened rather than by counting
+    # newlines in the arguments: a replacement can start and end mid-line, so
+    # the arguments do not say how many whole lines moved.
+    replaced_span = last_line - first_line + 1
+    inserted_span = replaced_span + (len(new_lines) - len(content.splitlines()))
+
+    if replaceAll and replaced > 1 and replaced_span != inserted_span:
+        # Several edits at unknown offsets, each moving everything after it.
+        # There is no honest way to carry the seen set through that, so give it
+        # up: the next edit asks for a re-read, which beats a guess.
+        echo, echoed, seen = "", set(), set()
+    else:
+        echo, echoed = _echo_region(new_lines, first_line, inserted_span)
+        seen = (
+            set(snapshot.seen) if replaced > 1
+            else _shift_seen(snapshot, first_line, replaced_span, inserted_span)
+        )
+    _record_snapshot(ctx.session_id, path, updated, seen | echoed)
+
     diff = unified_diff(content, updated, _display(path, ctx))
+    summary = (
+        f"Edited {path} ({replaced} replacement{'s' if replaced != 1 else ''}"
+        f"{f' at line {first_line}' if replaced == 1 else ''})."
+    )
+    if echo:
+        summary += f"\n\nThe file now reads:\n{echo}"
     return ToolResult(
-        output=f"Edited {path} ({replaced} replacement{'s' if replaced != 1 else ''} at line ~{line_no}).",
+        output=summary,
         title=title,
         diff=diff,
         lang=lang_for_path(path),

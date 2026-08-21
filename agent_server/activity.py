@@ -37,7 +37,7 @@ TOOL_FAMILY: dict[str, str] = {
     "bash": "run", "preview": "run",
     "read": "look", "grep": "look", "glob": "look",
     "webfetch": "web", "websearch": "web",
-    "task": "think", "explore": "think",
+    "task": "think",
     "browser": "see", "capture": "see",
     "create_project": "project", "open_project": "project", "rename_project": "project",
     "delete_project": "project", "list_projects": "project", "assign_project": "project",

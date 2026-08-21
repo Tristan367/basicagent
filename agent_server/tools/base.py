@@ -52,7 +52,7 @@ class ToolResult:
     # what the model saw as raw text. Empty means "don't highlight".
     lang: str = ""
     # The code this result is meant to display (e.g. a file read without the
-    # [path#tag] header and line numbers). Display-only, never sent to the model.
+    # path header and line numbers). Display-only, never sent to the model.
     code: str = ""
     # 1-indexed line number of the first line in `code`, for the gutter.
     code_start: int = 1
@@ -127,11 +127,11 @@ def truncate(text: str, limit: int, note: str = "output", spill: bool = False) -
         # Say what to do, not just what happened. Told only that output was
         # truncated, a model re-runs the tool with a narrower argument and pays
         # for the whole thing twice; told where the rest is, it can `grep` the
-        # file or hand it to `explore` and keep the bulk out of context.
+        # file or hand it to `task` and keep the bulk out of context.
         where = (
             f". The full {len(text):,} characters are at {path} -- "
             f"`grep` it, `read` it with offset/limit, or give the path to "
-            f"`explore`. Do not re-run this call hoping for less output"
+            f"`task`. Do not re-run this call hoping for less output"
         )
     else:
         where = ""

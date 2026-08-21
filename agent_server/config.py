@@ -332,7 +332,7 @@ def compact_threshold_for(model_id: str) -> int:
 MAX_TOOL_RESULT_CHARS = int(os.getenv("MAX_TOOL_RESULT_CHARS", "50000"))
 
 # ── Subagents ────────────────────────────────────────────────────────────────
-# The `task`/`explore` tools still exist (the agent is a full coding agent), but
+# The `task` tool still exists (the agent is a full coding agent), but
 # there is no hierarchy to configure: one level, read-only, cheap model.
 SUBAGENT_MAX_ROUNDS = int(os.getenv("SUBAGENT_MAX_ROUNDS", "20"))
 SUBAGENT_TIMEOUT = int(os.getenv("SUBAGENT_TIMEOUT", "600"))

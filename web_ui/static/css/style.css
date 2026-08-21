@@ -2164,8 +2164,14 @@ html[data-theme="dark"] {
        rest of the conversation out of reach. */
     max-height: 60vh;
     overflow-y: auto;
-    overscroll-behavior: contain;
 }
+/* No `overscroll-behavior: contain` on this or on the thinking text below.
+   These sit inline in the conversation, and containing them meant the wheel
+   died wherever the pointer happened to be: over a diff short enough not to
+   scroll at all, the page simply stopped moving, and the only way out was to
+   move the mouse somewhere else and work out why. Contained scrolling is for
+   the overlays -- a panel over the chat, a picture full-screen -- where the
+   thing behind must not move. Here the page carrying on is the point. */
 .diff-line {
     display: block;
     padding: 0 12px;
@@ -2211,8 +2217,11 @@ html[data-theme="dark"] {
 /* Still thinking: the accent colour, so the live one is not mistaken for one of
    the settled ones above it. */
 .thinking-live > summary { color: var(--accent); }
+/* Lined up with the list a tool group opens into: 2px of margin, its own 2px
+   rule, then 14 of padding -- the same 18 as `.did-body` plus `.did-list`. It
+   used to start 14px further right for no reason anybody could see. */
 .thinking-text {
-    margin: 4px 0 0 16px;
+    margin: 4px 0 0 2px;
     padding: 10px 14px;
     border-left: 2px solid var(--border);
     color: var(--text-dim);
@@ -2222,7 +2231,6 @@ html[data-theme="dark"] {
     overflow-wrap: anywhere;
     max-height: 50vh;
     overflow-y: auto;
-    overscroll-behavior: contain;
 }
 
 /* ── What the assistant is doing, right now ──────────────────────────────────
