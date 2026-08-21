@@ -234,6 +234,25 @@ def test_a_childs_assistant_is_not_offered_its_own_safety_switch():
         assert name in childs, name
 
 
+def test_a_project_session_is_not_given_the_app_to_run():
+    """The split is the point, not an oversight. A project's assistant builds
+    the project; every schema it carries is context spent on every single
+    request it makes, and it would spend that on running an app it has never
+    been told anything about. Asked to change the voice, it says the Project
+    Manager does that -- which is one sentence, and correct."""
+    from agent_server.tools.registry import allowed_tool_names
+
+    in_a_project = allowed_tool_names({"kind": "project", "profile": "parent"})
+    for name in ("show_settings", "set_appearance", "set_voice", "set_sounds",
+                 "set_child_mode", "create_project", "open_project",
+                 "delete_projects", "assign_project"):
+        assert name not in in_a_project, name
+    # What it does have is the coding agent, whole.
+    for name in ("read", "write", "edit", "bash", "grep", "glob", "browser",
+                 "preview", "capture", "task", "webfetch", "websearch"):
+        assert name in in_a_project, name
+
+
 def test_no_tool_can_touch_an_api_key():
     """A key pasted into a chat is written into the history, sent to whichever
     model is answering, and folded into the next summary. The assistant walks

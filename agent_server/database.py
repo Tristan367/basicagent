@@ -278,10 +278,21 @@ async def set_session_profile(session_id: str, profile: str) -> dict | None:
     one is called only by the manager's `assign_project` tool, and putting
     `profile` in the generic set would have made child mode one PATCH away
     from being escaped.
+
+    The frozen system prompt goes with it. A session's prompt is rendered once
+    and stored, so a project the parent had already talked in kept the adult
+    prompt after being handed over -- the child-safety block is chosen at
+    freezing time, and nothing re-chose it. Clearing the column here means the
+    next turn rebuilds the prompt for whoever now owns the project, and the
+    frozen text can never disagree with the profile beside it. It costs one
+    cache miss on a project that changes hands, which is rare and worth it.
     """
     if profile not in ("parent", "child"):
         raise ValueError(f"unknown profile {profile!r}")
-    await _execute("UPDATE sessions SET profile = ? WHERE id = ?", (profile, session_id))
+    await _execute(
+        "UPDATE sessions SET profile = ?, system_prompt = NULL WHERE id = ?",
+        (profile, session_id),
+    )
     return await get_session(session_id)
 
 

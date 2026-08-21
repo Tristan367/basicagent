@@ -135,6 +135,37 @@ async def test_whose_a_project_is_cannot_be_changed_over_http(db, parent):
     assert after["profile"] == "parent", "profile was writable through update_session"
 
 
+async def test_handing_a_project_over_rebuilds_its_prompt_for_a_child(parent):
+    """A session's prompt is rendered once and stored, and the child-safety
+    block is chosen at that moment. A project the parent had already talked in
+    therefore kept the adult prompt after being handed over -- the child opened
+    a lesson whose assistant had never been told it was talking to a child."""
+    from agent_server.parental import CHILD_MODE_BLOCK
+    from agent_server.system_prompt import session_system_prompt
+
+    await create_project(parent, name="Volcanoes")
+    session = await db.get_session_by_name("Volcanoes", profile=None)
+    frozen = await session_system_prompt(session)
+    assert CHILD_MODE_BLOCK not in frozen
+
+    await assign_project(parent, name="Volcanoes", to="child")
+    handed_over = await db.get_session_by_name("Volcanoes", profile=None)
+    assert CHILD_MODE_BLOCK in await session_system_prompt(handed_over)
+
+
+async def test_taking_a_project_back_drops_the_child_block_again(parent):
+    from agent_server.parental import CHILD_MODE_BLOCK
+    from agent_server.system_prompt import session_system_prompt
+
+    await create_project(parent, name="Fractions", for_child=True)
+    session = await db.get_session_by_name("Fractions", profile=None)
+    assert CHILD_MODE_BLOCK in await session_system_prompt(session)
+
+    await assign_project(parent, name="Fractions", to="me")
+    back = await db.get_session_by_name("Fractions", profile=None)
+    assert CHILD_MODE_BLOCK not in await session_system_prompt(back)
+
+
 async def test_set_session_profile_refuses_anything_it_does_not_know(db, parent):
     await create_project(parent, name="Bounded")
     session = await db.get_session_by_name("Bounded", profile=None)

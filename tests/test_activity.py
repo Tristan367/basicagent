@@ -574,7 +574,7 @@ def test_reattaching_replays_instead_of_only_showing_a_spinner():
     from pathlib import Path
 
     js = _app_js()
-    block = js[js.index("async function reattach()"):]
+    block = js[js.index("async function reattach("):]
     block = block[:block.index("\n  }")]
     assert "handleEvent(ev)" in block, "the replay is not drawn"
 
@@ -583,6 +583,43 @@ def test_reattaching_replays_instead_of_only_showing_a_spinner():
 
     agent = Path("agent_server/agent.py").read_text()
     assert 'yield {"type": "saved"}' in agent, "nothing marks what is on disk"
+
+
+def test_a_message_the_server_accepted_is_never_taken_back_off_the_screen():
+    """The server writes the message to the conversation before the turn starts,
+    so once the send has been accepted the bubble on screen is backed by a row on
+    disk. Removing it when the turn then failed made the app disagree with its
+    own database -- the message came back on the next page load -- and it threw
+    away words somebody may have spent a minute dictating."""
+    js = _app_js()
+    block = js[js.index("async function sendMessage("):]
+    block = block[:block.index("\n  }")]
+
+    assert "let accepted = false" in block, "nothing distinguishes the two failures"
+    assert "accepted = true" in block, "nothing ever records that the send landed"
+
+    # A refusal arrives before the flag is set, and does still take the message
+    # back -- nothing was written, so nothing should be shown.
+    refusal = block[block.index("if (!resp.ok)"):block.index("accepted = true")]
+    assert "revertFailedTurn" in refusal, "a rejected send no longer reverts"
+
+    # The catch runs for both a send that never reached the server and a stream
+    # that dropped after it did, so the flag has to be read before reverting.
+    caught = block.split("} catch (e) {", 1)[1]
+    assert caught.index("if (!accepted)") < caught.index("revertFailedTurn"), (
+        "the catch reverts without checking whether the server took the message"
+    )
+    assert "reattach(true)" in caught, "a dropped stream is not picked back up"
+
+
+def test_a_send_that_never_landed_gives_the_words_back():
+    """The user cannot necessarily type them again. Only into an empty composer,
+    so it never lands on top of something they have started writing since."""
+    js = _app_js()
+    block = js[js.index("function revertFailedTurn("):]
+    block = block[:block.index("\n  }")]
+    assert "textarea.value = text" in block
+    assert "!textarea.value.trim()" in block, "it would overwrite a new draft"
 
 
 def test_the_log_is_rebuilt_from_the_servers_own_rendering():

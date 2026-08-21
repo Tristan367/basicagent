@@ -2672,7 +2672,13 @@
         if (turnText.trim()) finishAssistant(ev);
         else {
           showError(ev.message);
-          revertFailedTurn();
+          // The message stays. An error arriving down this stream means the
+          // server accepted it, wrote it to the conversation and then failed
+          // trying to answer -- so taking the bubble off the screen made the
+          // app disagree with its own database, and the message came back the
+          // next time the page loaded. Worse, someone who had dictated three
+          // sentences watched them disappear with nothing to send again.
+          pendingUserMsg = null;
         }
         endTurn();
         break;
@@ -2748,9 +2754,24 @@
 
   // Take back the user's message when a send failed, so the conversation reads
   // as if it was never sent. Called together with removeEmptyAssistant().
-  function revertFailedTurn() {
+  //
+  // Only for a send the server never accepted. Once it has been accepted the
+  // message is in the conversation on disk, and removing the bubble makes the
+  // screen disagree with what a reload will show.
+  //
+  // The words go back in the composer, because they are the user's and this app
+  // is used by people who cannot simply type them again. Never over something
+  // they have started writing since.
+  function revertFailedTurn(text) {
     if (pendingUserMsg && pendingUserMsg.parentNode) pendingUserMsg.remove();
     pendingUserMsg = null;
+    if (text && textarea && !textarea.value.trim()) {
+      textarea.value = text;
+      // The composer's own input handler resizes the box and saves the draft,
+      // so the words also survive a reload rather than only a retry.
+      textarea.dispatchEvent(new Event('input'));
+      textarea.focus();
+    }
   }
 
   // If a turn produced no reply at all (an error before any words arrived),
@@ -3068,6 +3089,11 @@
     turnText = '';
     lastSaidEl = null;
     beginTurn();
+    // Whether the server took the message. Everything about how a failure is
+    // handled turns on it: before, nothing happened and the message is the
+    // user's to send again; after, it is in the conversation on disk and the
+    // turn is running, whatever this page can still see of it.
+    let accepted = false;
     try {
       const resp = await fetch('/api/sessions/' + sessionId + '/chat', {
         method: 'POST',
@@ -3076,15 +3102,26 @@
       });
       if (!resp.ok) {
         showError('I could not send that message. Please try again.');
-        revertFailedTurn();
+        revertFailedTurn(text);
         endTurn();
         return;
       }
+      accepted = true;
       await readSSE(resp, handleEvent);
     } catch (e) {
-      showError('The connection was lost. Please try again.');
-      revertFailedTurn();
+      if (!accepted) {
+        showError('I could not send that message. Please try again.');
+        revertFailedTurn(text);
+        endTurn();
+        return;
+      }
+      // The stream dropped part-way. The assistant is still working on the
+      // other side of it, so this is a lost picture rather than a lost turn:
+      // ending here left the user watching a dead screen while their answer
+      // was being written, and it took their message off the page as well.
+      pendingUserMsg = null;
       endTurn();
+      reattach(true);
     }
   }
 
@@ -4398,10 +4435,18 @@
    * everything up to that mark is already on the page, drawn by the server, so
    * it is skipped and the rest is drawn here.
    */
-  async function reattach() {
+  async function reattach(afterDrop) {
     try {
       const state = await fetch('/api/sessions/' + sessionId + '/state').then((r) => r.json());
-      if (!state.running) return;
+      if (!state.running) {
+        // Nothing live to watch. On a page load that is the ordinary case and
+        // there is nothing to do -- the server has just drawn the whole log.
+        // After a stream dropped mid-turn it means the turn finished while
+        // this page could not see it, so the end of it is missing from what is
+        // on screen and has to be fetched.
+        if (afterDrop) reloadMessages();
+        return;
+      }
       beginTurn();
       // The server has already dropped everything it had written to the
       // database by the time we asked, so what arrives is exactly the part the
