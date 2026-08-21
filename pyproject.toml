@@ -1,8 +1,14 @@
 [project]
 name = "basicagent"
-version = "0.1.0"
+version = "1.0.0"
 description = "An accessibility-first coding agent for people who are not technical."
-requires-python = ">=3.11"
+readme = "README.md"
+license = "MIT"
+# The upper bound is real and belongs here rather than only in the installer:
+# kokoro-onnx, which is read-aloud, publishes no wheel for 3.14, and pip's way
+# of saying so is forty lines of resolver output. `install.py` reads the same
+# two numbers and finds a suitable interpreter rather than reporting this.
+requires-python = ">=3.11,<3.14"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -8,3 +8,8 @@ __pycache__/
 .vscode/
 .pytest_cache/
 .ruff_cache/
+
+# A stray screenshot directory from a debugging session; nothing here is the app
+OUT/
+.fresh-run/
+*.log

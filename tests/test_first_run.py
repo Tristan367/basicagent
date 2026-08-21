@@ -118,13 +118,60 @@ def test_the_welcome_still_offers_read_aloud_when_it_is_not_installed():
     assert "not tts.available" in page, "the unavailable case is not called out"
 
 
-def test_the_first_run_note_names_what_is_missing_and_offers_to_fix_it():
+def test_the_first_run_note_names_what_is_missing_in_words_a_user_knows():
+    """Two audiences read this. The user hears the name, so it says what the
+    thing does rather than what it is called; the assistant reads the hint, so
+    the hint is the exact command and not a description of one."""
     from agent_server import setup
 
     names = {c["name"] for c in setup.detect()}
-    assert "Read-aloud (text-to-speech)" in names
+    assert "Reading replies aloud" in names
     for component in setup.detect():
         assert component["hint"], f"{component['name']} has no hint to act on"
+        assert "install with:" in component["hint"], component["name"]
+        for jargon in ("kokoro", "playwright", "whisper", "text-to-speech"):
+            assert jargon not in component["name"].lower(), component["name"]
+
+
+def test_the_read_aloud_voices_can_actually_be_installed():
+    """The first-run note used to promise the assistant could set read-aloud up,
+    and the only instruction anywhere was "put two files in ~/models/tts" --
+    which is not a sentence anybody this app is for can act on, and not
+    something the assistant could carry out either without guessing a URL."""
+    from agent_server import downloads
+
+    assert downloads.READ_ALOUD_FILES, "nothing to fetch"
+    for name, url, size in downloads.READ_ALOUD_FILES:
+        assert url.startswith("https://"), name
+        # Pinned to a release tag: `latest` would mean an install of this
+        # version quietly pulling down whatever upstream published today.
+        assert "/latest/" not in url, name
+        assert size > 1_000_000, name
+
+
+def test_the_installer_and_the_app_agree_on_where_the_voices_go():
+    """The installer runs before the virtual environment exists, so it cannot
+    import config to ask. A second copy of the rule is a rule that drifts, and
+    the symptom is a 300 MB download landing where nothing looks for it."""
+    from pathlib import Path
+
+    from agent_server import config, downloads
+    from agent_server.paths import models_dir
+
+    assert Path(models_dir()) in [Path(d) for d in config._TTS_DIRS]
+    assert downloads.models_dir() == models_dir()
+
+
+def test_a_half_finished_download_is_never_left_under_the_real_name():
+    """The app would find the file, report that read-aloud was ready, and fail
+    at the moment somebody pressed play."""
+    from pathlib import Path
+
+    source = Path("agent_server/downloads.py").read_text()
+    block = source[source.index("def _download("):source.index("def install_read_aloud(")]
+    assert '".part"' in block, "it writes straight to the real name"
+    assert "shutil.move" in block, "nothing moves it into place"
+    assert "unlink" in block, "a truncated file is left behind"
 
 
 # ── the step-by-step guide ──────────────────────────────────────────────────

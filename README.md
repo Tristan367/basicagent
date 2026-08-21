@@ -1,94 +1,160 @@
 # Assistant
 
-A coding agent for people who are not technical. The same full-strength backend
-as a power-user coding agent — every tool, every model — behind the simplest
-possible interface: one chat, one status line, speech in and speech out.
+A coding agent for people who are not programmers.
 
-The **accessibility** is the point. Everything can be done by voice and heard
-aloud, the text is large, and the AI is told to talk in plain language and
-explain anything technical it says.
+It is not a cut-down one. It has the same tools a professional coding assistant
+has — it reads and writes files, runs commands, drives a real browser, searches
+the web, keeps a git history. What is different is everything around them:
+nobody types a command, finds a file, or approves a step. You say what you want
+and it builds it, and then it runs it on your screen.
 
-## Running it
+**Accessibility is the point, not a feature.** It is built to be usable by
+someone who cannot see the screen, cannot use a mouse, has never opened a
+terminal, or is eight years old. Everything can be spoken and everything can be
+heard. The same decisions serve all of them, and they turn out to make a good
+tool for everybody else too.
+
+---
+
+## Installing it
+
+You need [Python](https://www.python.org/downloads/) 3.11, 3.12 or 3.13 and
+about 3 GB of disk. Then:
 
 ```bash
-uv venv && uv pip install -r requirements.txt
-cp .env.example .env        # optional; the key can also be saved in Settings
-ln -s "$PWD/bin/basicagent" ~/.local/bin/basicagent
-basicagent                  # starts the server and opens the browser
+git clone https://github.com/Tristan367/BasicCodingAgent.git
+cd BasicCodingAgent
+python3 install.py
 ```
 
-On first run, open **Settings** and add an API key for the AI you use. The app
-does not bundle an AI: it connects to one you already pay for, so you know
-exactly which model you're using and what it costs.
+That is the whole thing. It builds its own private Python environment, installs
+everything, downloads the voices, and puts **Assistant** in your applications
+menu (Start menu on Windows, Applications folder on a Mac) so nobody has to open
+a terminal again.
 
-- **Google Gemini** — has a free tier, so it costs nothing to try the whole app.
+If your computer's Python is too new for one of the parts, the installer finds a
+suitable one that is already installed, or fetches one with
+[uv](https://docs.astral.sh/uv/) if you have it — it does not just fail.
+
+| | |
+|---|---|
+| `python3 install.py --minimal` | Skip the speech downloads (saves about 1 GB). The assistant can install them later — just ask it. |
+| `python3 install.py --no-shortcut` | Do not add a menu entry or desktop icon. |
+
+**Starting it:** click the icon. Or `./bin/basicagent`, or
+`.venv/bin/python basicagent.py`.
+
+**Updating it:** `git pull && python3 install.py`. Your projects and settings
+live outside the folder, so nothing is lost.
+
+**Removing it:** delete the folder, delete
+`~/.local/share/basicagent` (`%APPDATA%\basicagent` on Windows), and delete the
+menu entry the installer made.
+
+### Connecting an AI
+
+The app does not come with an AI. It connects to one you have an account with,
+so you know exactly which model you are using and what it costs. Open
+**Settings** the first time it runs; there is a walkthrough with every click
+written out.
+
+- **Google Gemini** has a free tier, so the whole app costs nothing to try.
   ([get a key](https://aistudio.google.com/apikey))
-- **DeepSeek** — the cheapest paid option and very good at coding; the default.
-- **OpenRouter** (one key, many models) also works, as
-  does any OpenAI-compatible endpoint you add yourself (Ollama, vLLM, LM Studio).
+- **DeepSeek** is the cheapest paid option and very good at code. It is the default.
+- **OpenRouter** is one key for many models.
+- **Anything OpenAI-compatible** you run yourself — Ollama, vLLM, LM Studio —
+  can be added as a custom endpoint.
+
+---
 
 ## How it works
 
-- The **home page is a session**: a "session manager" AI that greets you, knows
-  your projects, and starts/opens/renames/removes them. You never click to make
-  a project — you just tell it what you want to build.
-- Each project is its own AI session with the full coding-agent tool set, but the
-  user only ever sees a conversation and a single status line ("Editing a file…",
-  "Checking the website…"). No tool-call transcript, no permission prompts —
-  everything is auto-approved, with a small guard against truly destructive
-  commands like `rm -rf /`.
-- Projects live in a hidden folder by default so the user never has to think
-  about paths; the manager can still put one anywhere they ask.
+- **The home screen is a conversation.** A project-manager assistant greets you,
+  knows your projects, and starts, opens, renames and removes them. You never
+  click to make a project; you say what you want to build.
+- **It also runs the app for you.** Light or dark, bigger text, a different
+  colour, read-aloud and which voice, the sounds, child mode — all of it can be
+  asked for out loud. The one thing it will not touch is an API key, because a
+  key pasted into a chat is a key written into the conversation history.
+- **Each project is its own assistant** with the full coding toolset, and it
+  stays narrow on purpose: it builds the project and knows nothing about the app
+  around it. Ask it to change the voice and it will send you back to the project
+  manager, which can.
+- **You see a conversation and one status line** — "Editing a file…", "Checking
+  the website…". No tool transcript, no permission prompts.
+- **Files live in a hidden folder** so nobody has to think about paths, and every
+  project can be downloaded as a zip from Settings. Your work is yours.
 
-```
-agent_server/
-  agent.py          the conversation loop: stream, call tools, auto-compact
-  conversation.py   DB rows <-> provider wire format
-  database.py       SQLite (one connection, WAL)
-  system_prompt.py  hard-coded prompts (agent + manager), frozen per session
-  providers/        DeepSeek, Gemini, OpenRouter, custom OpenAI-compatible
-  tools/            bash, browser, capture, edit, explore, glob, grep, read,
-                    task, webfetch, websearch, write, session-manager tools
-  routes/           home chat, project chat, settings, chat/streaming, speech
-web_ui/             Jinja templates, CSS, ~one file of vanilla JS
-system_prompts/     agent.md and manager.md — edit these to tune behaviour
-tests/              pytest; `python -m pytest` (nothing here bills an API)
-```
+### For families
 
-## Tests
+Child mode makes the assistant kind, safe, and focused on teaching rather than
+handing over answers; it locks the AI and API-key settings behind a parent
+password; and a child's projects are kept entirely separate from the adult's. A
+parent can also write a lesson into a project — objectives, and the questions
+they want answered without help — and hand that project to the child.
 
-```bash
-.venv/bin/python -m pytest        # fast, offline, no API key needed
-```
-
-Tests marked `live` hit a real provider and bill a real account; they are
-excluded by default and opt-in with `pytest -m live`.
+---
 
 ## Where your data lives
 
-`~/.local/share/basicagent/` — the database (keys and transcripts) and the hidden
-`projects/` folder. Override with `BASICAGENT_DATA_DIR`.
+`~/.local/share/basicagent/` (`%APPDATA%\basicagent` on Windows) holds the
+database — API keys and every conversation — the projects folder, the log, and
+the downloaded speech models. Override the location with `BASICAGENT_DATA_DIR`.
 
-## The system prompts
+Nothing is sent anywhere except to the AI provider you connected, and only what
+you are actually talking about. The speech — both dictation and read-aloud —
+runs entirely on your own computer and needs no account and no internet.
 
-The two prompts are plain Markdown files in `system_prompts/` — `agent.md` for
-project sessions and `manager.md` for the home session. They are deliberately
-not editable in the UI; tune them here.
+## Security, honestly
 
-## Accessibility notes
+This is a single-user tool with **no login**, and it is not going to grow one.
+It runs shell commands as whoever started it and can read and write anything
+that account can. Reaching it over a network means reaching a terminal on that
+computer.
 
-- Dictation uses faster-whisper, installed by pip with the other dependencies.
-  It downloads its own model on first use and needs no system packages, so it
-  behaves the same on Linux, macOS and Windows. Pick how accurate you want it
-  to be in Settings. The mic is on by default.
-- Read-aloud uses Kokoro (`kokoro-v1.0.onnx` + `voices-v1.0.bin` in
-  `~/models/tts`); toggle it from the chat.
-- The UI is built for screen readers and keyboard use; every control has a
-  proper label and focus outline.
+So it listens on `127.0.0.1` — your own machine only — and every launcher warns
+loudly if you change that. If you want to use it from a tablet, put it behind a
+VPN or an SSH tunnel rather than opening the port.
 
-## Caveats
+The agent's commands are auto-approved by design, with a guard against the
+genuinely destructive (`rm -rf /` and its relatives). That is a deliberate
+trade: a permission prompt is unusable for the person this app is for.
 
-- Single-user tool with no authentication. It runs arbitrary shell commands and
-  can read/write anywhere your account can. Bind it to `127.0.0.1` (default).
-- Vision (the `browser`/`capture` `ask` feature) and read-aloud are optional and
-  simply unavailable if their models are not installed.
+---
+
+## Working on it
+
+```
+agent_server/
+  main.py           FastAPI app, startup and shutdown
+  agent.py          the conversation loop: stream, call tools, auto-compact
+  conversation.py   database rows <-> provider wire format
+  database.py       SQLite (one connection, WAL)
+  system_prompt.py  the two prompts, frozen per session
+  paths.py          where things live; importable before anything is installed
+  downloads.py      fetching the speech models
+  providers/        DeepSeek, Gemini, OpenRouter, custom OpenAI-compatible
+  tools/            bash, browser, capture, edit, glob, grep, read, preview,
+                    task, webfetch, websearch, write, and the manager's own
+  routes/           chat and streaming, settings, sessions, files, speech
+web_ui/             Jinja templates, CSS, and vanilla JS -- no build step
+system_prompts/     agent.md and manager.md; edit these to tune behaviour
+tests/              pytest, offline, no API key needed
+```
+
+```bash
+.venv/bin/python -m pytest        # the whole suite, offline, free
+.venv/bin/python -m ruff check .
+./try-fresh.sh                    # meet the app as a new user does
+```
+
+Tests marked `live` hit a real provider and bill a real account. They are
+excluded by default and opt in with `pytest -m live`.
+
+The two system prompts are plain Markdown in `system_prompts/`, deliberately not
+editable from the UI. `NOTES.md` records designed-but-unbuilt ideas and the
+reasoning behind them.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

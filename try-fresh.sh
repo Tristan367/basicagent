@@ -26,7 +26,7 @@ for arg in "$@"; do
   esac
 done
 
-[ -d .venv ] || { echo "No .venv found. Run: uv venv && uv pip install -r requirements.txt"; exit 1; }
+[ -d .venv ] || { echo "Not installed yet. Run: python3 install.py"; exit 1; }
 
 if [ "$KEEP" = 1 ]; then
   DATA_DIR="${PWD}/.fresh-run"

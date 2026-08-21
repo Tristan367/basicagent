@@ -114,16 +114,19 @@ async def _seed_home():
 
         missing = setup.missing()
         if missing:
+            # Names only. The commands that install each one are in this
+            # assistant's own instructions, where they belong -- reading a shell
+            # command aloud to somebody who cannot see the screen is noise, and
+            # it is not a thing they were ever going to type.
             lines = [
-                "A quick setup note: I checked this computer, and a few optional extras "
-                "aren't installed yet:",
+                "One quick note: I had a look at this computer, and a couple of parts "
+                "aren't set up yet:",
             ]
             for component in missing:
-                lines.append(f"- {component['name']} ({component['hint']})")
+                lines.append(f"- {component['name']}")
             lines.append(
-                "Everything else works. These are only needed for voice input, read-aloud, "
-                "and previewing websites. I can install them for you whenever you like — "
-                "just ask."
+                "Everything else works without them. Just say the word and I'll install "
+                "whichever ones you want."
             )
             await db.add_message(home["id"], "assistant", "\n".join(lines))
 

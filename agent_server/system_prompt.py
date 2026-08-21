@@ -9,6 +9,7 @@ the cache-miss rate.
 
 import logging
 import platform
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -76,8 +77,8 @@ def clear_env_cache(session_id: str = ""):
         _env_cache.clear()
 
 
-def environment_block(project_dir: str, session_id: str = "") -> str:
-    key = session_id or project_dir
+def environment_block(project_dir: str, session_id: str = "", manager: bool = False) -> str:
+    key = ("manager:" if manager else "") + (session_id or project_dir)
     cached = _env_cache.get(key)
     if cached is not None:
         return cached
@@ -86,6 +87,15 @@ def environment_block(project_dir: str, session_id: str = "") -> str:
         f"Platform: {platform.system()} {platform.release()} ({platform.machine()})",
         f"Year: {datetime.now().astimezone().year}",
     ]
+    if manager:
+        # Only the manager. It is the one that installs the app's own optional
+        # pieces, and the commands for that need a real interpreter path -- the
+        # working directory above is the projects folder, not the app's. A
+        # project's agent has no business knowing where the app itself lives.
+        lines += [
+            f"This app's folder: {_PROJECT}",
+            f"This app's Python: {sys.executable}",
+        ]
     block = "\n".join(lines)
     _env_cache[key] = block
     return block
@@ -93,7 +103,7 @@ def environment_block(project_dir: str, session_id: str = "") -> str:
 
 def build_system_prompt(kind: str, project_dir: str, session_id: str = "") -> str:
     body = MANAGER_PROMPT if kind == "manager" else AGENT_PROMPT
-    block = environment_block(project_dir, session_id)
+    block = environment_block(project_dir, session_id, manager=kind == "manager")
     if "{{environment_tag}}" in body:
         return body.replace("{{environment_tag}}", block)
     return f"{body}\n\n{block}"

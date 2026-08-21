@@ -102,9 +102,9 @@ async def _model():
         return _kokoro
     if not (TTS_MODEL and TTS_VOICES):
         raise TTSError(
-            "text-to-speech unavailable: no Kokoro model found. Put "
-            "kokoro-v1.0.onnx and voices-v1.0.bin in ~/models/tts, or set "
-            "TTS_MODEL and TTS_VOICES."
+            "text-to-speech unavailable: the read-aloud voices are not installed. "
+            "Install them with `python -m agent_server.downloads read-aloud`, or "
+            "point TTS_MODEL and TTS_VOICES at your own copies."
         )
     async with _load_lock:
         if _kokoro is None:  # another request may have won the race

@@ -12,6 +12,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from agent_server import paths
+
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -52,21 +54,10 @@ def contrast_text(hex_color: str) -> str:
     return "#000000" if luminance > 0.6 else "#ffffff"
 
 
-def _default_data_dir() -> Path:
-    """User data lives outside the checkout, in the XDG data location.
-
-    The database holds API keys and every conversation, so it must never live in
-    the working tree where a `git clean -xdf` could take it. XDG is also where a
-    backup tool will find it.
-    """
-    if os.name == "nt":
-        base = Path(os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming")
-    else:
-        base = Path(os.getenv("XDG_DATA_HOME") or Path.home() / ".local" / "share")
-    return base / "basicagent"
-
-
-DATA_DIR = Path(os.getenv("BASICAGENT_DATA_DIR") or _default_data_dir())
+# User data lives outside the checkout, in the XDG data location. The rule is in
+# `paths` rather than here because the installer needs it too, and it runs before
+# this module can be imported at all -- before dotenv, before fastapi.
+DATA_DIR = paths.data_dir()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = Path(os.getenv("BASICAGENT_DB") or DATA_DIR / "agent.db")
 
@@ -441,6 +432,12 @@ def whisper_streaming_available() -> bool:
 
 
 # ── Text to speech (Kokoro) ──────────────────────────────────────────────────
+# Where the installer puts the read-aloud voices, and where older installs put
+# them by hand. Both are searched, so upgrading does not mean fetching a third
+# of a gigabyte again.
+_TTS_DIRS = [paths.models_dir(), paths.LEGACY_TTS_DIR]
+
+
 def _find_tts_model() -> str:
     # Checked for existence like the rest. Taken on trust, a stale or mistyped
     # TTS_MODEL made the app report that read-aloud was ready and then fail at
@@ -449,14 +446,11 @@ def _find_tts_model() -> str:
     override = os.getenv("TTS_MODEL", "")
     if override:
         return override if Path(override).exists() else ""
-    candidates = [
-        Path.home() / "models/tts/kokoro-v1.0.onnx",
-        Path.home() / "models/tts/kokoro-v1.0.fp16.onnx",
-        Path.home() / "models/tts/kokoro-v1.0.int8.onnx",
-    ]
-    for c in candidates:
-        if c.exists():
-            return str(c)
+    names = ["kokoro-v1.0.onnx", "kokoro-v1.0.fp16.onnx", "kokoro-v1.0.int8.onnx"]
+    for directory in _TTS_DIRS:
+        for name in names:
+            if (directory / name).exists():
+                return str(directory / name)
     return ""
 
 
@@ -464,8 +458,10 @@ def _find_tts_voices() -> str:
     override = os.getenv("TTS_VOICES", "")
     if override:
         return override if Path(override).exists() else ""
-    path = Path.home() / "models/tts/voices-v1.0.bin"
-    return str(path) if path.exists() else ""
+    for directory in _TTS_DIRS:
+        if (directory / "voices-v1.0.bin").exists():
+            return str(directory / "voices-v1.0.bin")
+    return ""
 
 
 TTS_MODEL = _find_tts_model()

@@ -5,9 +5,20 @@ below are the heavier, optional ones (speech, browser). On first run the manager
 AI is told what is missing so it can install the rest for the user.
 """
 
+import sys
 from pathlib import Path
 
 from agent_server.config import TTS_MODEL, TTS_VOICES, stt_available
+
+# The hints below are read by two audiences at once: the user, in a chat message
+# on first run, and the assistant, which is expected to act on them. So each one
+# says what the piece is for in plain words and then gives the exact command
+# that installs it -- a hint the assistant has to paraphrase is a hint it gets
+# wrong, and "put two files in a folder" is not something to say to somebody who
+# cannot see the screen.
+#
+# `sys.executable` rather than a guessed path: the server is already running in
+# the environment the command has to run in.
 
 
 def chromium_installed() -> bool:
@@ -23,23 +34,26 @@ def chromium_installed() -> bool:
 def detect() -> list[dict]:
     """One entry per optional component: ``{name, ok, hint}``."""
     tts_ok = bool(TTS_MODEL and TTS_VOICES)
+    python = sys.executable
     return [
         {
-            "name": "Microphone (speech-to-text)",
+            "name": "Talking to it (dictation)",
             "ok": stt_available(),
-            # The pip route is named first because it is the one that works
-            # everywhere and needs no system packages.
-            "hint": "run: pip install faster-whisper",
+            "hint": f"install with: {python} -m pip install faster-whisper",
         },
         {
-            "name": "Read-aloud (text-to-speech)",
+            "name": "Reading replies aloud",
             "ok": tts_ok,
-            "hint": "needs kokoro-v1.0.onnx and voices-v1.0.bin in ~/models/tts",
+            # About 350 MB, so worth saying so before starting it.
+            "hint": (
+                f"install with: {python} -m agent_server.downloads read-aloud "
+                "(about 350 MB, takes a few minutes)"
+            ),
         },
         {
-            "name": "Web browser",
+            "name": "Showing you websites and apps you build",
             "ok": chromium_installed(),
-            "hint": "needs Playwright's Chromium (`playwright install chromium`)",
+            "hint": f"install with: {python} -m playwright install chromium",
         },
     ]
 

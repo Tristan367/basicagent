@@ -26,6 +26,31 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 URL = f"http://{HOST}:{PORT}"
 
 
+# Anything that is not the loopback address. There is no login on this app and
+# there is not going to be one: it is a single-user tool that runs shell
+# commands as whoever started it, so reaching it over a network is reaching a
+# terminal on their computer. Someone will still do it -- to use the app from a
+# tablet, which is a perfectly reasonable thing to want -- so this says plainly
+# what they have done rather than refusing.
+LOOPBACK = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
+def warn_if_exposed() -> None:
+    if HOST in LOOPBACK:
+        return
+    print()
+    print("!" * 70)
+    print(f"  WARNING: this is listening on {HOST}, not just on this computer.")
+    print()
+    print("  There is no password on it, and it can run any command your")
+    print("  account can. Anyone who can reach this address can use it.")
+    print()
+    print("  If you want to use it from another device, put it behind a VPN or")
+    print("  an SSH tunnel rather than opening it to a network directly.")
+    print("!" * 70)
+    print()
+
+
 def alive() -> bool:
     try:
         urllib.request.urlopen(URL, timeout=1)
@@ -68,6 +93,8 @@ def main() -> None:
     if not os.path.exists(VENV_PY):
         print("No .venv found. Run:  python install.py")
         sys.exit(1)
+
+    warn_if_exposed()
 
     proc = None
     if alive():
