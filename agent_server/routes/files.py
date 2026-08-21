@@ -52,6 +52,19 @@ EXT_LANG = {
 }
 
 
+def _within(candidate: Path, root: Path) -> bool:
+    """Whether a path is inside a folder, symlinks resolved.
+
+    Resolved on both sides, so `/tmp/captures/../../etc/passwd` is not inside
+    `/tmp/captures` however it is spelled.
+    """
+    try:
+        resolved = candidate.resolve()
+    except (OSError, ValueError):
+        return False
+    return resolved == root or root in resolved.parents
+
+
 async def _resolve(session_id: str, raw: str, confine: bool = True) -> Path:
     """Turn a path from a chat message into a real path.
 
@@ -218,14 +231,30 @@ async def attachment(path: str):
 
 @router.get("/image")
 async def project_image(session_id: str, path: str):
-    """Serve an image from inside the project, so the assistant can show one.
+    """Serve an image the assistant wants to show: from the project, or from
+    the app's own screenshots.
 
-    Confined to the project folder, like `peek` and for the same reason: the
-    path comes from model output and is followed without anyone looking at it.
+    Confined, like `peek` and for the same reason: the path comes from model
+    output and is followed without anyone looking at it. But the confinement was
+    to the project folder alone, and the screenshots this app takes of the
+    user's own project -- with `browser` and `capture`, at the app's own
+    direction -- land in a captures folder outside it. So the assistant would
+    say "here is the page as it looks now", and the app would refuse its own
+    file: the user got "Could not show f6b493bd_022232_009.png" and a 403.
+
+    The captures folder is ours, we choose every name in it, and nothing else is
+    ever written there.
     """
     from fastapi.responses import FileResponse
 
-    target = await _resolve(session_id, path)
+    from agent_server.config import CAPTURE_DIR
+
+    captures = CAPTURE_DIR.resolve()
+    asked = Path(path.strip()).expanduser()
+    if asked.is_absolute() and _within(asked, captures):
+        target = asked.resolve()
+    else:
+        target = await _resolve(session_id, path)
     media = IMAGE_TYPES.get(target.suffix.lower())
     if not media:
         raise HTTPException(415, "Not an image")

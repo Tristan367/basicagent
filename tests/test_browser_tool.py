@@ -164,3 +164,90 @@ def test_numbered_fragments_still_work_the_way_they_did():
         {"index": 1, "id": None, "name": None, "arguments": "}"},
     ])
     assert partials[0]["arguments"] == "{}" and partials[1]["arguments"] == "{}"
+
+
+# ── assertions written the obvious way ──────────────────────────────────────
+#
+# `{"action": "expect", "at": "text=Biscuit", "visible": true}` is how the schema
+# reads and how a model writes it. The boolean used to be stringified straight
+# into the selector, so it waited ten seconds for an element called "True",
+# failed on a page where the thing was plainly there, and reported a bare
+# timeout titled "expect visible True" -- which named nothing at all. Three
+# assertions in one live session failed that way.
+
+
+def test_a_boolean_visible_is_about_at_not_a_selector():
+    """The fix, read off the source: a bool never becomes the thing looked up."""
+    import inspect
+
+    from agent_server.tools import browser as tool
+
+    body = inspect.getsource(tool)
+    where = body.index("visible = step.get(\"visible\")")
+    block = body[where:where + 700]
+    assert "isinstance(visible, bool)" in block, "a boolean still reaches the locator"
+    assert "isinstance(hidden, bool)" in block
+
+
+def test_a_failed_assertion_is_titled_with_what_it_looked_for():
+    """Every one of them came back "expect visible True"."""
+    from agent_server.tools.browser import _label
+
+    said = _label("expect", {"at": "text=Biscuit", "visible": True})
+    assert "text=Biscuit" in said
+    assert "True" not in said
+
+
+def test_the_shorthand_still_names_its_own_selector():
+    from agent_server.tools.browser import _label
+
+    assert "role=button" in _label("expect", {"visible": "role=button"})
+
+
+# ── eval, written the way anybody writes JavaScript ─────────────────────────
+#
+# Playwright evaluates a bare string as an expression, so several statements
+# ending in a `return` -- which is what "js" invites and what a person writes --
+# came back "SyntaxError: Illegal return statement". A live session lost a call
+# to exactly that.
+
+
+def test_statements_with_a_return_are_wrapped():
+    from agent_server.tools.browser import _as_evaluatable
+
+    js = ("const b = document.getElementById('ball'); b.classList.add('go'); "
+          "return getComputedStyle(b).left;")
+    out = _as_evaluatable(js)
+    assert out.startswith("() => {") and out.rstrip().endswith("}")
+    assert js in out
+
+
+def test_a_plain_expression_is_left_alone():
+    """Wrapping it would still work, but leaving it be keeps the simple case
+    simple and the failure messages readable."""
+    from agent_server.tools.browser import _as_evaluatable
+
+    for js in ("document.title", "1 + 1", "document.querySelectorAll('a').length"):
+        assert _as_evaluatable(js) == js
+
+
+def test_an_expression_ending_in_a_semicolon_is_still_an_expression():
+    from agent_server.tools.browser import _as_evaluatable
+
+    assert _as_evaluatable("document.title;") == "document.title;"
+
+
+def test_something_already_a_function_is_not_wrapped_twice():
+    from agent_server.tools.browser import _as_evaluatable
+
+    for js in ("() => document.title", "async () => { return 1; }",
+               "function () { return 2; }"):
+        assert _as_evaluatable(js) == js
+
+
+def test_several_statements_without_a_return_are_wrapped_too():
+    """`a(); b();` is not an expression either."""
+    from agent_server.tools.browser import _as_evaluatable
+
+    out = _as_evaluatable("window.scrollTo(0,0); document.body.click();")
+    assert out.startswith("() => {")

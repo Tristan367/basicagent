@@ -258,7 +258,7 @@ async def _perform(ctx, session, action: str, step: dict):
         js = str(step.get("js") or "")
         if not js:
             raise engine.BrowserError("`eval` needs `js`")
-        value = await page.evaluate(js)
+        value = await page.evaluate(_as_evaluatable(js))
         return {"text": _cap(json.dumps(value, default=str, indent=2, ensure_ascii=False), 3000)}
 
     if action == "network":
@@ -322,13 +322,32 @@ async def _expect(session, step: dict, at: str, timeout: int):
     """
     page = session.page
 
-    if step.get("visible") or (at and "visible" not in step and _bare(step)):
-        selector = str(step.get("visible") or at)
+    # `visible` and `hidden` are each either the selector itself -- the
+    # shorthand, `{"expect": {"visible": "role=button"}}` -- or a plain
+    # true/false about whatever `at` names.
+    #
+    # A boolean used to be stringified straight into the selector. So
+    # `{"at": "text=Biscuit", "visible": true}`, which is the obvious way to
+    # write it and the way the schema reads, waited ten seconds for an element
+    # called "True", failed, and reported a bare timeout. Every assertion
+    # written that way failed, on pages where the thing was plainly there, and
+    # nothing in the error said why.
+    visible = step.get("visible")
+    hidden = step.get("hidden")
+    if isinstance(visible, bool):
+        visible, hidden = (at, None) if visible else (None, at)
+    elif isinstance(hidden, bool):
+        visible, hidden = (None, at) if hidden else (at, None)
+
+    if visible or (at and not visible and not hidden and _bare(step)):
+        selector = str(visible or at)
+        if not selector:
+            return {"text": "expect visible needs something to look at: pass `at`"}
         await _locate(page, selector).first.wait_for(state="visible", timeout=timeout)
         return {"text": f"{selector} is visible"}
 
-    if step.get("hidden"):
-        selector = str(step["hidden"])
+    if hidden:
+        selector = str(hidden)
         await _locate(page, selector).first.wait_for(state="hidden", timeout=timeout)
         return {"text": f"{selector} is hidden"}
 
@@ -417,6 +436,30 @@ async def _diagnostics(ctx, session, frames) -> str:
     return "\n\n".join(chunks)
 
 
+_HAS_RETURN = re.compile(r"(^|[;{}\s])return([\s;(]|$)")
+
+
+def _as_evaluatable(js: str) -> str:
+    """Let `eval` take statements, not only a single expression.
+
+    Playwright evaluates a bare string as an expression, so anything with
+    several statements and a `return` -- which is how a person writes it, and
+    what "js" invites -- came back as "SyntaxError: Illegal return statement".
+    A live session lost a call to exactly that: three statements setting a class
+    and returning a computed style.
+
+    Wrapped in a function only when it needs to be, so a plain expression stays
+    a plain expression and keeps returning its value.
+    """
+    body = js.strip()
+    if body.startswith(("function", "async", "(", "() =>")):
+        return body        # already a function; Playwright calls it
+    trimmed = body.rstrip(";").strip()
+    if _HAS_RETURN.search(trimmed) or ";" in trimmed:
+        return "() => {" + body + "\n}"
+    return body
+
+
 def _label(action: str, step: dict) -> str:
     at = step.get("at") or ""
     if action == "goto":
@@ -426,7 +469,11 @@ def _label(action: str, step: dict) -> str:
     if action == "expect":
         for key in ("visible", "hidden", "text", "url", "count", "console_clean"):
             if key in step:
-                return f"expect {key} {str(step[key])[:34]}"
+                # A boolean here is about `at`, so show `at` -- printing the
+                # boolean gave every failure the same useless title,
+                # "expect visible True", which named nothing.
+                value = at if isinstance(step[key], bool) else step[key]
+                return f"expect {key} {str(value)[:34]}"
         return f"expect visible {at[:34]}"
     if action == "eval":
         return f"eval {str(step.get('js', ''))[:40]}"

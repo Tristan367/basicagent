@@ -544,7 +544,13 @@ async def write_file(ctx: ToolContext, *, filePath: str, content: str, **_) -> T
         except Exception as e:
             return ToolResult.error(f"writing file: {e}", title)
 
+    # Anchor future edits to what was just written. Writing a file is the most
+    # complete way of seeing it there is, and without this the next `edit` was
+    # refused with "you have not read this file" -- which cost a real session
+    # thirteen calls in a row before it worked out that it had to read back a
+    # file it had written itself a moment earlier.
     mark_read(ctx.session_id, path)
+    _record_snapshot(ctx.session_id, path, content, set(range(1, len(content.splitlines()) + 1)))
     verb = "Overwrote" if existed else "Created"
     lines = len(content.splitlines())
     diff = unified_diff(previous, content, _display(path, ctx))

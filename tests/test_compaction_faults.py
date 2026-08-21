@@ -139,18 +139,39 @@ def test_the_summariser_is_told_not_to_carry_on_the_conversation():
     # Whitespace-normalised: the prompt is wrapped, so a phrase can straddle a
     # newline and a naive substring check misses it.
     lowered = " ".join(COMPACT_PROMPT.lower().split())
-    assert "nothing else" in lowered
-    assert "not a turn in the conversation" in lowered
+    assert "write only the summary" in lowered
+    assert "not your turn in the conversation" in lowered
+    assert "do not address the user" in lowered
 
 
 def test_the_summariser_is_told_not_to_reach_for_a_tool():
-    assert "do not use any tool" in " ".join(COMPACT_PROMPT.lower().split())
+    """The tools are in the request -- the conversation is handed over whole so
+    the cached prefix still matches -- so it has to be told not to, and told
+    that they being there is not an invitation."""
+    lowered = " ".join(COMPACT_PROMPT.lower().split())
+    assert "do not call tools" in lowered
+    assert "even though they are available" in lowered
 
 
 def test_the_summariser_is_told_to_be_shorter():
     """Asked only to "summarise", models expand: a summary longer than its
     source frees nothing and compaction fires again immediately."""
-    assert "shorter than the conversation" in " ".join(COMPACT_PROMPT.lower().split())
+    lowered = " ".join(COMPACT_PROMPT.lower().split())
+    assert "substantially shorter" in lowered
+
+
+def test_the_summariser_is_told_what_is_at_stake():
+    """It is not housekeeping to the reader of the summary: the messages it
+    replaces are deleted, so anything left out is gone."""
+    lowered = " ".join(COMPACT_PROMPT.lower().split())
+    assert "replaces those messages permanently" in lowered
+    assert "gone for good" in lowered
+
+
+def test_the_summariser_is_told_never_to_return_nothing():
+    """The failure a small model actually produces on a long transcript."""
+    lowered = " ".join(COMPACT_PROMPT.lower().split())
+    assert "never decline" in lowered and "never answer with nothing" in lowered
 
 
 def test_there_is_a_nudge_for_the_empty_answer():

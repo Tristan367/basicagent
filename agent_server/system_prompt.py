@@ -25,28 +25,35 @@ MANAGER_PROMPT = (_PROJECT / "system_prompts" / "manager.md").read_text()
 # reached for a tool, refused because the request looked like a code change, or
 # expanded rather than compressed. Written against observed failures, not taste.
 COMPACT_PROMPT = """
-Write a summary of this conversation so far. This is a housekeeping step, not a
-turn in the conversation.
+You are compressing the earlier part of a conversation so it can be dropped from
+the context window. What you write replaces those messages permanently — anything
+you leave out is gone for good.
 
-Output the summary and nothing else. No preamble, no "here is the summary", no
-sign-off, no questions, no offer to continue. The first character of your reply
-is the first character of the summary.
+Write only the summary. No preamble, no sign-off, and no remarks about the
+conversation or about the act of summarising it. This is not your turn in the
+conversation: do not answer anything in it, do not address the user, and do not
+call tools, even though they are available to you.
 
-Do not use any tool. Do not read a file, run a command, or check anything. You
-already have everything you need above. This is not a request to do more work,
-and the work described is not yours to continue.
+Keep, and keep exactly as they were written:
+- Anything the user asked you to remember, and every name, identifier, path,
+  number, URL, or version they gave you.
+- What the user is trying to achieve, and any constraint or preference stated.
+- Decisions taken, and the reason for each.
+- Every file created, modified, or deleted, with its full path and what changed.
+- Commands run and what they returned, failures especially.
+- Errors hit, and whether each was resolved or is still open.
+- What is left to do.
 
-Preserve: what the user asked for, decisions made and why, every file created or
-modified with its path, key code and APIs discovered, commands that were run and
-what they returned, errors hit and how they were resolved, anything the user
-explicitly asked to be remembered, and what still remains to be done.
+Leave out tool output that no longer matters, searches that found nothing,
+reasoning that led nowhere, and pleasantries.
 
-Drop: tool output that no longer matters, exploration that led nowhere, and
-pleasantries.
+Be concrete: names, paths, and line numbers rather than descriptions of them.
+Plain prose or short lists, whichever is clearer.
 
-Be shorter than the conversation. Plain prose, specific — names, paths, line
-numbers. If almost nothing has happened yet, say so in a sentence rather than
-padding it out.
+The result must be substantially shorter than what it replaces — that is the
+whole point — and its length should match how much actually happened. If very
+little happened, say so in a sentence or two and stop. Never decline, and never
+answer with nothing.
 """
 
 # Sent only when the first attempt came back empty, which small models do

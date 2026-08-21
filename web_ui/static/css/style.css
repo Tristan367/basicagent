@@ -334,7 +334,11 @@ body {
 .chat-scroll-inner {
     max-width: calc(960px * var(--zoom-widen, 1));
     margin: 0 auto;
-    padding: 20px 16px 56px;
+    /* Enough room at the bottom to scroll the last message clear of the Play
+       button. On a narrow window that button sits over the conversation rather
+       than out in the gutter, and with only a message's worth of padding under
+       it there was no amount of scrolling that would reveal what it covered. */
+    padding: 20px 16px 110px;
 }
 
 .setup-banner {
