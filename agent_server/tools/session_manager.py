@@ -154,8 +154,12 @@ async def create_project(
     return ToolResult(
         output=(
             f"Created project '{name}' (id {session['id']}) in {project_dir}.{whose} "
-            f"A button to open it is now on screen; the user is NOT in it yet. "
-            f"Tell them it is ready and that they can open it whenever they like."
+            f"A button reading 'Open {name}' is now the last thing on screen, and "
+            f"it already has the keyboard. The user is NOT in the project yet: that "
+            f"button is the way in, and pressing Enter is enough. "
+            f"So end your reply by pointing at that one button and nothing else. "
+            f"Do NOT send them to their list of projects, a sidebar, or a menu -- "
+            f"the whole point of this page is that they never have to go looking."
         ),
         title=f"Created project '{name}'",
         open_session=session["id"],

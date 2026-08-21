@@ -2509,6 +2509,12 @@
     const button = messages.querySelector('.message.action .open-project-btn:last-of-type')
       || [...messages.querySelectorAll('.open-project-btn')].pop();
     if (!button) return;
+    /* The button arrives with the tool result, so anything the assistant says
+     * afterwards lands underneath it and buries it. Moved to the end of the
+     * turn, it is the last thing on the page and the first thing the keyboard
+     * reaches -- which is also exactly what the reply above it now describes. */
+    const row = button.closest('.message.action');
+    if (row && row !== messages.lastElementChild) messages.appendChild(row);
     button.focus({ preventScroll: true });
     scrollToBottom();
     announce(button.textContent.trim() + '. Press Enter to open it.');
