@@ -188,3 +188,49 @@ def test_the_door_stands_on_the_floor_rather_than_through_it():
     doors = re.findall(r'stroke-linecap="(\w+)"\s*\n\s*d="M9\.4 21v', page)
     assert doors, "the door is not drawn where it was"
     assert set(doors) == {"butt"}, f"round caps are back: {doors}"
+
+
+# ── the settings panel's shadow ────────────────────────────────────────────
+#
+# Not a zoom bug, but the same shape of mistake: a value that looks right in
+# isolation and is wrong against the thing next to it.
+
+
+def test_the_panel_shadow_is_clipped_off_the_app_bar(css):
+    """A 42px blur on the panel reached up over the bar and greyed it -- in
+    light mode from 245 to 228 just above the seam. The shadow moved to a
+    pseudo-element so `clip-path` can cut it flat along the panel's top edge
+    without also clipping the panel's contents."""
+    import re
+
+    panel = re.search(r"\.settings-panel \{(.*?)\}", css, re.S).group(1)
+    assert "box-shadow" not in panel, \
+        "the shadow is back on the panel itself, where it bleeds over the app bar"
+
+    shadow = re.search(r"\.settings-panel::after \{(.*?)\}", css, re.S).group(1)
+    assert "box-shadow" in shadow
+    # First inset is the top: it has to be zero, so nothing shows above the
+    # panel. A negative value there lets the bleed straight back through.
+    top = re.search(r"clip-path:\s*inset\(\s*(-?\d+)", shadow).group(1)
+    assert top == "0", f"the shadow is clipped {top}px above the panel, not at its edge"
+
+
+def test_the_app_bar_stays_under_the_settings_panel(css):
+    """Raising the bar above the panel also clips the bleed, and breaks the
+    walkthrough overlay: it is rendered inside the panel, so it cannot paint
+    above the panel's own layer whatever its z-index says, and the bar covers
+    it."""
+    import re
+
+    bar = re.search(r"\.app-bar \{(.*?)\}", css, re.S).group(1)
+    panel = re.search(r"\.settings-panel \{(.*?)\}", css, re.S).group(1)
+    bar_z = int(re.search(r"z-index:\s*(\d+)", bar).group(1))
+    panel_z = int(re.search(r"z-index:\s*(\d+)", panel).group(1))
+    assert bar_z < panel_z, "the app bar would cover the walkthrough overlay"
+
+
+def test_the_projects_menu_is_lifted_over_the_panel_while_it_is_open(css):
+    """The menu hangs out of the bar and so is stuck in the bar's layer. With
+    Settings open, pressing Projects lit the button and dropped a menu behind
+    the panel, where nobody could see it."""
+    assert '.app-bar:has(#sessions-btn[aria-expanded="true"])' in css

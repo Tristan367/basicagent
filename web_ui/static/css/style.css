@@ -143,6 +143,12 @@ body {
     flex: none;
     position: sticky;
     top: 0;
+    /* Stays below the settings panel (60). Raising it above looked like the
+       tidy way to stop the panel's shadow bleeding onto the bar, and it worked
+       -- but the walkthrough overlay is rendered inside the panel, so it can
+       never paint above the panel's own layer however high its z-index goes.
+       The bar at 70 covered the overlay. The shadow is clipped in the panel's
+       own rule instead. */
     z-index: 20;
     display: flex;
     align-items: stretch;
@@ -150,6 +156,14 @@ body {
     background: var(--bg);
     border-bottom: var(--seam) solid var(--border);
 }
+
+/* The Projects menu hangs out of the bar, so it is stuck in the bar's layer --
+   and the settings panel (60) is above it. With Settings open, pressing
+   Projects lit the button up and dropped a menu nobody could see, behind the
+   panel. Lifted for exactly as long as the menu is open, which is never while
+   the walkthrough overlay is (any click on the page closes the menu), so the
+   overlay keeps the panel's layer to itself. */
+.app-bar:has(#sessions-btn[aria-expanded="true"]) { z-index: 61; }
 
 .app-bar-side {
     flex: 0 0 auto;
@@ -2514,7 +2528,34 @@ html[data-theme="dark"] {
     flex-direction: column;
     background: var(--surface, #1b1d24);
     border-right: 1px solid var(--border, #2b2e38);
+}
+
+/* The shadow, on a layer of its own so it can be cut off flat along the top.
+ *
+ * It used to sit on the panel itself, where its 42px blur reached up over the
+ * app bar and greyed it -- in light mode from 245 down to 228 just above the
+ * seam, which in a pale theme you cannot miss.
+ *
+ * Two tidier-looking fixes do not work. Painting the app bar on top of it
+ * (raising its z-index above this panel's) does clip the bleed, but the
+ * walkthrough overlay is rendered inside this panel and so cannot escape this
+ * layer however high its own z-index goes -- the bar ends up covering the
+ * overlay. And nudging the shadow down by half its blur only halves the
+ * problem, because a Gaussian tail reaches roughly the full blur radius, not
+ * half of it.
+ *
+ * So: `clip-path`, which cuts the shadow dead at the panel's top edge. It is
+ * safe here and nowhere else, because clipping applies to descendants too and
+ * this pseudo-element has none. `inset: 0` matches the panel's own rect, and
+ * the negative insets let the shadow through on the three sides where it
+ * belongs. */
+.settings-panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
     box-shadow: 18px 0 42px rgba(0, 0, 0, 0.34);
+    clip-path: inset(0 -90px -90px 0);
 }
 .settings-panel[hidden] { display: none; }
 
@@ -2575,7 +2616,13 @@ body.settings-open .settings-scroll {
         height: var(--sheet-height);
         border-right: 0;
         border-top: 1px solid var(--border, #2b2e38);
+    }
+    /* A sheet rises from the bottom, so its shadow goes up and there is no app
+       bar under it to keep clean -- the conversation above is meant to be
+       shaded. Nothing to clip. */
+    .settings-panel::after {
         box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.34);
+        clip-path: none;
     }
     body.settings-open #chat-view,
     body.settings-open .settings-scroll { padding-left: 0; }
