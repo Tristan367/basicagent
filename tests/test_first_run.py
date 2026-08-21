@@ -125,3 +125,67 @@ def test_the_first_run_note_names_what_is_missing_and_offers_to_fix_it():
     assert "Read-aloud (text-to-speech)" in names
     for component in setup.detect():
         assert component["hint"], f"{component['name']} has no hint to act on"
+
+
+# ── the step-by-step guide ──────────────────────────────────────────────────
+#
+# The one thing the user has to do somewhere other than in this app, so it is
+# the one place a dead end costs us the whole user.
+
+
+def test_every_address_the_guide_names_is_a_link():
+    """Naming an address at somebody is not telling them how to get there. This
+    app is usable entirely by voice, and "type aistudio.google.com/apikey" is
+    not something a person working by voice can act on."""
+    import re
+
+    from agent_server.routes.context import KEY_WALKTHROUGH, link_parts
+
+    for step in KEY_WALKTHROUGH:
+        # Any bare domain left in the prose, outside a [text](url) link.
+        bare = re.sub(r"\[[^\]]+\]\(https://[^)\s]+\)", "", step["text"])
+        found = re.findall(r"\b[a-z0-9-]+\.(?:com|org|net|ai|io|dev)\b", bare, re.I)
+        assert not found, f"named but not linked: {found}"
+        for para in step["text"].split("\n\n"):
+            # The words a reader sees, once the link markers are gone. Splitting
+            # must move nothing and drop nothing -- the parts are rendered one
+            # after another, so a lost run is a lost sentence.
+            plain = re.sub(r"\[([^\]]+)\]\(https://[^)\s]+\)", r"\1", para)
+            assert "".join(p["text"] for p in link_parts(para)) == plain
+
+
+def test_the_link_in_the_first_step_goes_where_the_button_does():
+    from agent_server.routes.context import KEY_URL, KEY_WALKTHROUGH, link_parts
+
+    parts = link_parts(KEY_WALKTHROUGH[0]["text"])
+    hrefs = [p["href"] for p in parts if p["href"]]
+    assert hrefs == [KEY_URL]
+
+
+def test_prose_with_no_link_in_it_survives_unchanged():
+    from agent_server.routes.context import link_parts
+
+    assert link_parts("Click the Create API key button.") == [
+        {"text": "Click the Create API key button.", "href": ""}
+    ]
+
+
+def test_the_guide_opens_as_an_overlay_not_a_fold_in_the_column():
+    """It was a <details> inside the settings column, which in the panel is
+    480px wide -- so the screenshots of a web page came out about a centimetre
+    across, which is no use to the person who needed the pictures."""
+    import re
+    from pathlib import Path
+
+    body = Path("web_ui/templates/settings_body.html").read_text()
+    assert 'id="walkthrough-open"' in body
+    assert 'id="walkthrough-modal"' in body
+    # Comments stripped: they explain what the guide used to be, and that is not
+    # what a user meets.
+    assert "<details" not in re.sub(r"\{#.*?#\}", "", body, flags=re.S), \
+        "the guide is folded into the column again"
+    # Outside `#settings-page`: that element carries `container-type`, which
+    # makes it a containing block for `position: fixed`, so an overlay inside it
+    # would be pinned to the settings column instead of the window.
+    page = body[body.index('<div id="settings-page">'):]
+    assert page.index('id="walkthrough-modal"') > page.index('id="to-top-btn"')

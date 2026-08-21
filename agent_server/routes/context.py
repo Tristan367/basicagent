@@ -1,6 +1,7 @@
 """Context builders shared by the page and settings routes."""
 
 import json
+import re
 from pathlib import Path
 
 from agent_server import activity, parental, whisper_streaming
@@ -171,12 +172,16 @@ async def _name_open_sessions(items: list[dict]) -> list[dict]:
 # `shot` names a file in static/img/setup/. If it is not there the step renders
 # as words alone -- so the pictures can be added one at a time, and a missing
 # one is never a broken image.
+#
+# `[words](https://...)` in the text becomes a real link. Naming an address at
+# somebody who cannot easily type is not telling them how to get there, and this
+# app is for people who may be working entirely by voice.
 KEY_WALKTHROUGH = [
     {
         "shot": "01-studio.png",
-        "text": "Go to aistudio.google.com/apikey. If you have a Google account — a "
-                "Gmail address counts — sign in with it. If you do not, make one "
-                "there; it is free and takes a minute.",
+        "text": "Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey). "
+                "If you have a Google account — a Gmail address counts — sign in with "
+                "it. If you do not, make one there; it is free and takes a minute.",
     },
     {
         "shot": "02-create.png",
@@ -205,12 +210,46 @@ KEY_WALKTHROUGH = [
 ]
 
 
+# Where the walkthrough sends people. Named once, because it appears both as the
+# link in step one and as the button at the top of the overlay, and those two
+# going to different places would be its own small betrayal.
+KEY_URL = "https://aistudio.google.com/apikey"
+KEY_URL_LABEL = "aistudio.google.com/apikey"
+
+_LINK = re.compile(r"\[([^\]]+)\]\((https://[^)\s]+)\)")
+
+
+def link_parts(text: str) -> list[dict]:
+    """Split prose into runs of words and runs that are links.
+
+    Deliberately not a general URL sniffer over the prose: this is written by
+    us, and marking the links by hand means no sentence ever grows an
+    accidental one. Each part is rendered by the template with normal escaping,
+    so nothing here can put markup on the page.
+    """
+    parts: list[dict] = []
+    at = 0
+    for m in _LINK.finditer(text):
+        if m.start() > at:
+            parts.append({"text": text[at:m.start()], "href": ""})
+        parts.append({"text": m.group(1), "href": m.group(2)})
+        at = m.end()
+    if at < len(text):
+        parts.append({"text": text[at:], "href": ""})
+    return parts
+
+
 def _walkthrough() -> list[dict]:
-    """The steps, each told whether its picture actually exists yet."""
+    """The steps: their pictures if those exist yet, their words split into
+    plain runs and clickable ones."""
     shots = STATIC_DIR / "img" / "setup"
     return [
-        {**step, "image": f"/static/img/setup/{step['shot']}"
-         if (shots / step["shot"]).is_file() else ""}
+        {
+            **step,
+            "image": f"/static/img/setup/{step['shot']}"
+            if (shots / step["shot"]).is_file() else "",
+            "paragraphs": [link_parts(p) for p in step["text"].split("\n\n")],
+        }
         for step in KEY_WALKTHROUGH
     ]
 
@@ -266,5 +305,7 @@ async def _settings_context() -> dict:
         "override_remaining": await parental.override_remaining(),
         "override_elapsed": await parental.override_elapsed(),
         "walkthrough": walkthrough,
+        "key_url": KEY_URL,
+        "key_url_label": KEY_URL_LABEL,
         "needs_key": not any_credentials(),
     }

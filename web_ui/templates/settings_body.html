@@ -78,34 +78,14 @@
             subscription. You only do it once. Pick whichever suits you:
         </p>
 
-        {# Open by default when there is no key at all, because then it is the
-           only thing on this screen that matters. Folded away afterwards, since
-           nobody needs it twice. #}
-        <details class="walkthrough" {% if needs_key %}open{% endif %}>
-            <summary>Show me how, step by step</summary>
-            <p class="hint">
-                This is the free route, through Google. No card, nothing to pay,
-                about two minutes. The free allowance runs to a few hundred goes a
-                day — enough to actually build something and see whether you like
-                this, not just a taste. If you ever run out it comes back the next
-                day, and if you get properly into it there is a cheap paid option
-                further down.
-            </p>
-            <ol class="walkthrough-steps">
-                {% for step in walkthrough %}
-                <li>
-                    {% for para in step.text.split('\n\n') %}<p>{{ para }}</p>{% endfor %}
-                    {% if step.image %}
-                    <img src="{{ step.image }}" alt="" loading="lazy">
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ol>
-            <p class="hint">
-                Stuck anywhere in that? Close this and just ask — describe what you
-                are looking at and I will talk you through it.
-            </p>
-        </details>
+        {# The steps used to be a <details> folded into this column, which in the
+           settings panel is 480px wide -- so the one thing a new user has to get
+           right was read through a letterbox, with the screenshots shrunk to
+           postage stamps. It opens as a proper overlay now, across the screen,
+           where a picture of a page can be the size of a page. #}
+        <button type="button" class="btn-primary walkthrough-open" id="walkthrough-open">
+            Show me how, step by step
+        </button>
     </section>
 
     {% for ps in provider_settings %}
@@ -384,6 +364,62 @@
 </div>
 
 <div class="saved-toast" id="saved-toast" role="status" hidden>Saved</div>
+
+{# Getting a key, across the whole screen.
+
+   Outside `#settings-page` on purpose: that element carries `container-type`,
+   which makes it a containing block for `position: fixed` children, so an
+   overlay inside it would be pinned to the settings column instead of the
+   window. The other dialogs on this page sit out here for the same reason. #}
+<div class="modal-backdrop walkthrough-backdrop" id="walkthrough-modal" role="dialog"
+     aria-modal="true" aria-labelledby="walkthrough-title" hidden>
+    <div class="walkthrough-card">
+        <div class="walkthrough-bar">
+            <h2 id="walkthrough-title">Getting a free key from Google</h2>
+            <button type="button" class="icon-btn walkthrough-close" id="walkthrough-close"
+                    title="Close" aria-label="Close">
+                <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                    <path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor"
+                          stroke-width="2.4" stroke-linecap="round" fill="none"/>
+                </svg>
+            </button>
+        </div>
+        <div class="walkthrough-body">
+            <p class="walkthrough-intro">
+                No card, nothing to pay, about two minutes. The free allowance runs to a
+                few hundred goes a day — enough to actually build something and see
+                whether you like this, not just a taste. If you run out it comes back
+                the next day.
+            </p>
+            {# The one link that matters, at the top and large, so nobody has to
+               find it inside a paragraph or -- worse -- type it out. #}
+            <p class="walkthrough-go">
+                <a href="{{ key_url }}" target="_blank" rel="noopener noreferrer">
+                    Open {{ key_url_label }} &nbsp;&rarr;
+                </a>
+            </p>
+            <ol class="walkthrough-steps">
+                {% for step in walkthrough %}
+                <li>
+                    <div class="walkthrough-words">
+                        {% for para in step.paragraphs %}
+                        <p>{% for part in para %}{% if part.href %}<a href="{{ part.href }}"
+                            target="_blank" rel="noopener noreferrer">{{ part.text }}</a>{% else %}{{ part.text }}{% endif %}{% endfor %}</p>
+                        {% endfor %}
+                    </div>
+                    {% if step.image %}
+                    <img src="{{ step.image }}" alt="" loading="lazy">
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ol>
+            <p class="hint walkthrough-ask">
+                Stuck anywhere in that? Close this and just ask — describe what you are
+                looking at and I will talk you through it.
+            </p>
+        </div>
+    </div>
+</div>
 
 <div class="modal-backdrop" id="rename-modal" role="dialog" aria-modal="true" aria-label="Rename project" hidden>
     <div class="welcome-card quit-card">

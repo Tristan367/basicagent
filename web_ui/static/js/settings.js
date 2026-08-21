@@ -264,11 +264,41 @@ function initSettings() {
         });
     })();
 
+    // ── Getting a key, across the whole screen ────────────────────────────────
+    //
+    // It was a <details> folded into the settings column, which in the panel is
+    // 480px wide, so the screenshots of a web page were shown at about the size
+    // of a stamp. As an overlay there is room to make them the size of the thing
+    // they are pictures of.
+    (function () {
+        const openBtn = document.getElementById('walkthrough-open');
+        const modal = document.getElementById('walkthrough-modal');
+        if (!openBtn || !modal) return;
+        const closeBtn = document.getElementById('walkthrough-close');
+        openBtn.addEventListener('click', () => {
+            window.__openModal(modal, closeBtn);
+            // From the top every time. Reopened after scrolling to the end, it
+            // would otherwise start at step five.
+            const body = modal.querySelector('.walkthrough-body');
+            if (body) body.scrollTop = 0;
+        });
+        if (closeBtn) closeBtn.addEventListener('click', () => window.__closeModal());
+        // The dim ground, but not the card -- clicking the steps must not shut
+        // the thing you are reading.
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) window.__closeModal();
+        });
+    })();
+
     // ── Text size (browser zoom), remembered between launches ─────────────────
     (function () {
         const out = document.getElementById('zoom-out');
         const inc = document.getElementById('zoom-in');
         const reset = document.getElementById('zoom-reset');
+        // These controls arrive with the panel's markup, long after the zoom
+        // itself was applied at page load, so the number beside them is
+        // whatever the template hard-coded. Put the real one there.
+        if (window.__showZoom) window.__showZoom();
         if (out) out.addEventListener('click', () => window.__applyZoom(window.__readZoom() - 0.1));
         if (inc) inc.addEventListener('click', () => window.__applyZoom(window.__readZoom() + 0.1));
         if (reset) reset.addEventListener('click', () => window.__applyZoom(1));

@@ -21,8 +21,26 @@
         <nav class="app-bar-side" aria-label="Main">
             <button type="button" class="app-bar-btn nav-btn" id="back-btn" title="Back" aria-label="Back">&#8592;</button>
             <button type="button" class="app-bar-btn nav-btn" id="forward-btn" title="Forward" aria-label="Forward">&#8594;</button>
+            {# The one link that is always there and always goes to the same
+               place, so it gets a mark of its own rather than looking like a
+               third nav button. A house, because that is what everybody already
+               reads as "back to the start" -- but the words stay, because what
+               is waiting there is a person you can talk to, and "Home" does not
+               say that to somebody who has not met them yet. #}
             {% if not is_home %}
-            <button type="button" class="app-bar-btn" data-nav="/">Project Manager</button>
+            <button type="button" class="app-bar-btn home-btn" data-nav="/"
+                    aria-label="Project Manager" title="Project Manager">
+                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="1.9"
+                          stroke-linejoin="round" stroke-linecap="round"
+                          d="M3.4 10.6 12 3.6l8.6 7V20a1 1 0 0 1-1 1h-4.4v-6H9.8v6H5.4a1 1 0 0 1-1-1z"/>
+                </svg>
+                {# The words go when the bar runs out of room, and the house
+                   carries it alone. The name stays on the button either way, so
+                   a screen reader still announces "Project Manager" and never
+                   "button". #}
+                <span class="home-label">Project Manager</span>
+            </button>
             {% endif %}
             {# A gear rather than the word: it is the one control on this bar
                that everybody already recognises, and the space it frees goes to
@@ -73,6 +91,11 @@
                       difference. The assistant hands you a project with
                       something already in it.
                     #}
+                    {# A real line across the menu, not a border on the button.
+                       As a border it followed the button's rounded corners and
+                       curled up at both ends, which read as a stray shadow
+                       under a button that was not there. #}
+                    <hr class="sessions-sep">
                     <button type="button" class="sessions-new" id="new-project-btn">
                         New empty project&hellip;
                     </button>
@@ -190,8 +213,9 @@
                         Choose&hellip;
                     </button>
                 </div>
-                <p class="hint">Nothing in it is changed or moved. The assistant will read
-                what is there and work in place.</p>
+                <p class="hint">Nothing in it is changed or moved — the assistant reads
+                what is there and works in place. If the folder is not there yet, say
+                where it should go and it will be made.</p>
             </div>
             {% endif %}
 

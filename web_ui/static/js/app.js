@@ -82,10 +82,36 @@
   window.__applyZoom = function (z) {
     z = Math.min(1.6, Math.max(0.7, Number(z) || 1));
     document.documentElement.style.zoom = z;
+    // Zooming out makes every px smaller, including the conversation column's
+    // own width -- so at 80% the text sat in a thin ribbon with two thirds of
+    // the screen given over to empty gutter. This undoes that for the column
+    // only: below 100% its width grows by exactly as much as the zoom shrinks
+    // it, so it covers the same amount of glass it did at 100%. Above 100% it
+    // is left alone, because the gutters closing up as you zoom in is the
+    // point.
+    document.documentElement.style.setProperty('--zoom', String(z));
+    document.documentElement.style.setProperty('--zoom-widen', String(1 / Math.min(z, 1)));
     try { localStorage.setItem('appZoom', String(z)); } catch (e) {}
-    const el = document.getElementById('zoom-value');
-    if (el) el.textContent = Math.round(z * 100) + '%';
+    window.__showZoom();
+    window.__measureLayout();
     return z;
+  };
+  // How wide the page actually is, in the units the layout is written in --
+  // which is the window divided by the zoom, not the window. The one decision
+  // that turns on it today is whether there is gutter beside the conversation
+  // for the settings button to live in; see `.wide-gutter`.
+  window.__measureLayout = function () {
+    const wide = window.innerWidth / window.__readZoom() >= 1180;
+    document.documentElement.classList.toggle('wide-gutter', wide);
+  };
+  window.addEventListener('resize', () => window.__measureLayout());
+  // The number next to the buttons. Separate, because the settings panel is
+  // fetched long after the zoom has been applied: its markup arrives saying
+  // "100%" whatever the real zoom is, and until this was called from the panel
+  // as well, nothing corrected it until you pressed one of the buttons.
+  window.__showZoom = function () {
+    const el = document.getElementById('zoom-value');
+    if (el) el.textContent = Math.round(window.__readZoom() * 100) + '%';
   };
   window.__applyZoom(window.__readZoom());
 

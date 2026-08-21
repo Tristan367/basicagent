@@ -65,12 +65,27 @@ async def create_session(payload: dict):
             folder = folder.resolve()
         except OSError as e:
             raise HTTPException(400, "That folder path could not be read.") from e
-        if not folder.is_dir():
-            raise HTTPException(400, "There is no folder at that path.")
         # A project rooted at home or at the filesystem root gives every tool in
         # the session the run of the machine, which is never what was meant.
         if folder == _Path.home() or folder.parent == folder:
             raise HTTPException(400, "Pick a folder inside your home directory, not the whole of it.")
+        if not folder.is_dir():
+            # Naming a folder that is not there yet is how somebody starts a
+            # project, not a mistake -- so make it, as long as the place to put
+            # it already exists. One level only, deliberately: a path with a
+            # typo halfway along should come back as a question rather than as
+            # five new directories nobody asked for.
+            if folder.exists():
+                raise HTTPException(400, "There is a file at that path, not a folder.")
+            if not folder.parent.is_dir():
+                raise HTTPException(
+                    400, f"There is no folder at {folder}, and nothing at "
+                         f"{folder.parent} to make one in."
+                )
+            try:
+                folder.mkdir()
+            except OSError as e:
+                raise HTTPException(400, f"That folder could not be made: {e}") from e
     else:
         base = PROJECTS_DIR / "child" if profile == "child" else PROJECTS_DIR
         folder = base / _slug(name)

@@ -188,3 +188,47 @@ def test_using_your_own_folder_is_off_until_you_ask_for_it():
     assert box, "the folder choice is not a single checkbox"
     assert "checked" not in box.group(0), "using your own folder is on by default"
     assert "somewhere sensible" not in block
+
+
+# ── a folder that is not there yet ─────────────────────────────────────────
+#
+# Naming a folder that does not exist is how somebody starts a project. Refusing
+# it meant leaving the app, opening a file manager, making the folder, coming
+# back and pointing at it.
+
+
+async def test_a_folder_that_is_not_there_yet_is_made(client, tmp_path):
+    wanted = tmp_path / "brand-new-thing"
+    resp = await make(client, name="Brand new", folder=str(wanted))
+    assert resp.status_code == 200
+    assert wanted.is_dir()
+    assert resp.json()["project_dir"] == str(wanted.resolve())
+
+
+async def test_only_one_level_is_made(client, tmp_path):
+    """A path with a typo halfway along should come back as a question, not as
+    five new directories nobody asked for."""
+    deep = tmp_path / "not" / "there" / "at" / "all"
+    resp = await make(client, name="Typo", folder=str(deep))
+    assert resp.status_code == 400
+    assert not deep.exists()
+    assert not (tmp_path / "not").exists()
+
+
+async def test_a_file_where_a_folder_should_be_says_so(client, tmp_path):
+    afile = tmp_path / "notes.txt"
+    afile.write_text("hello")
+    resp = await make(client, name="Confused", folder=str(afile))
+    assert resp.status_code == 400
+    assert "file" in resp.json()["detail"].lower()
+    assert afile.read_text() == "hello"
+
+
+async def test_the_home_directory_is_still_refused_even_though_it_exists(client):
+    """The order matters: the "make it if it is missing" branch must not run
+    before the guard that says home and / are never a project root."""
+    from pathlib import Path
+
+    for where in (Path.home(), Path("/")):
+        resp = await make(client, name="Everything", folder=str(where))
+        assert resp.status_code == 400
