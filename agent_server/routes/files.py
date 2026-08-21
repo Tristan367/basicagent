@@ -387,7 +387,11 @@ async def folder_picker_available():
 async def folder_picker():
     """Open the desktop's folder chooser and return what the user picked."""
     if await parental.current_profile() == "child":
-        raise HTTPException(403, "Choosing a folder is not available in child mode.")
+        raise HTTPException(
+            403,
+            "Child mode is on, so a project can only go in the usual place. Turn it "
+            "off in Settings, under Parental controls, to choose a folder yourself.",
+        )
 
     cmd = _picker_command(Path.home())
     if cmd is None:

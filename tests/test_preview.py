@@ -406,3 +406,63 @@ async def test_something_that_is_not_a_web_address_is_refused(linked):
         with pytest.raises(HTTPException) as excinfo:
             await sessions.open_link(linked, {"url": url})
         assert excinfo.value.status_code == 400
+
+
+# ── saying why, when child mode is the reason ───────────────────────────────
+#
+# The person who meets one of these is as likely to be the grown-up who turned
+# child mode on last week and forgot as the child it is for. "Not allowed" leaves
+# them deciding the app is broken, which is the one conclusion neither of them
+# should reach.
+
+
+async def test_the_refusal_names_child_mode_and_where_to_turn_it_off(linked, db, monkeypatch):
+    from agent_server.routes import files, sessions
+
+    monkeypatch.setattr(files, "open_in_browser", lambda url: None)
+    await db.set_setting("child_mode", "1")
+    try:
+        with pytest.raises(HTTPException) as excinfo:
+            await sessions.open_link(linked, {"url": "https://example.com"})
+    finally:
+        await db.set_setting("child_mode", "0")
+    said = excinfo.value.detail.lower()
+    assert "child mode" in said
+    assert "settings" in said and "parental controls" in said
+
+
+def test_the_confined_window_shows_a_page_rather_than_a_connection_error():
+    """`route.abort()` left somebody looking at the browser's own "this site
+    can't be reached" for a site that is perfectly fine, with nothing anywhere
+    to connect it to a setting they turned on."""
+    import inspect
+
+    from agent_server import preview
+
+    guard = inspect.getsource(preview._confine)
+    assert "route.fulfill" in guard
+    assert "_blocked_page" in guard
+
+
+def test_the_blocked_page_says_which_address_and_which_switch():
+    import re
+
+    from agent_server import preview
+
+    page = preview._blocked_page("https://example.com/x")
+    assert "https://example.com/x" in page
+    # Whitespace flattened: the source wraps its sentences, and a line break
+    # between two words is not a difference the reader sees.
+    low = re.sub(r"\s+", " ", page).lower()
+    assert "child mode" in low
+    assert "settings" in low and "parental controls" in low
+
+
+def test_the_blocked_page_cannot_be_used_to_put_markup_on_itself():
+    """The address comes from whatever the page tried to navigate to, which is
+    not ours."""
+    from agent_server import preview
+
+    page = preview._blocked_page('https://x/"><script>alert(1)</script>')
+    assert "<script>alert(1)</script>" not in page
+    assert "&lt;script&gt;" in page

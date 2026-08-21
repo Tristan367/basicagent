@@ -34,7 +34,6 @@
                 {% if m.failures %}
                 <span class="chip chip-failed">{{ m.failures }} failed</span>
                 {% endif %}
-                <span class="did-caret">&#9662;</span>
             </span>
         </summary>
         <div class="did-body" data-items='{{ m.calls | tojson }}'></div>

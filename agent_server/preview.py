@@ -225,6 +225,36 @@ async def _launch(session_id: str, url: str, confine: bool):
     return context
 
 
+def _blocked_page(url: str) -> str:
+    """What the project's window shows instead of a page from the open web.
+
+    Deliberately not a scolding. The person reading it is as likely to be the
+    grown-up who switched child mode on and forgotten as the child it is for,
+    and the conclusion neither of them should reach is that something is broken.
+    """
+    from html import escape
+
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Not this one</title><style>
+:root {{ color-scheme: dark light; }}
+body {{ margin: 0; min-height: 100vh; display: grid; place-items: center;
+       background: #17191c; color: #e8eaed; padding: 24px;
+       font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }}
+main {{ max-width: 34rem; }}
+h1 {{ font-size: 1.5rem; margin: 0 0 14px; }}
+p {{ margin: 0 0 14px; color: #c6cbd1; }}
+code {{ background: #23262b; border-radius: 6px; padding: 2px 7px;
+        font-size: 0.9em; overflow-wrap: anywhere; }}
+</style></head><body><main>
+<h1>This one stays off the internet</h1>
+<p>Child mode is on, so this window only opens things on this computer — and
+<code>{escape(url)}</code> is out on the web.</p>
+<p>If you are the grown-up here: turn child mode off in Settings, under Parental
+controls, and this window will go anywhere again.</p>
+</main></body></html>"""
+
+
 async def _confine(context):
     """Refuse to load a page from anywhere but this machine.
 
@@ -241,7 +271,17 @@ async def _confine(context):
     async def guard(route, request):
         if request.resource_type == "document" and not _is_local(request.url):
             log.info("preview blocked a page from %s", request.url)
-            await route.abort()
+            # A page saying what happened, rather than the browser's own "this
+            # site can't be reached". Aborting left somebody looking at a
+            # connection error for a site that is perfectly fine, with nothing
+            # anywhere to connect it to a setting they turned on last week.
+            try:
+                await route.fulfill(
+                    status=200, content_type="text/html; charset=utf-8",
+                    body=_blocked_page(request.url),
+                )
+            except Exception:
+                await route.abort()
             return
         await route.continue_()
 

@@ -176,3 +176,15 @@ def test_the_house_is_on_the_page_it_points_at_too():
     assert 'class="title-home"' in title
     # Decoration: the heading already says Project Manager.
     assert 'aria-hidden="true"' in title
+
+
+def test_the_door_stands_on_the_floor_rather_than_through_it():
+    """A round cap adds half a stroke past the point it stops at, so the
+    doorposts hung below the wall the house stands on."""
+    import re
+    from pathlib import Path
+
+    page = Path("web_ui/templates/base.html").read_text()
+    doors = re.findall(r'stroke-linecap="(\w+)"\s*\n\s*d="M9\.4 21v', page)
+    assert doors, "the door is not drawn where it was"
+    assert set(doors) == {"butt"}, f"round caps are back: {doors}"

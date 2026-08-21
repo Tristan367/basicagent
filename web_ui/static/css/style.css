@@ -2060,7 +2060,10 @@ html[data-theme="dark"] {
     border: 1px solid color-mix(in srgb, var(--chip-color, var(--fam-project)) 40%, transparent);
     background: color-mix(in srgb, var(--chip-color, var(--fam-project)) 12%, transparent);
 }
-.chip-glyph { font-size: 1.02em; line-height: 1; }
+/* Bigger than the words beside it. These are the part you read at a glance --
+   a small mark and a small label together are two small things rather than a
+   shape and its caption. */
+.chip-glyph { font-size: 1.3em; line-height: 1; }
 .chip-write   { --chip-color: var(--fam-write); }
 .chip-run     { --chip-color: var(--fam-run); }
 .chip-look    { --chip-color: var(--fam-look); }
@@ -2098,17 +2101,9 @@ html[data-theme="dark"] {
 .did-summary::-webkit-details-marker { display: none; }
 .did-summary:hover { background: var(--accent-dim); }
 .did-summary .activity { margin: 0; }
-/* Small, but not so small that nothing says the row can be opened. It is the
-   only invitation there is, and somebody who does not know these expand will
-   never find out by any other route. */
-.did-caret {
-    color: var(--text-dim);
-    font-size: 0.82rem;
-    line-height: 1;
-    transition: transform 0.16s ease;
-}
-.did-summary:hover .did-caret { color: var(--accent); }
-.did[open] .did-caret { transform: rotate(180deg); }
+/* No caret. The pill is plainly a thing you press -- it lifts on hover and it
+   is the only object on its line -- and a small triangle flipping up and down
+   beside it was one more thing to look at for nothing. */
 
 .did-body { padding: 4px 2px 2px; }
 .did-list {
@@ -2185,22 +2180,29 @@ html[data-theme="dark"] {
    notices it is there. It used to be thrown away entirely, which is the wrong
    call for anybody trying to work out why the assistant did what it did. */
 .thinking { margin: -6px 0 2px; }
+/* Lined up with the activity pills, not indented past them. The glyph in one of
+   those starts 16px in -- 4 of summary padding, 2 of strip padding, 1 of chip
+   border and 9 of chip padding -- so this is 16 too, and the two columns of
+   marks read as one column running down the side of the conversation. */
 .thinking > summary {
     list-style: none;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     min-height: 32px;
-    padding: 0 10px;
+    padding: 0 16px;
     border-radius: 999px;
     color: var(--text-dim);
     font-size: 0.85rem;
 }
 .thinking > summary::-webkit-details-marker { display: none; }
-.thinking > summary::before { content: "✲"; margin-right: 7px; }
+/* A tick, not the star the live spinner cycles through. Left as the star, a
+   finished thought looked like a spinner that had stopped -- which is what a
+   thing that has crashed looks like. This one says it got there. */
+.thinking > summary::before { content: "✓"; margin-right: 8px; font-size: 1.1em; }
 .thinking > summary:hover { background: var(--accent-dim); color: var(--accent); }
 .thinking-text {
-    margin: 4px 0 0 10px;
+    margin: 4px 0 0 16px;
     padding: 10px 14px;
     border-left: 2px solid var(--border);
     color: var(--text-dim);

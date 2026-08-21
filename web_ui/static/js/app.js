@@ -1498,15 +1498,12 @@
     // gets one tidy sentence at the end of the turn instead of a running
     // commentary of every file that was opened.
     el.setAttribute('aria-hidden', 'true');
-    const caret = document.createElement('span');
-    caret.className = 'did-caret';
-    caret.textContent = '▾';
     summary.appendChild(el);
     const body = document.createElement('div');
     body.className = 'did-body';
     wrap.appendChild(summary);
     wrap.appendChild(body);
-    activity = { wrap, el, caret, body, counts: {}, chips: {}, items: [] };
+    activity = { wrap, el, body, counts: {}, chips: {}, items: [] };
     // At the end, always.
     //
     // It used to go in *before* the assistant's bubble, and the bubble was one
@@ -1586,8 +1583,8 @@
     chip.classList.remove('chip-pop');
     void chip.offsetWidth;
     chip.classList.add('chip-pop');
-    // Always last, however many kinds of work turn up.
-    strip.el.appendChild(strip.caret);
+    // Last, however many kinds of work turn up.
+    if (strip.failChip) strip.el.appendChild(strip.failChip);
     cueTool(family);
     scrollToBottom();
   }

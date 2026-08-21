@@ -10,6 +10,16 @@ from agent_server.model_catalog import effective_default_model, offerable_models
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
+# Said wherever child mode stops somebody reaching the web. Never just "that is
+# not allowed": the person reading it is quite often the grown-up who turned it
+# on last week and has forgotten, and the conclusion they must not reach is that
+# the app is broken. So: what stopped it, and where the switch is.
+CHILD_MODE_BLOCKED = (
+    "That goes out to the internet, and child mode is on, so it stays on this "
+    "computer. Turn child mode off in Settings, under Parental controls, and "
+    "links will open normally again."
+)
+
 _SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
     "Connection": "keep-alive",
@@ -59,7 +69,11 @@ async def create_session(payload: dict):
         # the machine is exactly what the separation exists to prevent, and the
         # option is not offered to them in the first place.
         if profile == "child":
-            raise HTTPException(403, "Choosing a folder is not available in child mode.")
+            raise HTTPException(
+                403,
+                "Child mode is on, so a project can only go in the usual place. Turn "
+                "it off in Settings, under Parental controls, to choose a folder.",
+            )
         folder = _Path(raw_folder).expanduser()
         try:
             folder = folder.resolve()
@@ -359,9 +373,11 @@ async def open_link(session_id: str, payload: dict):
         # arrives, and handing it to the real browser would walk straight round
         # the one thing a parent is trusting this app about.
         if child:
-            raise HTTPException(
-                403, "That link goes out to the internet, which is turned off just now."
-            )
+            # Say which switch, and where it is. A grown-up who set child mode
+            # last week and has forgotten will otherwise sit there deciding the
+            # app is broken -- and the one thing they must not conclude is that
+            # links do not work here.
+            raise HTTPException(403, CHILD_MODE_BLOCKED)
         if await open_in_browser(url):
             return {"ok": True, "where": "browser"}
         raise HTTPException(501, "This computer has no browser the app could open.")

@@ -364,3 +364,84 @@ def test_a_group_where_nothing_failed_says_nothing_about_it():
     ])
     assert strips(out)[0]["failures"] == 0
     assert "failed" not in strips(out)[0]["sentence"]
+
+
+# ── the marks down the side ─────────────────────────────────────────────────
+
+
+def _css() -> str:
+    import re
+    from pathlib import Path
+
+    return re.sub(r"/\*.*?\*/", "", Path("web_ui/static/css/style.css").read_text(), flags=re.S)
+
+
+def _left_pad(css: str, rule: str) -> float:
+    """The left padding a rule sets, from `padding:` shorthand or longhand."""
+    import re
+
+    block = css[css.index(rule):]
+    block = block[:block.index("}")]
+    long = re.search(r"padding-left:\s*([\d.]+)px", block)
+    if long:
+        return float(long.group(1))
+    short = re.search(r"padding:\s*([^;]+);", block)
+    assert short, f"{rule} sets no padding"
+    parts = short.group(1).split()
+    # 1 value: all sides. 2: block, inline. 3: top, inline, bottom. 4: t r b l.
+    left = parts[{1: 0, 2: 1, 3: 1, 4: 3}[len(parts)]]
+    return float(left.removesuffix("px"))
+
+
+def test_thinking_lines_up_with_the_work_beside_it():
+    """They are one column of marks running down the side of the conversation.
+    Thinking sat further right than the pills, which read as a different kind of
+    thing indented under them rather than the same kind of thing beside them."""
+    import re
+
+    css = _css()
+    chip = css[css.index(".chip {"):]
+    chip = chip[:chip.index("}")]
+    border = float(re.search(r"border:\s*([\d.]+)px", chip).group(1))
+
+    pill_mark = (_left_pad(css, ".did-summary {")
+                 + _left_pad(css, ".activity {")
+                 + border
+                 + _left_pad(css, ".chip {"))
+    assert _left_pad(css, ".thinking > summary {") == pill_mark, (
+        f"the tick starts at {_left_pad(css, '.thinking > summary {')}px "
+        f"and the tool glyphs at {pill_mark}px"
+    )
+
+
+def test_a_finished_thought_is_a_tick_not_a_stopped_spinner():
+    """The star it used was the first frame of the live spinner, so a finished
+    thought looked like an animation that had died -- which is what a thing that
+    has crashed looks like."""
+    css = _css()
+    block = css[css.index(".thinking > summary::before"):]
+    block = block[:block.index("}")]
+    assert '"✓"' in block
+    assert "✲" not in block
+
+
+def test_the_tool_marks_are_bigger_than_their_labels():
+    """They are the part you read at a glance. A small mark beside small words
+    is two small things rather than a shape and its caption."""
+    import re
+
+    css = _css()
+    block = css[css.index(".chip-glyph {"):]
+    block = block[:block.index("}")]
+    size = float(re.search(r"font-size:\s*([\d.]+)em", block).group(1))
+    assert size >= 1.2, f"the glyph is {size}em"
+
+
+def test_there_is_no_caret():
+    """The pill is plainly a thing you press. A triangle flipping up and down
+    beside it was one more thing to look at for nothing."""
+    from pathlib import Path
+
+    assert ".did-caret" not in _css()
+    assert "did-caret" not in Path("web_ui/static/js/app.js").read_text()
+    assert "did-caret" not in Path("web_ui/templates/chat_messages.html").read_text()
