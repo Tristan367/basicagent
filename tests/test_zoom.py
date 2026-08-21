@@ -234,3 +234,47 @@ def test_the_projects_menu_is_lifted_over_the_panel_while_it_is_open(css):
     Settings open, pressing Projects lit the button and dropped a menu behind
     the panel, where nobody could see it."""
     assert '.app-bar:has(#sessions-btn[aria-expanded="true"])' in css
+
+
+# ── expanded blocks ────────────────────────────────────────────────────────
+#
+# A tool group or a thinking block opens into something screenfuls long, and
+# both of the problems below are about a page that has stopped being navigable.
+
+
+def test_every_block_that_can_be_long_is_capped(css):
+    """A written file is often hundreds of lines. Uncapped, opening one pushed
+    the reply that explained it off the top of the screen, and getting back to
+    the conversation meant scrolling past the whole file. Diffs and thinking
+    were already capped; a fenced code block was not."""
+    import re
+
+    for selector in (r"\.diff", r"\.thinking-text", r"\.code-block pre"):
+        rule = re.search(selector + r" \{(.*?)\}", css, re.S)
+        assert rule, selector
+        assert "max-height" in rule.group(1), f"{selector} can grow without limit"
+        assert "overflow-y" in rule.group(1), f"{selector} is capped but cannot scroll"
+
+
+def test_clicking_inside_an_open_block_shuts_it(app_js):
+    """The only way to close one was the summary line at the top, which by the
+    time you have read to the bottom is a long way back up the page."""
+    assert "SHUTS_ON_CLICK" in app_js
+    body = app_js[app_js.index("const SHUTS_ON_CLICK"):]
+    body = body[:body.index("\n  }\n")]
+    # Not while you were selecting text, which is the other reason to click
+    # inside a block of code.
+    assert "isCollapsed" in body, "selecting text inside would shut the block"
+    # Not on anything you can press: the diff has a copy button, and a file
+    # reference is a button too.
+    assert "button, a, input" in body
+    # And not on the scrollbar of a diff that scrolls on its own.
+    assert "clientWidth" in body and "offsetX" in body
+
+
+def test_shutting_a_block_holds_the_page_still(app_js):
+    """Removing a tall block's height at once jumps everything below it up by
+    that much, including whatever the user was looking at."""
+    body = app_js[app_js.index("const SHUTS_ON_CLICK"):]
+    body = body[:body.index("\n  }\n")]
+    assert "getBoundingClientRect" in body and "scrollTop" in body

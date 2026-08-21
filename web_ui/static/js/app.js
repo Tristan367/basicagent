@@ -1948,6 +1948,52 @@
     }
   }, true);
 
+  /* Click anywhere in an opened block to shut it again.
+   *
+   * These open into something screenfuls long, and the only way to close one
+   * was the little summary line at the top -- which by the time you have read
+   * to the bottom is a long way back up the page. Now the whole thing is its
+   * own close button, which is what a person tries first anyway.
+   *
+   * Not on: anything you can press or type into, and not when you were
+   * selecting text, which is the other reason to click inside a block of code.
+   * A selection ending here means the mouse went down somewhere else, so this
+   * runs on mouseup rather than click. */
+  const SHUTS_ON_CLICK = '.did, .thinking, .summary-note';
+
+  document.addEventListener('click', (e) => {
+    const block = e.target.closest && e.target.closest(SHUTS_ON_CLICK);
+    if (!block || !block.open) return;
+    // The summary is the ordinary toggle and already does this.
+    if (e.target.closest('summary')) return;
+    if (e.target.closest('button, a, input, select, textarea, label, [role="button"]')) return;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    // A diff inside the block scrolls on its own, and a click on its scrollbar
+    // targets the diff. Dragging that to read further must not shut the thing
+    // you are reading. A scrollbar is the only place a click lands outside the
+    // element's own content box.
+    const t = e.target;
+    if (t.clientWidth && (e.offsetX > t.clientWidth || e.offsetY > t.clientHeight)) return;
+
+    /* Hold the page still. Shutting a tall block removes its whole height at
+     * once, so everything below jumps up by that much -- including whatever
+     * the user was looking at. Keeping the summary line where it was on screen
+     * makes the block look like it folded away rather than the page lurching. */
+    const summary = block.querySelector('summary');
+    const before = summary ? summary.getBoundingClientRect().top : 0;
+    block.open = false;
+    if (summary && chatScroller) {
+      const after = summary.getBoundingClientRect().top;
+      chatScroller.scrollTop += after - before;
+      // Off the top after all that (the block began above the fold): bring the
+      // line the user just closed back where they can see it.
+      if (summary.getBoundingClientRect().top < 0) {
+        summary.scrollIntoView({ block: 'center', behavior: window.__scrollBehavior() });
+      }
+    }
+  });
+
   // One sentence, for the announcer and for anyone who cannot see the chips.
   function activitySentence() {
     if (!activity || !Object.keys(activity.counts).length) return '';

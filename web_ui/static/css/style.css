@@ -498,6 +498,13 @@ html[data-theme="dark"] .setup-banner {
     /* No left padding: the gutter is flush with the block edge and supplies
        its own inset, the way an editor's does. */
     padding-left: 0;
+    /* Never taller than a screenful, the same rule diffs and thinking already
+       followed. A file written in one go is often hundreds of lines, and
+       without this it unrolled the lot: the reply that explained it went off
+       the top of the screen, and getting back to the conversation meant
+       scrolling past the whole file. */
+    max-height: 60vh;
+    overflow-y: auto;
 }
 
 /* Line numbers.
