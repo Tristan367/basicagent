@@ -38,7 +38,7 @@ suitable one that is already installed, or fetches one with
 
 | | |
 |---|---|
-| `python3 install.py --minimal` | Skip the speech downloads (saves about 1 GB). The assistant can install them later — just ask it. |
+| `python3 install.py --minimal` | Skip the speech downloads (saves about 800 MB). The assistant can install them later — just ask it. |
 | `python3 install.py --no-shortcut` | Do not add a menu entry or desktop icon. |
 
 **Starting it:** click the icon. Or `./bin/basicagent`, or

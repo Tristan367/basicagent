@@ -6,7 +6,7 @@ part is the point: the person this app is built for cannot open a terminal, so
 an install that ends with "now type this" has not finished.
 
     python3 install.py              everything, including the speech downloads
-    python3 install.py --minimal    skip the big downloads (about 1 GB of them)
+    python3 install.py --minimal    skip the speech downloads (about 800 MB)
     python3 install.py --no-shortcut   do not add a desktop icon or a menu entry
 
 Standard library only. It runs before the virtual environment exists, so it
@@ -161,7 +161,7 @@ def check_space(needed_gb: float) -> None:
         stop(
             f"there is only {free:.1f} GB free here, and this needs about {needed_gb:.0f} GB.",
             "Free some space up and run this again, or use --minimal to skip the\n"
-            "voice downloads (about 1 GB of the total).",
+            "speech downloads (about 800 MB of the total).",
         )
 
 
@@ -189,7 +189,7 @@ def install_browser() -> bool:
     it, and not optional in the sense that anybody would want to be without it.
     """
     say()
-    say("Installing the browser it uses to show you your work (about 150 MB)...")
+    say("Installing the browser it uses to show you your work (a 150 MB download)...")
     try:
         run([VENV_PY, "-m", "playwright", "install", "chromium"])
         return True

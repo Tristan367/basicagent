@@ -118,15 +118,20 @@ async def _seed_home():
             # assistant's own instructions, where they belong -- reading a shell
             # command aloud to somebody who cannot see the screen is noise, and
             # it is not a thing they were ever going to type.
+            one = len(missing) == 1
             lines = [
-                "One quick note: I had a look at this computer, and a couple of parts "
-                "aren't set up yet:",
+                "One quick note: I had a look at this computer, and "
+                + ("one part isn't" if one else "a few parts aren't")
+                + " set up yet:",
             ]
             for component in missing:
                 lines.append(f"- {component['name']}")
             lines.append(
-                "Everything else works without them. Just say the word and I'll install "
-                "whichever ones you want."
+                "Everything else works without "
+                + ("it" if one else "them")
+                + ". Just say the word and I'll install "
+                + ("it" if one else "whichever ones you want")
+                + "."
             )
             await db.add_message(home["id"], "assistant", "\n".join(lines))
 
