@@ -172,9 +172,6 @@ def test_a_model_on_their_own_computer_wins(monkeypatch):
         def has_credentials(self):
             return True
 
-        def served_models(self):
-            return ["qwen3-coder"]
-
     kept = {k: v for k, v in providers._providers.items() if not k.startswith("custom:")}
     for provider in kept.values():
         monkeypatch.setattr(provider, "api_key", lambda: "k")

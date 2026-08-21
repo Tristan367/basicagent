@@ -63,16 +63,16 @@ class CustomOpenAIProvider(OpenAICompatibleProvider):
         return []
 
     # ── which model ────────────────────────────────────────────────────────
-    def served_models(self) -> list[str]:
-        """What this endpoint said it serves, as last asked."""
-        return list(self._models)
-
     async def _discover_model(self) -> str:
         """Ask the endpoint what it serves, and remember the answer.
 
         Asking the user to type a model id was asking them for something only
         the endpoint knows -- and getting it slightly wrong failed every
         request with nothing on screen to explain why.
+
+        The list is a lookup, not a menu: it tells us what id to put in the
+        request body, and it is never offered as a choice. See the custom
+        endpoint block in `model_catalog.offerable_models`.
         """
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
         try:

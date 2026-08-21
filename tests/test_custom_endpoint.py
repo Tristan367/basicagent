@@ -227,16 +227,18 @@ async def test_one_model_is_listed_under_the_endpoint_name(db):
     assert [(m["id"], m["name"]) for m in offered] == [("custom:llm1", "llm1")]
 
 
-async def test_several_models_are_each_listed(db):
-    """A rig running llama-swap loads on demand and reports everything it can
-    serve. Picking between a coder and an image model matters, and guessing the
-    first one off the list would have quietly chosen for the user."""
+async def test_several_models_are_still_one_entry(db):
+    """An endpoint that lists its variants is still one choice.
+
+    We used to offer each reported model separately. But that list is not a
+    menu -- it is Unsloth's habit of naming what it holds, and vLLM or
+    llama.cpp will not swap what they have loaded because we asked. Picking a
+    second entry changed the id in the request body and nothing at the far end,
+    so the same model answered under a different name."""
     served = ["Qwen3-Coder-Next-UD-Q3_K_XL", "flux2-dev-Q4_K_S", "Qwen3.5-4B-UD-Q4_K_XL"]
     offered = await _offered(db, served)
-    assert [m["name"] for m in offered] == served
-    assert [m["id"] for m in offered] == [f"custom:llm1/{m}" for m in served]
-    assert all(m["provider"] == "custom:llm1" for m in offered)
-    assert all("llm1" in m["provider_label"] for m in offered)
+    assert [(m["id"], m["name"]) for m in offered] == [("custom:llm1", "llm1")]
+    assert offered[0]["provider_label"] == "your own computer"
 
 
 async def test_an_endpoint_that_never_answered_is_still_offered(db):
@@ -282,3 +284,29 @@ async def test_a_chosen_model_is_sent_as_itself(db, endpoint_http):
         compat.OpenAICompatibleProvider.chat_completion = original
 
     assert sent["model"] == "other-model"
+
+
+async def test_a_custom_endpoint_is_named_on_the_model_button(db, tmp_path):
+    """The button used to print the provider key, so the picker offered "llm1"
+    and the button beside it read "custom:llm1"."""
+    from agent_server import providers
+    from agent_server.providers.custom_openai import CustomOpenAIProvider
+    from agent_server.routes.context import _chat_context, _model_display
+
+    providers._providers["custom:llm1"] = CustomOpenAIProvider("llm1", "http://box:8888/v1")
+    try:
+        assert _model_display({"provider": "custom:llm1", "model": "custom:llm1"}) == "llm1"
+        # A session from before the picker stopped listing each reported model
+        # stores the model id, which is no better to look at.
+        assert _model_display(
+            {"provider": "custom:llm1", "model": "Qwen3-Coder-Next-UD-Q3_K_XL"}
+        ) == "llm1"
+
+        # And the page is actually wired to it, not to the raw model column.
+        session = await db.create_session(
+            name="Biscuit", project_dir=str(tmp_path), kind="project",
+            provider="custom:llm1", model="custom:llm1",
+        )
+        assert (await _chat_context(session))["model_display"] == "llm1"
+    finally:
+        del providers._providers["custom:llm1"]

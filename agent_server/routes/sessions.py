@@ -170,7 +170,13 @@ async def session_models(session_id: str):
             "price_in": m.get("price_in_miss", 0.0),
         })
     return {
-        "current_model": session["model"],
+        # A custom endpoint is offered as `custom:name`, and that is what a
+        # session on it stores. Sessions from before the picker stopped listing
+        # each reported model store the model id instead, and would show no tick
+        # against anything; the provider column still names the endpoint.
+        "current_model": (session["provider"]
+                          if session["provider"].startswith("custom:")
+                          else session["model"]),
         "context_tokens": usage["context"],
         "models": models,
     }

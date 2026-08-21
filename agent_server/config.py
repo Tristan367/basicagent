@@ -261,10 +261,13 @@ def provider_for_model(model_id: str) -> str:
 def split_custom_choice(choice: str) -> tuple[str, str]:
     """Split a custom-endpoint picker value into (endpoint key, model id).
 
-    The picker offers `custom:llm1/Qwen3-Coder` when an endpoint reports
-    several models, and plain `custom:llm1` when it reports one or is not
-    answering. Endpoint names cannot contain a slash, so the first one splits
-    it; anything after that belongs to the model id, which often has its own.
+    The picker offers plain `custom:llm1` -- the endpoint, which is as much as
+    this app can choose. `custom:llm1/Qwen3-Coder` is the older form, from when
+    each reported model was listed separately, and is still accepted so a
+    session or a saved default from before that change keeps working.
+
+    Endpoint names cannot contain a slash, so the first one splits it; anything
+    after that belongs to the model id, which often has its own.
     """
     body = choice.removeprefix("custom:")
     name, _, model_id = body.partition("/")

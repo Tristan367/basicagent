@@ -192,7 +192,11 @@
         for character, so it was not saved — the key already there is untouched. If your browser
         filled that box for you, clear it and type the key in yourself.</p>
         {% elif checked and checked.startswith('ok') %}
-        <p class="endpoint-status good">Saved, and it answered — {{ checked[2:] }} model{{ '' if checked[2:] == '1' else 's' }} available.</p>
+        {# It used to say how many models the endpoint listed. That invited the
+           question "so which one?", and there is no answer: whatever is loaded
+           over there is what replies, and nothing here can change it. #}
+        <p class="endpoint-status good">Saved, and it answered. Messages will go to whatever
+        AI it has loaded.</p>
         {% elif checked and checked.startswith('auth') %}
         <p class="endpoint-status bad">Saved, but it answered {{ checked[4:] }}. That usually means
         the key is wrong or missing — but some servers reply that way to any request they do not

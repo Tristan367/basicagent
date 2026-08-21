@@ -21,6 +21,7 @@ from agent_server.model_catalog import (
     effective_default_model,
     offerable_models,
 )
+from agent_server.providers import get_provider
 from agent_server.stt import availability as stt_availability
 from agent_server.templating import STATIC_DIR
 
@@ -87,6 +88,26 @@ def _theme(settings: dict[str, str]) -> str:
     return settings.get("theme") or DEFAULT_THEME
 
 
+def _model_display(session: dict) -> str:
+    """What to write on the model button.
+
+    A session on a custom endpoint is named after the endpoint, because that is
+    the only name this app can honestly give it -- whatever is loaded over there
+    is what answers, and it is not ours to choose. The button used to print the
+    provider key itself, so the picker offered "llm1" and the button beside it
+    read "custom:llm1". Older sessions store a discovered model id in the same
+    place, which is no better to look at.
+    """
+    provider = session.get("provider", "")
+    if provider.startswith("custom:"):
+        try:
+            return get_provider(provider).name
+        except ValueError:
+            return provider.removeprefix("custom:")
+    model = session.get("model", "")
+    return MODELS_BY_ID.get(model, {}).get("name", model)
+
+
 async def _chat_context(session: dict) -> dict:
     # The project's folder should exist whenever its chat is open. If something
     # outside the app removed it -- a cleanup tool, a synced folder, a move --
@@ -110,7 +131,7 @@ async def _chat_context(session: dict) -> dict:
         "messages": await _name_open_sessions(activity.group(messages)),
         "activity_families": json.dumps(activity.FAMILIES),
         "compactions": await db.get_compactions(session["id"]),
-        "model_display": MODELS_BY_ID.get(session.get("model", ""), {}).get("name", session.get("model", "")),
+        "model_display": _model_display(session),
         "is_home": is_home,
         "is_settings": False,
         "has_key": any_credentials(),

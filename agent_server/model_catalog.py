@@ -67,30 +67,30 @@ def offerable_models() -> list[dict]:
                 "recommended": model["id"] in RECOMMENDED_MODELS,
             })
 
-    # Custom endpoints. A box running one model is listed under the name its
-    # owner gave it -- to them, the endpoint *is* the model. A box running
-    # several (llama-swap and friends load on demand) lists each one, because
-    # picking between a coder and an image model matters and nothing about it
-    # should have to be typed.
+    # Custom endpoints. One entry each, under the name its owner gave it: to
+    # this app the endpoint *is* the model, because whatever is loaded over
+    # there is what answers.
+    #
+    # We used to enumerate what `/v1/models` reported and offer each as its own
+    # choice. That read the list as a menu, which it is not. It is Unsloth's
+    # habit of listing its variants; vLLM and llama.cpp serve one thing and name
+    # it however they like, and none of them will load something else because we
+    # asked. So picking a second entry changed the id in the request body and
+    # nothing at the far end -- the same model replied under a different name,
+    # which is worse than not offering the choice at all. (Ollama would honour
+    # it, but a picker that works on one server in three is not a picker.)
     for key, provider in _providers.items():
         if not key.startswith("custom:") or not provider.has_credentials():
             continue
-        served = provider.served_models()
-        entry = {
+        offered.append({
+            "id": key,
+            "name": provider.name,
             "provider_label": "your own computer",
             "provider": key,
             "price_out": 0.0,
             "price_label": "your own",
             "recommended": False,
-        }
-        if len(served) > 1:
-            offered += [
-                {**entry, "id": f"{key}/{m}", "name": m,
-                 "provider_label": f"your own computer · {provider.name}"}
-                for m in served
-            ]
-        else:
-            offered.append({**entry, "id": key, "name": provider.name})
+        })
 
     # Cheapest first, by what it actually costs.
     #
