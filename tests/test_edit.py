@@ -259,7 +259,11 @@ def test_there_is_one_kind_of_subagent():
 
     assert "explore" not in TOOLS
     assert "task" in TOOLS
-    for path in ("system_prompts/agent.md", "agent_server/activity.py"):
+    # The browser had three of these long after the server had none: a status
+    # line, a family, and a branch working out what to put after it. None of
+    # them could ever fire, and each one read as though the tool were still here.
+    for path in ("system_prompts/agent.md", "agent_server/activity.py",
+                 "web_ui/static/js/app.js", "README.md"):
         assert "explore" not in Path(path).read_text(), path
 
 

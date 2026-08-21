@@ -207,28 +207,35 @@ confirmation dialog at all.
 
 ## Working the app by voice alone
 
-**Status: partly built (`set_theme`), the rest designed.**
+**Status: built.** See `agent_server/tools/app_settings.py`.
 
-The goal that makes this app what it claims to be: every setting reachable by
-asking. Light and dark, accent colour, zoom, read-aloud on and off, which voice,
-volume and speed, microphone, renaming and deleting projects.
+Five tools rather than the one `change_setting(name, value)` sketched here
+originally. The reasoning for one tool was that a dozen schemas cost context on
+every request; the reasoning against it is that a single tool taking a setting
+*name* is a tool whose whole surface is a string the model has to get exactly
+right, and the failure is silent. Grouping them by what somebody would say in
+one breath -- appearance, voice, sounds -- costs a few hundred tokens and turns
+"a bit louder and a different voice" into one call.
 
-One tool rather than a dozen -- `change_setting(name, value)` over the same
-named settings the manager prompt already lists -- because a dozen schemas cost
-context on every single request for something used once a week.
+They are the **manager's** tools only. A project's assistant builds the project;
+every schema it carries is context spent on every request it makes, and asked to
+change the voice it says the Project Manager does that, which is one sentence
+and correct.
 
-**The trap, and it is the important part.** Settings tools must respect the
-parental lock, or they *are* the way around it. A child asking the assistant to
-turn child mode off, switch the model, or reveal a key has to be refused exactly
-as the Settings page refuses it. The gate already exists; the tool has to be
-routed through the same one rather than reaching for `set_setting` itself.
-
-See "Settings should not be a page" below: the hole this leaves is that Settings
-is the one screen in the app where nobody is listening.
+The trap this file warned about held up: the tool for child mode raises the
+password dialog and goes no further, and the child's own assistant is not
+offered it at all. API keys are not a tool and will not be -- a key pasted into
+a chat is written into the history, sent to the model, and folded into the next
+summary.
 
 ## Settings should not be a page
 
-**Status: designed, the groundwork done. Wanted.**
+**Status: built.** The panel slides over the chat and the chat stays usable
+underneath it. Option (1) below was taken -- the manager got the settings tools
+-- and option (2), an ask-line inside the panel, has not been needed.
+
+The notes below are kept for the reasoning, which still applies to anything else
+that wants to be a destination.
 
 Settings is a destination, so going there ends the conversation: the draft in the
 composer, the scroll position, the thing you were halfway through explaining.
@@ -429,3 +436,25 @@ committing, and take the domain and the GitHub org the same day.
   machine in child mode.
 - **The manager can write files**, so a plan can be drafted into a project from
   the home screen.
+- **The whole settings page as sentences** — appearance, voice, sounds, child
+  mode, removing projects. Manager only; API keys and the parent password
+  deliberately excluded.
+- **Child mode is marked on the bar** in words rather than an icon, because
+  every icon for this is a teddy bear and a teenager building a game does not
+  need one.
+- **Removing projects and turning child mode on are proposals**, not actions.
+  The tool puts the names or the password box on screen and the person at the
+  keyboard answers it.
+- **An expanded block can be shut by clicking it**, and no block can be taller
+  than the screen. A fenced code block had no cap at all: 540 pixels of an
+  8,855-pixel file were on screen and the rest was scroll.
+- **The speech models are downloaded rather than described.**
+  `agent_server/downloads.py`, run by the installer and by the assistant. The
+  instruction used to be "put kokoro-v1.0.onnx and voices-v1.0.bin in
+  ~/models/tts", which is not a sentence anybody this app is for can act on.
+- **An install ends with something to click** — an applications-menu entry, a
+  Start-menu batch file, an Applications folder command — and repairs a Python
+  that is too new rather than reporting it.
+- **A turn survives losing the connection.** The message stays on screen, the
+  page waits half a minute for the app to come back, and picks the turn up
+  again by itself if it does.

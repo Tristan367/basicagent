@@ -11,7 +11,7 @@
    * luminance change this app can produce. The transition class is added only
    * for the length of the switch, so nothing else is ever slowed by it, and
    * only when the theme actually changed. Shared by the settings buttons, the
-   * welcome dialog, and the assistant's own `set_theme`. */
+   * welcome dialog, and the assistant's own `set_appearance`. */
   window.__shiftTheme = function (theme) {
     const root = document.documentElement;
     if (!theme || root.dataset.theme === theme) return;
@@ -1883,14 +1883,20 @@
     webfetch: 'Looking up',
     websearch: 'Searching the web',
     task: 'Researching',
-    explore: 'Looking around',
     browser: 'Checking the website',
     capture: 'Looking at the screen',
     create_project: 'Creating project',
     open_project: 'Opening project',
     rename_project: 'Renaming project',
-    delete_project: 'Removing project',
+    delete_projects: 'Getting those projects together',
     list_projects: 'Listing projects',
+    assign_project: 'Moving project',
+    preview: 'Opening your project',
+    show_settings: 'Checking the settings',
+    set_appearance: 'Changing how it looks',
+    set_voice: 'Changing the voice',
+    set_sounds: 'Changing the sounds',
+    set_child_mode: 'Child mode',
   };
 
   // ── What the assistant is doing, while it does it ─────────────────────────
@@ -1908,7 +1914,7 @@
     bash: 'run', preview: 'run',
     read: 'look', grep: 'look', glob: 'look',
     webfetch: 'web', websearch: 'web',
-    task: 'think', explore: 'think',
+    task: 'think',
     browser: 'see', capture: 'see',
     create_project: 'project', open_project: 'project', rename_project: 'project',
     delete_projects: 'project', list_projects: 'project', assign_project: 'project',
@@ -2295,11 +2301,11 @@
     }
     if (name === 'webfetch') return ' a webpage';
     if (name === 'websearch') return a.query ? ' for ' + clip(a.query, 28) : '';
-    if (name === 'task' || name === 'explore') {
+    if (name === 'task') {
       return a.description ? ' ' + clip(a.description, 28) : '';
     }
     if (name === 'create_project' || name === 'open_project' ||
-        name === 'rename_project' || name === 'delete_project') {
+        name === 'rename_project' || name === 'assign_project') {
       return a.name ? ' ' + clip(a.name, 28) : '';
     }
     return '';

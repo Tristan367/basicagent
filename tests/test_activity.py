@@ -130,6 +130,25 @@ def test_every_tool_the_app_registers_has_a_family():
     assert not missing, f"no family for: {missing}"
 
 
+def test_every_tool_the_app_registers_has_a_status_line():
+    """The one line the user actually sees while the assistant works. A tool
+    that is not in this table shows "Working...", which says nothing -- and a
+    line left behind under an old tool's name never shows at all. Both had
+    happened: `delete_project` was renamed and its line stayed, so removing
+    projects showed "Working..." and the five settings tools showed the same."""
+    import re
+
+    from agent_server.tools.registry import TOOLS
+
+    js = _app_js()
+    block = js[js.index("const TOOL_STATUS = {"):]
+    block = block[:block.index("\n  };")]
+    named = set(re.findall(r"^\s{4}(\w+):", block, re.M))
+
+    assert not sorted(set(TOOLS) - named), f"no status line for: {sorted(set(TOOLS) - named)}"
+    assert not sorted(named - set(TOOLS)), f"a status line for nothing: {sorted(named - set(TOOLS))}"
+
+
 def test_the_browser_gets_the_same_table_the_server_uses():
     """The browser counts events as they arrive and the server folds them back
     from the database. Two copies of this table would drift the first time a
