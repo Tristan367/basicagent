@@ -142,8 +142,12 @@ def test_the_browser_gets_the_same_table_the_server_uses():
 
     app_js = Path("web_ui/static/js/app.js").read_text()
     assert "getElementById('activity-families')" in app_js
-    # And no second hard-coded copy of the glyphs.
-    assert "'wrote a file'" not in app_js and '"wrote a file"' not in app_js
+    # And no second hard-coded copy of the wording. Comments stripped first:
+    # they quote it to explain where it comes from, which is not a copy of it.
+    import re
+
+    code = re.sub(r"/\*.*?\*/|//[^\n]*", "", app_js, flags=re.S)
+    assert "'wrote a file'" not in code and '"wrote a file"' not in code
 
     # It has to survive being embedded in a page.
     assert "</script>" not in json.dumps(activity.FAMILIES)
@@ -169,7 +173,7 @@ def test_the_live_strip_is_appended_rather_than_put_above_the_reply():
     js = _app_js()
     block = js[js.index("function activityStrip()"):]
     block = block[:block.index("function noteToolDone")]
-    assert "messages.appendChild(el)" in block
+    assert "messages.appendChild(wrap)" in block
     assert "insertBefore" not in block, "the strip goes above the words again"
 
 
@@ -196,15 +200,167 @@ def test_what_the_assistant_is_doing_is_not_in_the_composer():
 
 
 def test_the_working_row_stays_the_last_thing_in_the_conversation():
+    """Everything added during a turn has to put it back, or it ends up buried
+    somewhere up the conversation saying the assistant is still working."""
     js = _app_js()
     assert "function keepWorkingLast()" in js
-    # Everything added during a turn has to put it back, or it ends up buried.
-    for after in ("messages.appendChild(el);", "appendAction(ev.open_session"):
-        idx = js.index(after)
-        assert "keepWorkingLast()" in js[idx:idx + 320], f"nothing restores it after {after}"
+    # Every append into the conversation has to be followed by it, inside the
+    # same function. Measured against the next `\n  }` -- the close of a
+    # top-level function in this file, which is indented two spaces.
+    for where in ("function bubble(role)", "function activityStrip()",
+                  "function appendAction("):
+        start = js.index(where)
+        body = js[start:js.index("\n  }", start)]
+        assert "messages.appendChild(" in body, f"{where} no longer appends"
+        assert "keepWorkingLast()" in body, f"nothing restores it in {where}"
 
 
 def test_the_spinner_is_slow_enough_to_read():
     js = _app_js()
     line = next(ln for ln in js.splitlines() if "SPIN_MS" in ln and "=" in ln)
     assert int(line.split("=")[1].strip().rstrip(";")) >= 200
+
+
+# ── what it actually did, when you ask ──────────────────────────────────────
+#
+# The chips say "read 4 files". Opening the group says which four, and shows the
+# diff for anything that changed. Shut to begin with, always: somebody who does
+# not want to know what a tool is never has to find out, and somebody who does
+# is one press away.
+
+
+def test_a_file_tool_is_named_by_its_file_not_its_whole_path():
+    """The title is the entire path, elided from the left to fit -- fine as a
+    tooltip, useless as a list of what happened."""
+    from agent_server.activity import short_label
+
+    assert short_label(
+        "read", "…e/tristan/Projects/custom-code-agent-test-1/chaos/script.js (436 lines)"
+    ) == "script.js (436 lines)"
+    assert short_label("write", "/home/me/thing/hello.txt (1 lines)") == "hello.txt (1 lines)"
+
+
+def test_everything_else_keeps_the_title_it_gave_itself():
+    """`bash` gives the command, `grep` the pattern, `browser` the steps. Those
+    are already the right answer and cutting them at a slash would ruin them."""
+    from agent_server.activity import short_label
+
+    for tool, title in (
+        ("bash", 'git commit -m "Add the site"'),
+        ("grep", "'prefers-reduced-motion|@media' (13 matches)"),
+        ("browser", "goto, click, expect"),
+        ("webfetch", "https://example.com (164 chars)"),
+    ):
+        assert short_label(tool, title) == title
+
+
+def test_a_group_carries_what_each_call_was():
+    from agent_server.activity import group
+
+    out = group([
+        {"role": "user", "content": "go"},
+        {"role": "tool", "tool_name": "read", "tool_title": "/a/b/index.html (9 lines)"},
+        {"role": "tool", "tool_name": "edit", "tool_title": "/a/b/style.css",
+         "diff": "@@ -1 +1 @@\n-a\n+b\n", "duration_ms": 12},
+        {"role": "assistant", "content": "done"},
+    ])
+    calls = out[1]["calls"]
+    assert [c["label"] for c in calls] == ["index.html (9 lines)", "style.css"]
+    assert calls[1]["diff"].startswith("@@")
+    assert calls[1]["ms"] == 12
+    assert calls[0]["failed"] is False
+
+
+def test_a_call_that_failed_says_so():
+    from agent_server.activity import group
+
+    out = group([
+        {"role": "user", "content": "go"},
+        {"role": "tool", "tool_name": "bash", "tool_title": "npm test", "is_error": 1},
+        {"role": "assistant", "content": "hmm"},
+    ])
+    assert out[1]["calls"][0]["failed"] is True
+
+
+def test_a_huge_diff_is_clipped_rather_than_carried_whole():
+    """Every diff in a conversation held in the page at once is a lot of page.
+    This is a summary of the work; the record of it is the project's own git
+    history."""
+    from agent_server.activity import MAX_DIFF_CHARS, detail
+
+    d = detail({"tool_name": "write", "tool_title": "/a/big.txt", "diff": "+x\n" * 40_000})
+    assert len(d["diff"]) == MAX_DIFF_CHARS
+    assert d["clipped"] is True
+
+
+def test_the_calls_are_not_called_items():
+    """Jinja resolves `m.items` on a dict to dict.items -- the method, not the
+    key -- so naming it that rendered a bound method into the page and blew up
+    on the way to JSON. Caught in the browser, not by a test, which is why
+    there is one now."""
+    from agent_server.activity import group
+
+    out = group([
+        {"role": "user", "content": "go"},
+        {"role": "tool", "tool_name": "read", "tool_title": "/a/b.txt"},
+        {"role": "assistant", "content": "done"},
+    ])
+    assert "items" not in out[1]
+    assert "calls" in out[1]
+
+
+def test_a_group_opens_shut_and_the_list_is_built_by_the_browser():
+    """A long conversation carries a great many of these. Building every diff
+    up front costs a page nobody has asked to see."""
+    import re
+    from pathlib import Path
+
+    tpl = Path("web_ui/templates/chat_messages.html").read_text()
+    block = tpl[tpl.index("m.kind == 'activity'"):tpl.index("m.role == 'tool'")]
+    tag = re.search(r'<details class="did"([^>]*)>', block)
+    assert tag, "the group is not a disclosure any more"
+    assert "open" not in tag.group(1), "the group starts open"
+    assert "data-items=" in block and "did-list" not in block, \
+        "the list is rendered here rather than built on demand"
+
+
+def test_thinking_is_kept_but_shut():
+    """It was thrown away entirely, which is the wrong call for anybody trying
+    to work out why the assistant did what it did."""
+    from pathlib import Path
+
+    tpl = Path("web_ui/templates/chat_messages.html").read_text()
+    block = tpl[tpl.index("m.role == 'assistant'"):]
+    assert "reasoning_content" in block
+    assert '<details class="thinking">' in block
+    assert "<details open" not in block
+
+
+def test_a_group_says_how_many_of_its_calls_failed():
+    """The chips count work attempted, so a turn where everything failed still
+    shows what was tried rather than reading as though nothing happened. But
+    "wrote a file", when the write was refused, is a lie on its own."""
+    out = activity.group([
+        {"role": "user", "content": "go"},
+        tool("bash", tool_title="mkdir x", is_error=1),
+        tool("bash", tool_title="ls", is_error=1),
+        tool("bash", tool_title="pwd"),
+        {"role": "assistant", "content": "hmm"},
+    ])
+    strip = strips(out)[0]
+    assert strip["failures"] == 2
+    assert strip["sentence"] == "I ran 3 commands. 2 of those failed."
+
+
+def test_one_failure_reads_as_one():
+    assert activity.sentence({"look": 2}, 1) == "I read 2 files. One of those failed."
+    assert activity.sentence({"look": 2}, 0) == "I read 2 files."
+
+
+def test_a_group_where_nothing_failed_says_nothing_about_it():
+    out = activity.group([
+        {"role": "user", "content": "go"}, tool("read"),
+        {"role": "assistant", "content": "ok"},
+    ])
+    assert strips(out)[0]["failures"] == 0
+    assert "failed" not in strips(out)[0]["sentence"]

@@ -30,10 +30,17 @@
             {% if not is_home %}
             <button type="button" class="app-bar-btn home-btn" data-nav="/"
                     aria-label="Project Manager" title="Project Manager">
+                {# Both walls vertical and the same distance from the middle.
+                   The first draft closed the outline with `z`, which drew a
+                   line from the bottom of the left wall back to the eave --
+                   two different x values, so the whole left side leaned. #}
                 <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
                     <path fill="none" stroke="currentColor" stroke-width="1.9"
                           stroke-linejoin="round" stroke-linecap="round"
-                          d="M3.4 10.6 12 3.6l8.6 7V20a1 1 0 0 1-1 1h-4.4v-6H9.8v6H5.4a1 1 0 0 1-1-1z"/>
+                          d="M3.2 9.6 12 2.7l8.8 6.9V19a2 2 0 0 1-2 2H5.2a2 2 0 0 1-2-2Z"/>
+                    <path fill="none" stroke="currentColor" stroke-width="1.9"
+                          stroke-linejoin="round" stroke-linecap="round"
+                          d="M9.4 21v-7.2h5.2V21"/>
                 </svg>
                 {# The words go when the bar runs out of room, and the house
                    carries it alone. The name stays on the button either way, so
@@ -106,7 +113,22 @@
            chat page previously had no heading at all, so a screen reader user
            navigating by heading landed on a page with no structure to hold on
            to -- and the "Jump back in" <h2> below had no <h1> above it. #}
-        <h1 class="app-bar-title">{% block app_title %}Assistant{% endblock %}</h1>
+        <h1 class="app-bar-title">
+            {# The same house, on the page it points at. Everywhere else it is
+               the way back; here it is where you are, so it takes the title's
+               colour rather than the button's. Decoration only -- the heading
+               already says Project Manager, and a screen reader saying "home
+               graphic, Project Manager" would just be in the way. #}
+            {% if is_home %}
+            <svg class="title-home" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path fill="none" stroke="currentColor" stroke-width="1.9"
+                      stroke-linejoin="round" stroke-linecap="round"
+                      d="M3.2 9.6 12 2.7l8.8 6.9V19a2 2 0 0 1-2 2H5.2a2 2 0 0 1-2-2Z"/>
+                <path fill="none" stroke="currentColor" stroke-width="1.9"
+                      stroke-linejoin="round" stroke-linecap="round"
+                      d="M9.4 21v-7.2h5.2V21"/>
+            </svg>
+            {% endif %}{% block app_title %}Assistant{% endblock %}</h1>
         <div class="app-bar-side app-bar-right">
             <button type="button" class="app-bar-btn quit-x" id="quit-btn" title="Quit" aria-label="Quit">
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">

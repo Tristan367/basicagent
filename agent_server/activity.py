@@ -67,14 +67,57 @@ def chips(counts: dict[str, int]) -> list[dict]:
     return out
 
 
-def sentence(counts: dict[str, int]) -> str:
+def sentence(counts: dict[str, int], failures: int = 0) -> str:
     """The same thing as one spoken line, for anyone who is listening."""
     parts = [c["text"] for c in chips(counts)]
     if not parts:
         return ""
-    if len(parts) == 1:
-        return f"I {parts[0]}."
-    return "I " + ", ".join(parts[:-1]) + " and " + parts[-1] + "."
+    said = f"I {parts[0]}." if len(parts) == 1 else (
+        "I " + ", ".join(parts[:-1]) + " and " + parts[-1] + "."
+    )
+    if failures:
+        said += " One of those failed." if failures == 1 else f" {failures} of those failed."
+    return said
+
+
+def short_label(tool: str, title: str) -> str:
+    """What one tool call is called, in the list you get when you open a group.
+
+    A file tool's title is its whole path, elided from the left to fit -- fine
+    as a tooltip, useless as a list of what happened. The last segment is the
+    part a person recognises, and the "(436 lines)" the tool appended to it is
+    worth keeping. Everything else already titles itself well: `bash` gives the
+    command, `grep` the pattern, `browser` the steps it ran.
+    """
+    title = (title or "").strip()
+    if tool in _PATH_TOOLS and "/" in title:
+        return title.rsplit("/", 1)[-1]
+    return title or tool or "did something"
+
+
+_PATH_TOOLS = {"read", "write", "edit"}
+
+# Every diff in a conversation, held in the page at once, is a lot of page. This
+# is a summary of the work rather than the record of it -- the whole thing is in
+# the project's own history, which is what git is there for.
+MAX_DIFF_CHARS = 6000
+
+
+def detail(m: dict) -> dict:
+    """One tool call, as the expanded view needs it."""
+    tool = m.get("tool_name") or ""
+    diff = (m.get("diff") or "")
+    return {
+        "family": family_of(tool),
+        "glyph": FAMILIES[family_of(tool)]["glyph"],
+        "tool": tool,
+        "label": short_label(tool, m.get("tool_title") or ""),
+        "full": (m.get("tool_title") or "").strip(),
+        "diff": diff[:MAX_DIFF_CHARS],
+        "clipped": len(diff) > MAX_DIFF_CHARS,
+        "failed": bool(m.get("is_error")),
+        "ms": m.get("duration_ms") or 0,
+    }
 
 
 def _is_working(m: dict) -> bool:
@@ -101,17 +144,31 @@ def group(messages: list[dict]) -> list[dict]:
     """
     out: list[dict] = []
     counts: dict[str, int] = {}
+    calls: list[dict] = []
 
     def flush():
         if counts:
-            out.append({"kind": "activity", "chips": chips(counts), "sentence": sentence(counts)})
+            # A call that failed still counts towards "read 4 files" -- the work
+            # was attempted, and a turn where everything failed would otherwise
+            # show no chips at all and read as though nothing had happened. But
+            # "wrote a file" on its own, when the write was refused, is a lie,
+            # so the group says how many did not work and the list inside marks
+            # which.
+            failed = sum(1 for c in calls if c["failed"])
+            out.append({"kind": "activity", "chips": chips(counts),
+                        "sentence": sentence(counts, failed), "calls": list(calls),
+                        "failures": failed})
             counts.clear()
+            calls.clear()
 
     for m in messages:
         if _is_working(m):
             if m.get("role") == "tool":
                 family = family_of(m.get("tool_name"))
                 counts[family] = counts.get(family, 0) + 1
+                # Kept alongside the count, so opening the group can say which
+                # four files rather than only that there were four.
+                calls.append(detail(m))
             # A tool that offers the user a button still has to be drawn, so it
             # survives the fold rather than being swallowed by it.
             if m.get("open_session"):

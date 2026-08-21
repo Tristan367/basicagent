@@ -1208,6 +1208,8 @@
     inner.appendChild(content);
     wrap.appendChild(inner);
     messages.appendChild(wrap);
+    // Every message goes above the "what I am doing" row, never below it.
+    keepWorkingLast();
     return content;
   }
 
@@ -1229,6 +1231,7 @@
     button.textContent = name ? 'Open ' + name + ' \u2192' : 'Open this project \u2192';
     wrap.appendChild(button);
     messages.appendChild(wrap);
+    keepWorkingLast();
     scrollToBottom();
     return button;
   }
@@ -1482,15 +1485,28 @@
   let activity = null;
 
   function activityStrip() {
-    if (activity && activity.el.isConnected) return activity;
-    const el = document.createElement('div');
+    if (activity && activity.wrap.isConnected) return activity;
+    // Same shape as the one the template renders for a conversation loaded from
+    // the database: a shut disclosure whose summary is the chips.
+    const wrap = document.createElement('details');
+    wrap.className = 'did';
+    const summary = document.createElement('summary');
+    summary.className = 'did-summary';
+    const el = document.createElement('span');
     el.className = 'activity';
     // Not a live region. A sighted user watches it fill in; a screen reader
     // gets one tidy sentence at the end of the turn instead of a running
     // commentary of every file that was opened.
-    el.setAttribute('role', 'list');
-    el.setAttribute('aria-label', 'What the assistant did');
-    activity = { el, counts: {}, chips: {} };
+    el.setAttribute('aria-hidden', 'true');
+    const caret = document.createElement('span');
+    caret.className = 'did-caret';
+    caret.textContent = '▾';
+    summary.appendChild(el);
+    const body = document.createElement('div');
+    body.className = 'did-body';
+    wrap.appendChild(summary);
+    wrap.appendChild(body);
+    activity = { wrap, el, caret, body, counts: {}, chips: {}, items: [] };
     // At the end, always.
     //
     // It used to go in *before* the assistant's bubble, and the bubble was one
@@ -1503,37 +1519,198 @@
     // Now the turn reads in the order it happened: said this, did that, said
     // the next thing. Which is also exactly how it reads when the conversation
     // is loaded back from the database -- the two used to disagree.
-    messages.appendChild(el);
+    messages.appendChild(wrap);
     keepWorkingLast();
     return activity;
   }
 
-  function noteToolDone(name) {
+  function noteToolDone(ev) {
+    const name = ev.name;
     const family = familyOf(name);
     const strip = activityStrip();
     strip.counts[family] = (strip.counts[family] || 0) + 1;
     const n = strip.counts[family];
     const spec = FAMILY[family] || FAMILY.run;
+
+    // The record of this one call, in the shape the builder wants -- the same
+    // shape the server puts in `data-items` for a conversation loaded back.
+    const diff = ev.diff || '';
+    strip.items.push({
+      family: family,
+      glyph: spec.glyph,
+      tool: name,
+      label: shortLabel(name, ev.title || ''),
+      full: (ev.title || '').trim(),
+      diff: diff.slice(0, MAX_DIFF_CHARS),
+      clipped: diff.length > MAX_DIFF_CHARS,
+      failed: !!ev.is_error,
+      ms: ev.duration_ms || 0,
+    });
+    strip.body.dataset.items = JSON.stringify(strip.items);
+    // Rebuilt if it is already open -- somebody can leave a group open and
+    // watch the list fill in while the turn runs.
+    if (strip.wrap.open) {
+      strip.body.dataset.built = '';
+      buildDid(strip.body);
+    }
+
     let chip = strip.chips[family];
     if (!chip) {
       chip = document.createElement('span');
       chip.className = 'chip chip-' + family;
-      chip.setAttribute('role', 'listitem');
-      chip.innerHTML = '<span class="chip-glyph" aria-hidden="true"></span><span class="chip-text"></span>';
+      chip.innerHTML = '<span class="chip-glyph"></span><span class="chip-text"></span>';
       chip.querySelector('.chip-glyph').textContent = spec.glyph;
       strip.chips[family] = chip;
       strip.el.appendChild(chip);
     }
     chip.querySelector('.chip-text').textContent =
       (n === 1 ? spec.one : spec.many.replace('{n}', n));
+
+    // A call that failed still counts towards "read 4 files" -- the work was
+    // attempted, and a turn where everything failed would otherwise show no
+    // chips and read as though nothing had happened. But "wrote a file", when
+    // the write was refused, is a lie, so say how many did not work.
+    const failures = strip.items.filter((x) => x.failed).length;
+    if (failures) {
+      if (!strip.failChip) {
+        strip.failChip = document.createElement('span');
+        strip.failChip.className = 'chip chip-failed';
+        strip.el.appendChild(strip.failChip);
+      }
+      strip.failChip.textContent = failures + ' failed';
+      strip.el.appendChild(strip.failChip);
+    }
+
     // Retriggered by removing and re-adding, so the tenth file lands as
     // visibly as the first.
     chip.classList.remove('chip-pop');
     void chip.offsetWidth;
     chip.classList.add('chip-pop');
+    // Always last, however many kinds of work turn up.
+    strip.el.appendChild(strip.caret);
     cueTool(family);
     scrollToBottom();
   }
+
+  /* ── What it actually did, when you ask ───────────────────────────────────
+   *
+   * The chips say "read 4 files". Opening the group says which four, and shows
+   * the diff for anything that changed. Everything is shut to begin with: a
+   * user who does not want to know what a tool is never has to find out, and
+   * this is meant to be an agent a professional could work in, where "what did
+   * it change" is the first question.
+   *
+   * Built here rather than in the template, and only when a group is first
+   * opened, so a long conversation is not carrying every diff in the page from
+   * the moment it loads. The same builder does the live case, so the two cannot
+   * drift apart the way the ordering did.
+   */
+  const PATH_TOOLS = { read: 1, write: 1, edit: 1 };
+  // Matches agent_server/activity.py's MAX_DIFF_CHARS. Every diff in a
+  // conversation held in the page at once is a lot of page, and this is a
+  // summary of the work rather than the record of it -- the whole thing is in
+  // the project's own history, which is what git is there for.
+  const MAX_DIFF_CHARS = 6000;
+
+  // Matches agent_server/activity.py's short_label.
+  function shortLabel(tool, title) {
+    title = (title || '').trim();
+    if (PATH_TOOLS[tool] && title.indexOf('/') !== -1) {
+      return title.slice(title.lastIndexOf('/') + 1);
+    }
+    return title || tool || 'did something';
+  }
+
+  function tookHowLong(ms) {
+    if (!ms || ms < 1000) return '';
+    return ms < 10000 ? (ms / 1000).toFixed(1) + 's' : Math.round(ms / 1000) + 's';
+  }
+
+  // A unified diff, coloured. Deliberately not a full diff viewer: the lines
+  // are already labelled by their first character, and reading it is what
+  // matters, not being able to act on it.
+  function renderDiff(text, clipped) {
+    const pre = document.createElement('pre');
+    pre.className = 'diff';
+    const lines = text.split('\n');
+    for (const line of lines) {
+      const row = document.createElement('span');
+      const c = line[0];
+      row.className = 'diff-line' + (
+        line.startsWith('@@') ? ' diff-hunk'
+          : c === '+' ? ' diff-add'
+            : c === '-' ? ' diff-del' : '');
+      row.textContent = line || ' ';
+      pre.appendChild(row);
+    }
+    if (clipped) {
+      const more = document.createElement('span');
+      more.className = 'diff-line diff-hunk';
+      more.textContent = '… the rest is in the project’s own history';
+      pre.appendChild(more);
+    }
+    return pre;
+  }
+
+  function buildDid(body) {
+    if (!body || body.dataset.built === '1') return;
+    body.dataset.built = '1';
+    let items = [];
+    try { items = JSON.parse(body.dataset.items || '[]'); } catch (e) { items = []; }
+    body.textContent = '';
+    if (!items.length) {
+      body.textContent = 'Nothing was recorded for this.';
+      return;
+    }
+    const list = document.createElement('ol');
+    list.className = 'did-list';
+    for (const it of items) {
+      const li = document.createElement('li');
+      li.className = 'did-item chip-' + it.family + (it.failed ? ' did-failed' : '');
+
+      const head = document.createElement('div');
+      head.className = 'did-head';
+      const glyph = document.createElement('span');
+      glyph.className = 'did-glyph';
+      glyph.setAttribute('aria-hidden', 'true');
+      glyph.textContent = it.glyph || '';
+      const what = document.createElement('span');
+      what.className = 'did-what';
+      what.textContent = it.label || '';
+      // The whole path as the tooltip: the line shows the part you recognise,
+      // and the rest is there when you need to know which of two same-named
+      // files it was.
+      if (it.full && it.full !== it.label) what.title = it.full;
+      head.appendChild(glyph);
+      head.appendChild(what);
+      if (it.failed) {
+        const bad = document.createElement('span');
+        bad.className = 'did-bad';
+        bad.textContent = 'failed';
+        head.appendChild(bad);
+      }
+      const took = tookHowLong(it.ms);
+      if (took) {
+        const t = document.createElement('span');
+        t.className = 'did-ms';
+        t.textContent = took;
+        head.appendChild(t);
+      }
+      li.appendChild(head);
+      if (it.diff) li.appendChild(renderDiff(it.diff, it.clipped));
+      list.appendChild(li);
+    }
+    body.appendChild(list);
+  }
+
+  // Built on the way open, once. `toggle` fires for every details on the page
+  // as the user works through a conversation, and most are never opened.
+  document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (d.tagName === 'DETAILS' && d.classList.contains('did') && d.open) {
+      buildDid(d.querySelector('.did-body'));
+    }
+  }, true);
 
   // One sentence, for the announcer and for anyone who cannot see the chips.
   function activitySentence() {
@@ -1542,17 +1719,26 @@
       const spec = FAMILY[family] || FAMILY.run;
       return n === 1 ? spec.one : spec.many.replace('{n}', n);
     });
-    if (parts.length === 1) return 'I ' + parts[0] + '.';
-    return 'I ' + parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] + '.';
+    let said = parts.length === 1
+      ? 'I ' + parts[0] + '.'
+      : 'I ' + parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] + '.';
+    const failures = activity.items.filter((x) => x.failed).length;
+    if (failures) {
+      said += failures === 1 ? ' One of those failed.' : ' ' + failures + ' of those failed.';
+    }
+    return said;
   }
 
   function finishActivity() {
     if (!activity) return;
     if (!Object.keys(activity.counts).length) {
-      activity.el.remove();
+      activity.wrap.remove();
     } else {
       activity.el.classList.add('activity-done');
-      activity.el.setAttribute('aria-label', activitySentence());
+      // On the summary rather than the chips: the chips are hidden from a
+      // screen reader, and this is the thing it lands on.
+      activity.wrap.querySelector('.did-summary')
+        .setAttribute('aria-label', activitySentence() + ' Open for details.');
     }
     activity = null;
   }
@@ -1900,7 +2086,6 @@
           finishActivity();
           assistantEl = bubble('assistant');
           assistantBuffer = '';
-          keepWorkingLast();
         }
         assistantBuffer += ev.text;
         turnText += ev.text;
@@ -1914,11 +2099,10 @@
         setWorking(statusForTool(ev.name, ev.args));
         break;
       case 'tool_end':
-        noteToolDone(ev.name);
+        noteToolDone(ev);
         if (ev.open_session) {
           pendingOpen = ev.open_session;
           appendAction(ev.open_session, ev.open_session_name);
-          keepWorkingLast();
         }
         setWorking('Thinking\u2026');
         break;
@@ -2183,17 +2367,26 @@
     // hidden element measures zero, and a zero-height button always looks like
     // it fits, so it would flicker back and forth every time this ran.
     playBtn.classList.remove('no-room');
-    const width = playBtn.offsetWidth;
+    playBtn.classList.remove('play-fab-tight');
     const height = playBtn.offsetHeight;
 
     const contentLeft = inner.getBoundingClientRect().left;
     const composer = wrap.getBoundingClientRect();
     playBtn.style.bottom = (window.innerHeight - composer.top + gap) + 'px';
+
+    // Down to the glyph alone when the gutter is too narrow for the word. The
+    // pill is 118px and the gutter beside a 960px column on a 1150px window is
+    // 95, so it sat on top of the conversation -- and the thing it covered was
+    // the last line the assistant said.
+    if (contentLeft - gap - playBtn.offsetWidth < gap) {
+      playBtn.classList.add('play-fab-tight');
+    }
     // The floor is the composer's own left edge, not the window's. With the
     // settings panel open the chat is pushed right by the width of the panel,
     // and measured against the window this button sat underneath it -- hidden
     // behind the one thing you are meant to be able to talk past.
-    playBtn.style.left = Math.max(composer.left + gap, contentLeft - gap - width) + 'px';
+    playBtn.style.left =
+      Math.max(composer.left + gap, contentLeft - gap - playBtn.offsetWidth) + 'px';
 
     // On a narrow screen the settings sheet comes up from the bottom and pushes
     // the composer right up under the app bar, leaving no band between the two

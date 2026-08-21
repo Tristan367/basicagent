@@ -8,19 +8,37 @@
     </div>
   {% elif m.kind == 'activity' %}
     {#
-      What the assistant did between the message above and the one below. The
-      aria-label carries the whole thing as one sentence, so somebody reading
-      the history back gets "I read 3 files and ran a command" rather than four
-      separate fragments to reassemble.
+      What the assistant did between the message above and the one below, and --
+      when you open it -- each thing it did, one line each, with the diff for
+      anything it changed.
+
+      Shut by default, always. Somebody who does not want to know what a tool is
+      never has to find out, and somebody who does is one press away. The list
+      inside is built by the browser from the JSON below rather than rendered
+      here: a long conversation carries a great many of these, and building them
+      all up front costs a page nobody has asked to see.
+
+      The aria-label carries the whole group as one sentence, so a screen reader
+      gets "I read 3 files and ran a command" rather than four fragments to
+      reassemble before deciding whether to open anything.
     #}
-    <div class="activity activity-done" role="list" aria-label="{{ m.sentence }}">
-        {% for c in m.chips %}
-        <span class="chip chip-{{ c.family }}" role="listitem">
-            <span class="chip-glyph" aria-hidden="true">{{ c.glyph }}</span>
-            <span class="chip-text">{{ c.text }}</span>
-        </span>
-        {% endfor %}
-    </div>
+    <details class="did">
+        <summary class="did-summary" aria-label="{{ m.sentence }} Open for details.">
+            <span class="activity activity-done" aria-hidden="true">
+                {% for c in m.chips %}
+                <span class="chip chip-{{ c.family }}">
+                    <span class="chip-glyph">{{ c.glyph }}</span>
+                    <span class="chip-text">{{ c.text }}</span>
+                </span>
+                {% endfor %}
+                {% if m.failures %}
+                <span class="chip chip-failed">{{ m.failures }} failed</span>
+                {% endif %}
+                <span class="did-caret">&#9662;</span>
+            </span>
+        </summary>
+        <div class="did-body" data-items='{{ m.calls | tojson }}'></div>
+    </details>
   {% elif m.role == 'tool' %}
     {% if m.open_session %}
     <div class="message action" id="msg-{{ m.id }}">
@@ -39,6 +57,20 @@
         <div class="bubble"><div class="content" data-markdown>{{ m.content }}</div></div>
     </div>
   {% elif m.role == 'assistant' %}
+    {#
+      Thinking, kept but shut.
+
+      It was thrown away entirely before, which is the wrong call for anybody
+      trying to work out why the assistant did what it did -- and this is meant
+      to be a coding agent a professional could work in. Shut by default, and
+      quiet enough that somebody who does not want it never notices it is there.
+    #}
+    {% if (m.reasoning_content or '') | trim %}
+    <details class="thinking">
+        <summary>Thinking</summary>
+        <div class="thinking-text">{{ m.reasoning_content }}</div>
+    </details>
+    {% endif %}
     {% if (m.content or '') | trim %}
     <div class="message assistant" id="msg-{{ m.id }}">
         <span class="sr-only">Assistant said:</span>

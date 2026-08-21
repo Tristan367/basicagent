@@ -196,18 +196,17 @@ body {
    of padding either side, for the longest label in the interface -- so the
    words are smaller and closer in now.
 
-   The house is in the accent colour and the words are not. Colouring the whole
-   button accent put it in competition with the project name on the right, which
-   is also accent and is the one thing on the bar that says where you are. A
-   coloured mark on an ordinary button says "this one is different" without
-   claiming to be the subject. */
+   The house is the same colour as the words beside it. Picked out in the accent
+   it read as a third state on a bar that already uses that colour for one
+   thing: where you are. */
 .app-bar-btn.home-btn {
     gap: 7px;
     padding: 0 12px;
     font-size: 0.88rem;
 }
-.app-bar-btn.home-btn svg { flex: none; color: var(--accent); }
-.app-bar-btn.home-btn:hover svg { color: inherit; }
+.app-bar-btn.home-btn svg { flex: none; }
+/* On the home page itself, in the heading, taking the heading's colour. */
+.title-home { flex: none; vertical-align: -3px; margin-right: 7px; }
 .app-bar-side:first-child .app-bar-btn { border-right: var(--seam) solid var(--border); }
 .app-bar-btn:hover { background: var(--accent-dim); }
 .app-bar-btn:disabled {
@@ -1583,6 +1582,16 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
                 box-shadow 0.18s ease;
 }
 .play-fab[hidden], .play-fab.no-room { display: none; }
+/* Where the gutter is too narrow for the word, the glyph carries it alone --
+   still named for a screen reader by the button's own aria-label, and still a
+   60px target. Better than a pill lying across the last line of the reply. */
+.play-fab.play-fab-tight {
+    width: 60px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+}
+.play-fab.play-fab-tight .play-fab-word { display: none; }
 .play-fab-glyph { display: grid; place-items: center; }
 /* Two glyphs in the markup, one shown. Swapping the SVG from script instead
    meant re-parsing it on every state change for no gain. */
@@ -2034,6 +2043,7 @@ html[data-theme="dark"] {
 .activity {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 6px 10px;
     margin: 2px 0 10px;
     padding: 0 2px;
@@ -2058,10 +2068,150 @@ html[data-theme="dark"] {
 .chip-think   { --chip-color: var(--fam-think); }
 .chip-see     { --chip-color: var(--fam-see); }
 .chip-project { --chip-color: var(--fam-project); }
+/* Not a family: a count of the calls in this group that did not work. The chips
+   count work attempted, so a turn where everything failed still shows what was
+   tried -- but "wrote a file", when the write was refused, needs saying. */
+.chip-failed { --chip-color: var(--danger); font-weight: 600; }
 
 /* Settled: the turn is over and these are history now, so they stop competing
    with the reply above them. */
 .activity-done .chip { opacity: 0.82; }
+
+/* ── What it actually did, when you ask ──────────────────────────────────────
+   The chips say "read 4 files". Opening the group says which four, and shows
+   the diff for anything that changed.
+
+   Shut by default, always. Somebody who does not want to know what a tool is
+   never has to find out; somebody who does is one press away. That is the whole
+   difference between this and a terminal scrolling past. */
+.did { margin: 2px 0 10px; }
+.did-summary {
+    list-style: none;
+    cursor: pointer;
+    border-radius: 10px;
+    /* A real target, not a line of text with a hit area the height of a chip. */
+    padding: 3px 4px;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+}
+.did-summary::-webkit-details-marker { display: none; }
+.did-summary:hover { background: var(--accent-dim); }
+.did-summary .activity { margin: 0; }
+/* Small, but not so small that nothing says the row can be opened. It is the
+   only invitation there is, and somebody who does not know these expand will
+   never find out by any other route. */
+.did-caret {
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    line-height: 1;
+    transition: transform 0.16s ease;
+}
+.did-summary:hover .did-caret { color: var(--accent); }
+.did[open] .did-caret { transform: rotate(180deg); }
+
+.did-body { padding: 4px 2px 2px; }
+.did-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    /* A line down the side, so a long list reads as one run of work rather
+       than a dozen unrelated rows. */
+    border-left: 2px solid var(--border);
+    padding-left: 14px;
+}
+.did-head {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    font-size: 0.92rem;
+    color: var(--text);
+}
+.did-glyph { color: var(--chip-color, var(--fam-project)); flex: none; }
+/* The name of the thing, which is often a path or a command, so it breaks
+   anywhere rather than pushing the row wider than the conversation. */
+.did-what {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.88rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.did-ms { color: var(--text-dim); font-size: 0.8rem; margin-left: auto; flex: none; }
+.did-bad {
+    color: var(--danger);
+    font-size: 0.78rem;
+    border: 1px solid var(--danger);
+    border-radius: 999px;
+    padding: 0 8px;
+    flex: none;
+}
+.did-failed .did-what { color: var(--danger); }
+
+/* ── Diffs ───────────────────────────────────────────────────────────────────
+   What changed, for anyone who wants to know. Not a diff viewer: the lines are
+   already labelled by their first character and reading them is the whole job.
+   Colour AND the leading +/- carry it, so it still works in monochrome and for
+   anyone who cannot tell these two apart. */
+.diff {
+    margin: 8px 0 0;
+    padding: 10px 0;
+    border-radius: 8px;
+    background: var(--code-bg);
+    color: var(--code-text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    /* Never taller than a screenful. A thousand-line diff should not push the
+       rest of the conversation out of reach. */
+    max-height: 60vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.diff-line {
+    display: block;
+    padding: 0 12px;
+    white-space: pre;
+}
+.diff-add { background: color-mix(in srgb, var(--fam-write) 20%, transparent); }
+.diff-del { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+.diff-hunk { color: var(--code-gutter); }
+
+/* ── Thinking ────────────────────────────────────────────────────────────────
+   Kept, but shut, and quiet enough that somebody who does not want it never
+   notices it is there. It used to be thrown away entirely, which is the wrong
+   call for anybody trying to work out why the assistant did what it did. */
+.thinking { margin: -6px 0 2px; }
+.thinking > summary {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 10px;
+    border-radius: 999px;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+}
+.thinking > summary::-webkit-details-marker { display: none; }
+.thinking > summary::before { content: "✲"; margin-right: 7px; }
+.thinking > summary:hover { background: var(--accent-dim); color: var(--accent); }
+.thinking-text {
+    margin: 4px 0 0 10px;
+    padding: 10px 14px;
+    border-left: 2px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 50vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
 
 /* ── What the assistant is doing, right now ──────────────────────────────────
    The last thing in the conversation while a turn runs, and gone the moment it

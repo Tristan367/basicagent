@@ -135,3 +135,44 @@ def test_the_separator_above_new_project_is_its_own_line(css):
     assert "border-top" not in block
     assert ".sessions-sep {" in css
     assert '<hr class="sessions-sep">' in Path("web_ui/templates/base.html").read_text()
+
+
+# ── the way home ───────────────────────────────────────────────────────────
+
+
+def test_the_house_stands_up_straight():
+    """Drawn by hand it closed with `z` from the foot of the left wall back to
+    the eave -- two different x values, so the whole left side leaned."""
+    import re
+    from pathlib import Path
+
+    page = Path("web_ui/templates/base.html").read_text()
+    roof = re.search(r'd="M([\d.]+) [\d.]+ 12 [\d.]+l([\d.]+) ', page)
+    assert roof, "the roof is not drawn eave-apex-eave any more"
+    left, run = float(roof.group(1)), float(roof.group(2))
+    assert 12 - left == run, "the eaves are not the same distance from the middle"
+
+    foot = re.search(r"H([\d.]+)a2 2 0 0 1-2 ?-2Z", page)
+    assert foot, "the left wall does not end in the corner it should"
+    assert float(foot.group(1)) - 2 == left, "the close is a diagonal, not a wall"
+
+
+def test_the_house_is_the_colour_of_the_words_beside_it(css):
+    """Picked out in the accent it read as a third state on a bar that already
+    uses that colour for one thing: where you are."""
+    block = css[css.index(".app-bar-btn.home-btn {"):]
+    block = block[:block.index(".title-home")]
+    assert "var(--accent)" not in block
+
+
+def test_the_house_is_on_the_page_it_points_at_too():
+    """Everywhere else it is the way back; on the home page it is where you
+    are, so it takes the heading's colour rather than the button's."""
+    from pathlib import Path
+
+    page = Path("web_ui/templates/base.html").read_text()
+    title = page[page.index('<h1 class="app-bar-title">'):page.index("</h1>")]
+    assert "{% if is_home %}" in title
+    assert 'class="title-home"' in title
+    # Decoration: the heading already says Project Manager.
+    assert 'aria-hidden="true"' in title
