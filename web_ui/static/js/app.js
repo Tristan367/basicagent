@@ -560,10 +560,48 @@
   let soundCues = true;
   let soundTicks = false;
   let soundVolume = 0.4;
+  // family -> pitch, filled in by the chat page from the table the server
+  // sends. Kept out here because the ticking lives out here, and the settings
+  // page never reaches the code that parses it.
+  let toolNotes = {};
   let audioCtx = null;
   let tickTimer = 0;
 
+  /* Voice always has the floor.
+   *
+   * Two reasons, and both matter. A tick under a spoken reply is a tick over
+   * the words somebody is relying on to know what happened -- and for the one
+   * user this ticking exists for, those words are the whole interface. And
+   * while dictation is running the microphone is open, so a tick is not merely
+   * heard, it is recorded and handed to a transcriber as if it were speech.
+   *
+   * Held rather than stopped: the ticking picks up where it was as soon as the
+   * voice is done, because the work it is reporting on has not paused.
+   */
+  let voiceHolds = 0;
+
+  function holdSoundsForVoice() {
+    voiceHolds += 1;
+    clearTimeout(tickTimer);
+    tickTimer = 0;
+  }
+
+  function releaseSoundsForVoice() {
+    voiceHolds = Math.max(0, voiceHolds - 1);
+    // Only if there is still work to report on. `ticking` rather than the
+    // turn's own flag, which is declared below the early return this file makes
+    // on any page that is not a chat.
+    if (!voiceHolds && ticking) startTicks();
+  }
+
+  // Whether a turn asked for ticking. Separate from whether a tick is scheduled
+  // right now, which voice takes away and gives back.
+  let ticking = false;
+
+  function voiceHasTheFloor() { return voiceHolds > 0; }
+
   function ctx() {
+    if (voiceHasTheFloor()) return null;
     if (!audioCtx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
@@ -601,20 +639,107 @@
   // at low volume or through a laptop speaker.
   function cueError() { blip(400, 0, 0.20, 0.26); blip(300, 0.16, 0.32, 0.26); }
   // Barely there on purpose. This one repeats, so it has to be ignorable.
-  function cueTick() { blip(520, 0, 0.05, 0.05); }
+  function cueTick(freq) { blip(freq || 520, 0, 0.05, 0.05); }
+
+  /* One key press.
+   *
+   * A short burst of filtered noise rather than a tone, because that is what a
+   * key sounds like and a tone at this speed sounds like an alarm. The pitch
+   * wanders a little each time -- identical clicks in a row read as a machine
+   * fault rather than as somebody typing.
+   */
+  function clack(at, gain) {
+    const ac = ctx();
+    if (!ac) return;
+    const t0 = ac.currentTime + at;
+    const len = Math.max(1, Math.floor(ac.sampleRate * 0.011));
+    const buffer = ac.createBuffer(1, len, ac.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      // Decaying noise: all the energy at the start, like a struck thing.
+      data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    }
+    const source = ac.createBufferSource();
+    source.buffer = buffer;
+    const band = ac.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.setValueAtTime(1500 + Math.random() * 1100, t0);
+    band.Q.setValueAtTime(1.1, t0);
+    const amp = ac.createGain();
+    amp.gain.setValueAtTime(Math.max(0.0001, gain * soundVolume), t0);
+    source.connect(band).connect(amp).connect(ac.destination);
+    source.start(t0);
+  }
+
+  // A few keys, unevenly spaced. Evenly spaced clicks sound like a clock.
+  function cueTyping() {
+    const n = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) clack(i * (0.055 + Math.random() * 0.07), 0.16);
+  }
+
+  // Done thinking. Two quick rising notes, much lighter than the end-of-turn
+  // pair -- it marks a phase, not a finish.
+  function cueThoughtDone() { blip(700, 0, 0.07, 0.10); blip(1050, 0.06, 0.11, 0.10); }
+
+  /* What the assistant is doing right now, for the ear.
+   *
+   * It used to be one tick at one pitch for everything, which says "still
+   * alive" and nothing else. Now the sound says which kind of work: each tool
+   * family has its own pitch (the same one its finished-chip plays, so the two
+   * agree), thinking is a low pulse, and writing a reply sounds like somebody
+   * typing -- which is exactly what is happening, and the one phase where
+   * something new is arriving every moment.
+   */
+  let workPhase = '';
+
+  function setWorkPhase(phase) {
+    if (phase === workPhase) return;
+    workPhase = phase;
+    // The cadence changes with the phase. Not while voice has the floor: it
+    // will start again at the new phase's pace when the voice is done.
+    if (ticking && !voiceHasTheFloor()) startTicks();
+  }
+
+  function phaseTick() {
+    if (workPhase === 'writing') { cueTyping(); return; }
+    if (workPhase === 'thinking') { cueTick(300); return; }
+    cueTick(toolNotes[workPhase] || 520);
+  }
+
+  /* How soon, and how often, per phase.
+   *
+   * Writing starts almost at once: for somebody who cannot see the screen this
+   * is not a "still working" nag, it is the reply arriving, and it should be
+   * heard from the first word. Thinking waits a couple of seconds -- a quick
+   * thought needs no announcing, a long one is exactly the silence people ask
+   * about. Everything else keeps the long wait it always had, so an ordinary
+   * turn full of quick tools stays silent.
+   */
+  const TICK = {
+    writing: { after: 260, every: 480 },
+    thinking: { after: 2_000, every: 3_000 },
+  };
+
+  function tickPace() {
+    return TICK[workPhase] || { after: SOUND.tickAfterMs, every: SOUND.tickEveryMs };
+  }
 
   function startTicks() {
-    stopTicks();
-    if (!soundTicks) return;
+    ticking = true;
+    clearTimeout(tickTimer);
+    tickTimer = 0;
+    if (!soundTicks || voiceHasTheFloor()) return;
     tickTimer = setTimeout(function repeat() {
-      cueTick();
-      tickTimer = setTimeout(repeat, SOUND.tickEveryMs);
-    }, SOUND.tickAfterMs);
+      phaseTick();
+      tickTimer = setTimeout(repeat, tickPace().every);
+    }, tickPace().after);
   }
 
   function stopTicks() {
+    ticking = false;
     clearTimeout(tickTimer);
     tickTimer = 0;
+    workPhase = '';
   }
 
   window.__previewSounds = function (volume) {
@@ -1347,6 +1472,67 @@
     scrollToBottom();
   }
 
+  /* ── Thinking, while it happens ───────────────────────────────────────────
+   *
+   * The reasoning was streaming past unseen: the composer said "Thinking…" and
+   * that was all, and the block itself only appeared if you reloaded the
+   * conversation afterwards. So the live view and the reloaded one disagreed
+   * about whether the assistant had thought at all.
+   *
+   * Now it is the same block in both, and you watch it happen: a turning mark
+   * while the thought is running, and the moment it ends the mark becomes a
+   * tick and the row settles into the record. That transition is the point --
+   * without it there is no way to tell a thought still going from one that
+   * finished, which for somebody working by ear is the difference between
+   * waiting and being finished with.
+   */
+  let thinkingRow = null;
+  let thinkingMark = null;
+  let thinkingWords = null;
+  let thinkingSpin = 0;
+
+  function noteThinking(text) {
+    if (!messages) return;
+    if (!thinkingRow) {
+      thinkingRow = document.createElement('details');
+      thinkingRow.className = 'thinking thinking-live';
+      const summary = document.createElement('summary');
+      thinkingMark = document.createElement('span');
+      thinkingMark.className = 'thinking-mark';
+      thinkingMark.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.className = 'thinking-label';
+      label.textContent = 'Thinking…';
+      summary.appendChild(thinkingMark);
+      summary.appendChild(label);
+      thinkingWords = document.createElement('div');
+      thinkingWords.className = 'thinking-text';
+      thinkingRow.appendChild(summary);
+      thinkingRow.appendChild(thinkingWords);
+      messages.appendChild(thinkingRow);
+      thinkingSpin = startSpinner(thinkingMark);
+      keepWorkingLast();
+      scrollToBottom();
+    }
+    if (text) thinkingWords.textContent += text;
+  }
+
+  function finishThinking() {
+    if (!thinkingRow) return;
+    thinkingSpin = stopSpinner(thinkingSpin);
+    thinkingRow.classList.remove('thinking-live');
+    thinkingMark.textContent = '✓';
+    const label = thinkingRow.querySelector('.thinking-label');
+    if (label) label.textContent = 'Thinking';
+    // Nothing was said, so there is nothing to keep. Some models stream a
+    // `reasoning` event with no text in it at all.
+    if (!thinkingWords.textContent.trim()) thinkingRow.remove();
+    else if (soundTicks) cueThoughtDone();
+    thinkingRow = null;
+    thinkingMark = null;
+    thinkingWords = null;
+  }
+
   // Whatever else is added during a turn goes above it, so this stays the last
   // thing in the conversation -- the place where the next thing will appear.
   function keepWorkingLast() {
@@ -1470,6 +1656,10 @@
     try { return JSON.parse(document.getElementById('activity-families').textContent); }
     catch (e) { return {}; }
   })();
+  // Handed out to the ticking, which lives above this and cannot see FAMILY.
+  // The pitch a family ticks at while it works is the pitch its chip plays when
+  // it finishes, so the two agree.
+  for (const [family, spec] of Object.entries(FAMILY)) toolNotes[family] = spec.note;
 
   function familyOf(name) { return TOOL_FAMILY[name] || 'run'; }
 
@@ -2037,7 +2227,12 @@
         if (force && activePlayBtn) setPlayBtnState(activePlayBtn, 'pause');
         nowSpeaking = { text, sentences, index: i, force, btn: activePlayBtn, bubble };
         setHighlight(bubble, sentences, i);
-        await playToEnd(audio);
+        holdSoundsForVoice();
+        try {
+          await playToEnd(audio);
+        } finally {
+          releaseSoundsForVoice();
+        }
         activeAudios.delete(audio);
         if (currentAudio === audio) currentAudio = null;
       }
@@ -2075,8 +2270,11 @@
     switch (ev.type) {
       case 'reasoning':
         setWorking('Thinking\u2026');
+        setWorkPhase('thinking');
+        noteThinking(ev.text);
         break;
       case 'content':
+        finishThinking();
         // A new stretch of words after some work means a new message, not more
         // of the last one. That is how it is stored, and how it reads back.
         if (!assistantEl) {
@@ -2090,10 +2288,13 @@
         renderMarkdown(assistantEl);
         scrollToBottom();
         setWorking('Writing a reply\u2026');
+        setWorkPhase('writing');
         break;
       case 'tool_start':
+        finishThinking();
         closeSegment();
         setWorking(statusForTool(ev.name, ev.args));
+        setWorkPhase(familyOf(ev.name));
         break;
       case 'tool_end':
         noteToolDone(ev);
@@ -2102,10 +2303,13 @@
           appendAction(ev.open_session, ev.open_session_name);
         }
         setWorking('Thinking\u2026');
+        setWorkPhase('thinking');
         break;
       case 'compacting':
+        finishThinking();
         closeSegment();
         setWorking('Summarising our conversation\u2026');
+        setWorkPhase('summarising');
         break;
       case 'done':
         finishAssistant(ev);
@@ -2213,6 +2417,7 @@
     turnStartedAt = 0;
     turnText = '';
     lastSaidEl = null;
+    finishThinking();
     stopTicks();
     clearWorking();
     maybeAutoOpen();
@@ -2255,6 +2460,10 @@
 
   function endTurn() {
     removeEmptyAssistant();
+    // A turn that was stopped or failed mid-thought still leaves the thought
+    // where it got to, marked finished rather than left turning forever.
+    finishThinking();
+    stopTicks();
     // Before the announcement below, so the chips have settled and the
     // sentence describes a finished turn rather than one in progress.
     const did = activitySentence();
@@ -3260,6 +3469,20 @@
   let listening = false;
   // Set by Enter on the Talk button, answered in finishDictation().
   let sendWhenDictationEnds = false;
+
+  /* The microphone being open is the other reason voice takes the floor: a tick
+   * while dictation runs is not merely heard over the user, it is recorded and
+   * handed to a transcriber as though it were a word they said.
+   *
+   * Everything that starts or stops listening goes through here, because there
+   * are three ways out of dictation and only one of them is the tidy one. The
+   * guard makes it safe to call twice, which two of those three do. */
+  function setListening(on) {
+    if (on === listening) return;
+    listening = on;
+    if (on) holdSoundsForVoice();
+    else releaseSoundsForVoice();
+  }
   let ws = null;
   let stream = null;
   let streamCtx = null;
@@ -3379,7 +3602,7 @@
       if (mid) audio.deviceId = { exact: mid };
       stream = await navigator.mediaDevices.getUserMedia({ audio });
       anchor = textarea.value.trim();
-      listening = true;
+      setListening(true);
       textarea.placeholder = 'Listening\u2026';
       micBtn.classList.add('recording');
       if (micLabel) micLabel.textContent = 'Stop';
@@ -3439,7 +3662,7 @@
        * roaring. Everything the user can see reacts on the first frame now,
        * and the audio the server still has to chew through is fixed at the
        * moment they pressed the button. */
-      listening = false;
+      setListening(false);
       teardownAudio();
       if (micBtn) micBtn.classList.remove('recording');
       if (micLabel) micLabel.textContent = 'Talk';
@@ -3477,7 +3700,7 @@
   function cancelDictation() {
     pendingResume = null;  // a send or manual edit ends the note-taking, not resume
     if (!listening && !ws && !window.__sttRecorder) return;
-    listening = false;
+    setListening(false);
     if (ws) { ws.onmessage = null; try { ws.close(); } catch (e) {} ws = null; }
     teardownAudio();
     window.__sttRecorder = null;
@@ -3487,7 +3710,7 @@
   }
 
   function finishDictation() {
-    listening = false;
+    setListening(false);
     if (ws) { try { ws.close(); } catch (e) {} ws = null; }
     teardownAudio();
     window.__sttRecorder = null;

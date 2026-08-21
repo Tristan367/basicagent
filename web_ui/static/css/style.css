@@ -2196,11 +2196,21 @@ html[data-theme="dark"] {
     font-size: 0.85rem;
 }
 .thinking > summary::-webkit-details-marker { display: none; }
-/* A tick, not the star the live spinner cycles through. Left as the star, a
-   finished thought looked like a spinner that had stopped -- which is what a
-   thing that has crashed looks like. This one says it got there. */
-.thinking > summary::before { content: "✓"; margin-right: 8px; font-size: 1.1em; }
+/* A tick once the thought has landed, and a turning glyph while it is still
+   going. Left as the star it used to be, a finished thought looked like a
+   spinner that had stopped -- which is what a thing that has crashed looks
+   like. The mark is a real element so the one can become the other in place. */
+.thinking-mark {
+    margin-right: 8px;
+    font-size: 1.1em;
+    width: 1.1em;
+    text-align: center;
+    flex: none;
+}
 .thinking > summary:hover { background: var(--accent-dim); color: var(--accent); }
+/* Still thinking: the accent colour, so the live one is not mistaken for one of
+   the settled ones above it. */
+.thinking-live > summary { color: var(--accent); }
 .thinking-text {
     margin: 4px 0 0 16px;
     padding: 10px 14px;

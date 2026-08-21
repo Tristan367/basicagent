@@ -66,7 +66,14 @@
     #}
     {% if (m.reasoning_content or '') | trim %}
     <details class="thinking">
-        <summary>Thinking</summary>
+        {# The mark is a real element rather than a `::before`, because while a
+           thought is actually happening the same row shows a turning glyph in
+           that spot and swaps it for this tick when the thought lands. Same
+           markup live and loaded back. #}
+        <summary>
+            <span class="thinking-mark" aria-hidden="true">&#10003;</span>
+            <span class="thinking-label">Thinking</span>
+        </summary>
         <div class="thinking-text">{{ m.reasoning_content }}</div>
     </details>
     {% endif %}

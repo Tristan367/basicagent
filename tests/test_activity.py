@@ -418,11 +418,29 @@ def test_a_finished_thought_is_a_tick_not_a_stopped_spinner():
     """The star it used was the first frame of the live spinner, so a finished
     thought looked like an animation that had died -- which is what a thing that
     has crashed looks like."""
-    css = _css()
-    block = css[css.index(".thinking > summary::before"):]
-    block = block[:block.index("}")]
-    assert '"✓"' in block
+    from pathlib import Path
+
+    tpl = Path("web_ui/templates/chat_messages.html").read_text()
+    block = tpl[tpl.index('<details class="thinking">'):]
+    block = block[:block.index("</details>")]
+    assert "&#10003;" in block, "the settled mark is not a tick"
     assert "✲" not in block
+
+
+def test_the_live_thought_turns_and_then_settles():
+    """The reasoning used to stream past unseen -- the composer said "Thinking"
+    and the block itself only existed if you reloaded afterwards. Now it is the
+    same row in both, and you watch the mark become a tick."""
+    js = _app_js()
+    block = js[js.index("function noteThinking(text)"):js.index("function keepWorkingLast")]
+    assert "startSpinner(thinkingMark)" in block, "the live mark does not turn"
+    assert "thinkingMark.textContent = '✓'" in block, "it never settles into a tick"
+    assert "cueThoughtDone()" in block, "nothing marks the moment for the ear"
+
+    # And every way a turn can end has to settle it, or it turns forever.
+    for where in ("case 'content':", "case 'tool_start':", "function endTurn()"):
+        idx = js.index(where)
+        assert "finishThinking()" in js[idx:idx + 700], f"a thought is left turning at {where}"
 
 
 def test_the_tool_marks_are_bigger_than_their_labels():
@@ -445,3 +463,93 @@ def test_there_is_no_caret():
     assert ".did-caret" not in _css()
     assert "did-caret" not in Path("web_ui/static/js/app.js").read_text()
     assert "did-caret" not in Path("web_ui/templates/chat_messages.html").read_text()
+
+
+# ── what the work sounds like ───────────────────────────────────────────────
+#
+# For somebody who cannot watch the screen, the ticking is the only account of
+# what is happening between sending a message and hearing the reply. One tick at
+# one pitch for everything says "still alive" and nothing else.
+
+
+def test_each_kind_of_work_ticks_at_its_own_pitch():
+    """And the pitch a family ticks at while it works is the pitch its chip
+    plays when it finishes, so the two agree rather than being two unrelated
+    noises for the same thing."""
+    js = _app_js()
+    assert "toolNotes[workPhase]" in js, "the tick ignores which tool is running"
+    assert "toolNotes[family] = spec.note" in js, \
+        "the ticking pitches are not the ones the server sent"
+    # Every family has to have one, or some work ticks at the fallback.
+    notes = {spec["note"] for spec in activity.FAMILIES.values()}
+    assert len(notes) == len(activity.FAMILIES), "two families share a pitch"
+
+
+def test_writing_a_reply_sounds_like_typing():
+    """Which is what is happening -- and it is the one phase where something new
+    arrives every moment, so it is the one worth hearing continuously."""
+    js = _app_js()
+    assert "function clack(" in js and "createBufferSource" in js, \
+        "the typing sound is a tone rather than a key"
+    block = js[js.index("function phaseTick()"):]
+    block = block[:block.index("}\n")]
+    assert "cueTyping()" in block
+
+
+def test_typing_starts_at_once_and_the_nagging_tick_does_not():
+    """The long wait exists so an ordinary turn never ticks at all. Typing is
+    not that signal: it is the reply arriving, and it should be heard from the
+    first word. A long thought is the silence people actually ask about, so it
+    speaks up sooner than a tool does but not as often as typing."""
+    import re
+
+    js = _app_js()
+    table = js[js.index("const TICK = {"):]
+    table = table[:table.index("};")]
+    pace = dict(re.findall(r"(\w+):\s*\{ after: ([\d_]+)", table))
+    writing = int(pace["writing"].replace("_", ""))
+    thinking = int(pace["thinking"].replace("_", ""))
+    assert writing < 600, "the reply arrives before you hear it"
+    assert writing < thinking, "typing waits longer than a thought does"
+    assert "TICK[workPhase] ||" in js, "a tool no longer keeps the long wait"
+
+
+def test_the_ticking_is_silent_unless_it_was_asked_for():
+    """It repeats, so it has to be something you chose."""
+    js = _app_js()
+    block = js[js.index("function startTicks()"):]
+    block = block[:block.index("function stopTicks")]
+    assert "if (!soundTicks || voiceHasTheFloor()) return;" in block
+
+
+def test_voice_takes_the_floor_from_every_sound_effect():
+    """A tick under a spoken reply is a tick over the words somebody is relying
+    on to know what happened -- and while dictation runs the microphone is open,
+    so a tick is not merely heard over the user, it is recorded and handed to a
+    transcriber as though it were a word they said."""
+    js = _app_js()
+    # One gate, at the one place every sound goes through.
+    gate = js[js.index("function ctx()"):]
+    gate = gate[:gate.index("\n  }")]
+    assert "if (voiceHasTheFloor()) return null;" in gate
+
+    # Read-aloud holds it for exactly as long as a clip is playing.
+    speak = js[js.index("activeAudios.add(audio);"):]
+    speak = speak[:speak.index("nowSpeaking = null;")]
+    assert "holdSoundsForVoice();" in speak
+    assert "finally {" in speak and "releaseSoundsForVoice();" in speak, \
+        "a clip that is cut short would leave the ticking held forever"
+
+    # And dictation, through the one function all three exits go through.
+    assert "function setListening(on)" in js
+    assert js.count("listening = true;") == 0 and js.count("  listening = false;") == 0, \
+        "something sets the listening flag without taking the floor with it"
+
+
+def test_the_ticking_resumes_rather_than_restarting_from_scratch():
+    """The work it is reporting on did not pause while somebody was listening
+    to a reply, so neither should the account of it."""
+    js = _app_js()
+    block = js[js.index("function releaseSoundsForVoice()"):]
+    block = block[:block.index("\n  }")]
+    assert "startTicks()" in block
