@@ -19,6 +19,7 @@ from agent_server.tools.bash import run_bash
 from agent_server.tools.browser import browser as browser_tool
 from agent_server.tools.capture import capture
 from agent_server.tools.file_ops import edit_file, read_file, write_file
+from agent_server.tools.game import game
 from agent_server.tools.preview import preview
 from agent_server.tools.search import glob_search, grep_search
 from agent_server.tools.session_manager import (
@@ -240,6 +241,43 @@ register(Tool(
     },
     handler=run_task,
     parallel_safe=True,
+))
+
+register(Tool(
+    name="game",
+    description=(
+        "Build a real game, in the Godot engine. Use this for anything that is a "
+        "game -- a game hand-written in a browser canvas hits a ceiling within an "
+        "afternoon and cannot be rescued afterwards. Only use HTML and JavaScript "
+        "when what they asked for is a website that happens to be playful.\n"
+        "`new` writes a project that already runs and moves: start every game with "
+        "it, and never hand-write project.godot or a .tscn. Then change main.gd. "
+        "`check` runs it headless, presses a key and reports what moved -- three "
+        "seconds, and it catches the script errors that only appear when the engine "
+        "loads the file, so do it after every change. `play` builds it for the "
+        "browser and puts it on their screen, exactly like a website; call it again "
+        "after every change you want them to see. `export` with linux, windows or "
+        "mac makes a standalone game they can give away. `run` starts it natively in "
+        "its own window instead, for what a browser cannot do -- then use `capture`."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["new", "check", "play", "export", "run"],
+                "description": "Default play.",
+            },
+            "name": {"type": "string", "description": "For `new`: what to call it"},
+            "target": {
+                "type": "string",
+                "enum": ["web", "linux", "windows", "mac"],
+                "description": "For `export`. Default web.",
+            },
+        },
+        "required": [],
+    },
+    handler=game,
 ))
 
 register(Tool(

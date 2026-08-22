@@ -96,6 +96,18 @@ def environment_block(project_dir: str, session_id: str = "", manager: bool = Fa
             f"This app's folder: {_PROJECT}",
             f"This app's Python: {sys.executable}",
         ]
+    else:
+        # Only a project's agent, and only when it is actually there. A game is
+        # the one thing this app can build that needs a tool it did not come
+        # with, and the difference between "Godot is installed at <path>" and
+        # nothing at all is the difference between making a game and explaining
+        # why you cannot. One line, and absent the rest of the time.
+        from agent_server import godot
+
+        found = godot.binary()
+        if found:
+            targets = ", ".join(godot.targets_installed()) or "none yet"
+            lines.append(f"Godot {godot.VERSION}: {found}  (export targets: {targets})")
     block = "\n".join(lines)
     _env_cache[key] = block
     return block

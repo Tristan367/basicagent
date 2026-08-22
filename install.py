@@ -5,8 +5,8 @@ One command, no questions, and at the end an icon the user can click. That last
 part is the point: the person this app is built for cannot open a terminal, so
 an install that ends with "now type this" has not finished.
 
-    python3 install.py              everything, including the speech downloads
-    python3 install.py --minimal    skip the speech downloads (about 800 MB)
+    python3 install.py              everything, including speech and the game engine
+    python3 install.py --minimal    skip the big optional downloads (about 900 MB)
     python3 install.py --no-shortcut   do not add a desktop icon or a menu entry
 
 Standard library only. It runs before the virtual environment exists, so it
@@ -199,6 +199,21 @@ def install_browser() -> bool:
         return False
 
 
+def install_games() -> None:
+    """The Godot engine, so a game is something this app can actually make.
+
+    90 MB against an install that is already about 3 GB, and the difference it
+    makes is the difference between "let's make a game" working and the
+    assistant having to explain that it cannot. Games are what most children
+    reach for first, and finding out on the day is a bad way to find out.
+    """
+    say()
+    subprocess.run(
+        [str(VENV_PY), "-m", "agent_server.godot", "install", "web"],
+        cwd=str(ROOT), check=False,
+    )
+
+
 def install_speech() -> None:
     """The read-aloud voices and the dictation model.
 
@@ -339,9 +354,10 @@ def main() -> None:
     install_browser()
     if minimal:
         say()
-        say("Skipping the speech downloads. Ask the assistant to install them")
-        say("later if you want them -- it knows how.")
+        say("Skipping the speech and game downloads. Ask the assistant to install")
+        say("them later if you want them -- it knows how.")
     else:
+        install_games()
         install_speech()
 
     shortcut = "" if no_shortcut else make_shortcut()

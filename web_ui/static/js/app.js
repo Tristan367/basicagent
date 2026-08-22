@@ -1892,6 +1892,7 @@
     list_projects: 'Listing projects',
     assign_project: 'Moving project',
     preview: 'Opening your project',
+    game: 'Building the game',
     show_settings: 'Checking the settings',
     set_appearance: 'Changing how it looks',
     set_voice: 'Changing the voice',
@@ -1911,7 +1912,7 @@
   // `read` are noise, and the user is not supposed to know what a tool is.
   const TOOL_FAMILY = {
     write: 'write', edit: 'write',
-    bash: 'run', preview: 'run',
+    bash: 'run', preview: 'run', game: 'run',
     read: 'look', grep: 'look', glob: 'look',
     webfetch: 'web', websearch: 'web',
     task: 'think',

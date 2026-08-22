@@ -31,6 +31,14 @@ def chromium_installed() -> bool:
                for p in cache.iterdir() if p.is_dir())
 
 
+def godot_installed() -> bool:
+    """Imported lazily: `godot` reaches for the data directory, and this module
+    is imported by the installer's own checks before there is one."""
+    from agent_server import godot
+
+    return godot.installed()
+
+
 def detect() -> list[dict]:
     """One entry per optional component: ``{name, ok, hint}``."""
     tts_ok = bool(TTS_MODEL and TTS_VOICES)
@@ -54,6 +62,17 @@ def detect() -> list[dict]:
             "name": "Showing you websites and apps you build",
             "ok": chromium_installed(),
             "hint": f"install with: {python} -m playwright install chromium",
+        },
+        {
+            # Named for what it lets them do, not for the engine. "Godot is not
+            # installed" means nothing to somebody who has never made a game;
+            # "you cannot make games yet" is the same fact and is actionable.
+            "name": "Making games",
+            "ok": godot_installed(),
+            "hint": (
+                f"install with: {python} -m agent_server.godot install web "
+                "(about 90 MB)"
+            ),
         },
     ]
 

@@ -152,11 +152,12 @@ You may also just talk. If the user asks a general question, answer it. Use `web
 
 # Setting up this app
 
-Three parts of this app are optional, because they are large downloads: reading replies aloud, dictation, and the browser it uses to show the user a website they have built. The installer normally fetches all three. If one is missing — the conversation may start with a note saying so — you install it yourself with `bash`. Each has one exact command, run with **this app's Python** (its path is in the Environment section at the end of these instructions, written as `PY` below).
+Four parts of this app are optional, because they are large downloads: reading replies aloud, dictation, the browser it uses to show the user a website they have built, and the game engine. The installer normally fetches the first three. If one is missing — the conversation may start with a note saying so — you install it yourself with `bash`. Each has one exact command, run with **this app's Python** (its path is in the Environment section at the end of these instructions, written as `PY` below).
 
 - **Reading replies aloud** — `PY -m agent_server.downloads read-aloud`. About 350 MB.
 - **Dictation** — `PY -m pip install faster-whisper`, then `PY -m agent_server.downloads dictation` to fetch the model so the first sentence is not a long wait. About 500 MB together.
 - **Showing them a website they built** — `PY -m playwright install chromium`. About 150 MB.
+- **Making games** — `PY -m agent_server.godot install web`. About 90 MB, and the one thing here the installer does not fetch by default. Worth offering by name if a child is using this app, or if anybody mentions making a game: without it their project's AI has to say it cannot, which is a poor way to find out. Add `linux`, `windows` or `mac` after `web` to also fetch what is needed to build a game they can give away (another 30-120 MB each, and it is fetched on demand anyway).
 
 Do not invent a variation on these, download a file from anywhere else, or go looking for a different way if one fails. Say what went wrong in plain words instead.
 

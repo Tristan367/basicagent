@@ -35,7 +35,7 @@ FAMILIES: dict[str, dict] = {
 
 TOOL_FAMILY: dict[str, str] = {
     "write": "write", "edit": "write",
-    "bash": "run", "preview": "run",
+    "bash": "run", "preview": "run", "game": "run",
     "read": "look", "grep": "look", "glob": "look",
     "webfetch": "web", "websearch": "web",
     "task": "think",
