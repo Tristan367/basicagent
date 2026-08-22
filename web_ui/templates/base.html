@@ -14,8 +14,18 @@
    new one, or type the one you set before. Switching child mode off clears the
    password, so "on" is not always "set". #}
 <body class="{% if child_mode %}child-mode {% endif %}{% if has_parent_password %}has-parent-password{% endif %}">
-    <a class="skip-link" id="skip-link" href="{% if is_settings %}#main-content{% elif stt.available %}#mic-btn{% else %}#chat-textarea{% endif %}">
-        {% if is_settings %}Skip to content{% elif stt.available %}Skip to Talk{% else %}Skip to chat{% endif %}
+    {# Always the message box, never the mic, even when dictation is available.
+       The mic sits *after* the textarea in the composer, so landing on it left
+       a keyboard user unable to reach the box by tabbing forward at all --
+       Tab walked on through read-draft, attach, read-aloud, model, send, and
+       wrapped to the top of the page. Measured: seventy-seven tabs the long
+       way round, and the first thing anyone using a keyboard meets.
+
+       Nothing is lost by starting in the box: the mic is one Tab away, and a
+       screen reader lands on "Message — type or speak your message", which
+       offers both. Landing on the mic only ever offered one. #}
+    <a class="skip-link" id="skip-link" href="{% if is_settings %}#main-content{% else %}#chat-textarea{% endif %}">
+        {% if is_settings %}Skip to content{% else %}Skip to the message box{% endif %}
     </a>
     <header class="app-bar">
         {# A real <nav> landmark: screen reader users jump between landmarks to
