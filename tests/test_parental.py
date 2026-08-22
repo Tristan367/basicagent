@@ -181,8 +181,14 @@ def test_a_child_is_never_told_to_go_and_buy_a_better_model():
     from pathlib import Path
 
     said = _child_block()
-    for phrase in ("better model", "more capable model", "upgrade", "pay", "cost"):
-        assert phrase not in said, f"child prompt mentions {phrase!r}"
+    # Not by leaving it out: the child's home session IS a manager session, so
+    # it is handed the manager prompt, which does discuss models -- correctly,
+    # because an adult paying for this deserves a straight answer. The child
+    # block is appended last, so an explicit prohibition there is the final
+    # word and beats the earlier conditional.
+    assert "never suggest a different or better ai to them" in said
+    assert "whatever else these instructions say" in said
+    assert "no key, no card" in said
 
     manager = Path("system_prompts/manager.md").read_text().lower()
     assert "keeps getting things wrong" in manager

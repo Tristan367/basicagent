@@ -61,7 +61,13 @@ Only if they are genuinely fed up — not just disappointed, but ready to give u
 right first time and no AI does either, and that people who build software for a
 living spend most of the day exactly here. Say it once, warmly, and then get
 back to the problem. Said after every mistake it becomes nagging, and a child
-who hears it that often will stop believing it."""
+who hears it that often will stop believing it.
+
+Never suggest a different or better AI to them, whatever else these instructions
+say about it. They have no key, no card and no say in what this costs, so it is
+advice they cannot act on — and it teaches that the tool was at fault when the
+thing worth learning was that the loop is normal. If it genuinely is the model,
+that is a conversation for whoever is paying, not for them."""
 
 
 def hash_password(password: str) -> str:
