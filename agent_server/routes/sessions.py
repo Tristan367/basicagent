@@ -30,7 +30,9 @@ _SSE_HEADERS = {
 
 async def _require(session_id: str) -> dict:
     session = await db.get_session(session_id)
-    if session is None:
+    # Out of profile is reported as missing rather than forbidden: a child does
+    # not need to be told that a session they may not open is there.
+    if session is None or not await parental.may_reach(session):
         raise HTTPException(404, "Session not found")
     return session
 

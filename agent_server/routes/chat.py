@@ -65,8 +65,12 @@ def _attach(session_id: str) -> StreamingResponse:
 
 
 async def _require_session(session_id: str) -> dict:
+    from agent_server import parental
+
     session = await db.get_session(session_id)
-    if session is None:
+    # See `parental.may_reach`. This is the door that mattered: talking to a
+    # session is what makes reaching it worth anything.
+    if session is None or not await parental.may_reach(session):
         raise HTTPException(404, "Session not found")
     return session
 

@@ -156,6 +156,19 @@ async def _aclose(stream) -> None:
 
 
 def _describe(e: openai.APIStatusError, name: str = "API") -> str:
+    """What the user reads when the model cannot be reached.
+
+    This string goes straight onto the screen, unedited, in an app whose whole
+    premise is that the person using it does not know what an API is. It used
+    to say `deepseek API error 401: Invalid API key provided`, which names no
+    problem they can act on and no way to act on it.
+
+    So: what happened, in words, and what to do about it. The Project Manager
+    can change any of these settings by being asked out loud, which is a much
+    better instruction than "go to Settings" for someone who cannot see the
+    screen. The provider's own words are kept only where they carry something
+    the sentence above cannot -- a refused request usually says why.
+    """
     detail = ""
     try:
         body = e.response.json()
@@ -163,4 +176,28 @@ def _describe(e: openai.APIStatusError, name: str = "API") -> str:
     except Exception:
         log.debug("reading API error detail failed", exc_info=True)
         detail = (getattr(e, "message", "") or str(e))[:400]
-    return f"{name} API error {e.status_code}: {detail or 'unknown error'}"
+
+    status = getattr(e, "status_code", 0)
+    ask = "Ask the Project Manager and it will sort it out."
+
+    if status in (401, 403):
+        return (f"{name} would not accept the key. It may have been typed with a "
+                f"character missing, or it may have been turned off at their end. "
+                f"{ask}")
+    if status == 429:
+        return (f"{name} is asking us to slow down -- either too many messages at "
+                f"once, or the free allowance for today is used up. Waiting a "
+                f"minute usually fixes the first; the second needs a different "
+                f"model or an account with credit on it. {ask}")
+    if status == 404:
+        return (f"{name} does not have the model this project is set to use. It "
+                f"has probably been renamed or retired. {ask}")
+    if status == 400:
+        return (f"{name} refused that request." + (f" It said: {detail}" if detail else "")
+                + f" {ask}")
+    if status and status >= 500:
+        return (f"{name} is having trouble at their end -- nothing is wrong with "
+                f"this app or with what you said. It is usually worth trying "
+                f"again in a minute.")
+    return (f"{name} could not be reached"
+            + (f": {detail}" if detail else f" (error {status or 'unknown'})") + f". {ask}")

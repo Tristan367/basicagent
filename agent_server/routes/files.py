@@ -79,7 +79,7 @@ async def _resolve(session_id: str, raw: str, confine: bool = True) -> Path:
     to look at. It has no business doing that.
     """
     session = await db.get_session(session_id)
-    if session is None:
+    if session is None or not await parental.may_reach(session):
         raise HTTPException(404, "Session not found")
     root = Path(session["project_dir"]).expanduser().resolve()
 
@@ -171,7 +171,7 @@ async def export_project(session_id: str):
     from fastapi.responses import StreamingResponse
 
     session = await db.get_session(session_id)
-    if session is None:
+    if session is None or not await parental.may_reach(session):
         raise HTTPException(404, "Session not found")
     root = Path(session["project_dir"]).expanduser().resolve()
     if not root.is_dir():

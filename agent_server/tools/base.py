@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,13 +28,27 @@ class ToolContext:
     abort: asyncio.Event = field(default_factory=asyncio.Event)
 
     def resolve(self, path: str | None) -> Path:
-        """Resolve a possibly-relative path against the session's project dir."""
+        """Resolve a possibly-relative path against the session's project dir.
+
+        Normalised, and that matters in two places that are easy to miss.
+
+        The read-before-write guard keys on the resolved string, so without
+        this one file reached by two spellings -- `styles.css` and
+        `assets/../styles.css` -- was two different files, and reading it under
+        one name left it "unread" under the other.
+
+        And what the tool says it did is this path. `..` left in the middle
+        produced `Created /home/you/projects/../../notes.txt`, which is a true
+        statement that tells nobody where the file went. Lexical only: symlinks
+        are left alone, because a project that is a symlink is a project the
+        user meant to put there.
+        """
         if not path:
             return Path(self.project_dir)
         p = Path(path).expanduser()
         if not p.is_absolute():
             p = Path(self.project_dir) / p
-        return p
+        return Path(os.path.normpath(p))
 
 
 @dataclass

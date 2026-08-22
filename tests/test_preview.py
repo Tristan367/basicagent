@@ -287,6 +287,25 @@ async def linked(db, tmp_path):
     return session["id"]
 
 
+@pytest.fixture
+async def child_linked(db, tmp_path):
+    """A project belonging to the child, which is the only kind they can open.
+
+    Worth spelling out rather than reusing `linked` with the setting flipped:
+    while child mode is on, a parent's project is not reachable at all, so a
+    test that made one and then turned child mode on was checking the link
+    rules against a session the child could never have got to in the first
+    place.
+    """
+    root = tmp_path / "childproj"
+    root.mkdir()
+    session = await db.create_session(name="Child's", project_dir=str(root),
+                                      profile="child")
+    await db.update_session(session["id"], preview_command="run-me",
+                            preview_url="http://localhost:8123")
+    return session["id"]
+
+
 async def test_pressing_a_project_link_starts_it_when_it_is_not_running(linked, monkeypatch):
     """The whole point. Otherwise this is a connection error with no
     explanation attached."""
@@ -360,7 +379,7 @@ async def test_a_link_out_to_the_web_goes_to_the_users_own_browser(linked, monke
     assert opened == ["https://example.com/docs"]
 
 
-async def test_in_child_mode_a_link_out_to_the_web_goes_nowhere(linked, db, monkeypatch):
+async def test_in_child_mode_a_link_out_to_the_web_goes_nowhere(child_linked, db, monkeypatch):
     """The project window refuses anything off this machine however the address
     arrives. Handing it to the real browser instead would walk straight around
     the one thing a parent is trusting this app about."""
@@ -376,14 +395,14 @@ async def test_in_child_mode_a_link_out_to_the_web_goes_nowhere(linked, db, monk
     await db.set_setting("child_mode", "1")
     try:
         with pytest.raises(HTTPException) as excinfo:
-            await sessions.open_link(linked, {"url": "https://example.com"})
+            await sessions.open_link(child_linked, {"url": "https://example.com"})
         assert excinfo.value.status_code == 403
         assert not opened, "it opened the web anyway"
     finally:
         await db.set_setting("child_mode", "0")
 
 
-async def test_a_child_pressing_their_own_project_link_still_works(linked, db, monkeypatch):
+async def test_a_child_pressing_their_own_project_link_still_works(child_linked, db, monkeypatch):
     from agent_server import preview
     from agent_server.routes import sessions
 
@@ -397,7 +416,7 @@ async def test_a_child_pressing_their_own_project_link_still_works(linked, db, m
     monkeypatch.setattr(preview, "is_running", lambda sid: False)
     await db.set_setting("child_mode", "1")
     try:
-        out = await sessions.open_link(linked, {"url": "http://localhost:8123/"})
+        out = await sessions.open_link(child_linked, {"url": "http://localhost:8123/"})
         assert out["ok"] is True
         assert confined["confine"] is True, "the window was opened unconfined for a child"
     finally:
@@ -421,14 +440,14 @@ async def test_something_that_is_not_a_web_address_is_refused(linked):
 # should reach.
 
 
-async def test_the_refusal_names_child_mode_and_where_to_turn_it_off(linked, db, monkeypatch):
+async def test_the_refusal_names_child_mode_and_where_to_turn_it_off(child_linked, db, monkeypatch):
     from agent_server.routes import files, sessions
 
     monkeypatch.setattr(files, "open_in_browser", lambda url: None)
     await db.set_setting("child_mode", "1")
     try:
         with pytest.raises(HTTPException) as excinfo:
-            await sessions.open_link(linked, {"url": "https://example.com"})
+            await sessions.open_link(child_linked, {"url": "https://example.com"})
     finally:
         await db.set_setting("child_mode", "0")
     said = excinfo.value.detail.lower()

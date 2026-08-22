@@ -34,7 +34,9 @@ async def index(request: Request):
 @router.get("/sessions/{session_id}")
 async def session_page(request: Request, session_id: str):
     session = await db.get_session(session_id)
-    if session is None:
+    # A child following a remembered address lands back home rather than in a
+    # parent's project. See `parental.may_reach`.
+    if session is None or not await parental.may_reach(session):
         return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse(
         request=request, name="chat.html", context=await _chat_context(session)
@@ -53,7 +55,7 @@ async def session_body(request: Request, session_id: str):
     turn disappear.
     """
     session = await db.get_session(session_id)
-    if session is None:
+    if session is None or not await parental.may_reach(session):
         return HTMLResponse("", status_code=404)
     return templates.TemplateResponse(
         request=request, name="chat_messages.html", context=await _chat_context(session)

@@ -88,6 +88,27 @@ def profile_for_session(session_id: str) -> str:
     return "child" if session_id == CHILD_HOME_SESSION_ID else "parent"
 
 
+async def may_reach(session: dict | None) -> bool:
+    """Whether the person at the keyboard is allowed to open this session.
+
+    `visible_profile` decides what gets *listed*. This decides what can be
+    *reached*, and the two have to agree -- they did not. In child mode the
+    list correctly hid every one of the parent's projects, and then the back
+    button opened one anyway: the address is stable, the browser remembers it,
+    and nothing along the way checked. What was on the other side was the
+    parent's Project Manager, with its whole tool set and a prompt that has no
+    child-safety block in it, because that block is chosen per session.
+
+    A child never reaches a parent's session. A parent still reaches a child's,
+    which is the asymmetry `visible_profile` already describes and exists so a
+    parent can look through what their child made.
+    """
+    if session is None:
+        return False
+    wanted = await visible_profile()
+    return wanted is None or (session.get("profile") or "parent") == wanted
+
+
 async def current_home_id() -> str:
     """The home (manager) session for the active profile."""
     return CHILD_HOME_SESSION_ID if await child_mode_enabled() else HOME_SESSION_ID

@@ -278,3 +278,54 @@ def test_read_does_not_document_a_mechanism_that_no_longer_exists():
     assert "line numbers to `edit`" not in said
     # And it says what the numbers are actually for.
     assert "matches on text" in said
+
+
+# ── one file is one file, however it is spelled ────────────────────────────
+
+
+def test_a_path_with_dot_dot_in_it_is_normalised(tmp_path):
+    """Two things rode on this, neither obvious.
+
+    The read-before-write guard keys on the resolved path as a string, so
+    `styles.css` and `assets/../styles.css` were two different files: reading
+    it under one spelling left it "unread" under the other, and the edit was
+    refused with a message about a file the model had just read.
+
+    And the tool reports the path it resolved. A write of `../../notes.txt`
+    announced `Created /home/you/projects/../../notes.txt`, which is true and
+    tells nobody where the file went.
+    """
+    from agent_server.tools.base import ToolContext
+
+    ctx = ToolContext(session_id="s", project_dir=str(tmp_path), abort=asyncio.Event())
+    assert ctx.resolve("assets/../styles.css") == ctx.resolve("styles.css")
+    assert ".." not in str(ctx.resolve("../../notes.txt"))
+    assert str(ctx.resolve("a/b/../../c")) == str(tmp_path / "c")
+
+
+def test_normalising_does_not_follow_symlinks(tmp_path):
+    """Lexical only. A project that is a symlink is a project the user put
+    there on purpose, and rewriting it to its target would make every path the
+    app shows them unfamiliar."""
+    from agent_server.tools.base import ToolContext
+
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+
+    ctx = ToolContext(session_id="s", project_dir=str(link), abort=asyncio.Event())
+    assert str(ctx.resolve("f.txt")).startswith(str(link))
+
+
+async def test_one_file_read_by_two_spellings_can_still_be_edited(ctx, styles):
+    """The symptom the normalising fixes, end to end."""
+    await read_file(ctx, filePath=str(styles))
+    result = await edit_file(
+        ctx,
+        filePath=str(styles.parent / "sub" / ".." / styles.name),
+        oldString="background: #090705;",
+        newString="background: var(--bg);",
+    )
+    assert not result.is_error, result.output
+    assert "var(--bg)" in styles.read_text()
