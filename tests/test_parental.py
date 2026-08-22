@@ -134,3 +134,63 @@ async def test_a_child_reaches_their_own_session_through_the_same_doors(db, two_
         assert (await chat_routes._require_session(child["id"]))["id"] == child["id"]
     finally:
         await db.set_setting("child_mode", "0")
+
+
+def _child_block() -> str:
+    """Whitespace-flattened, because the prompt is hard-wrapped and a phrase can
+    fall across a line break."""
+    from agent_server.parental import CHILD_MODE_BLOCK
+
+    return " ".join(CHILD_MODE_BLOCK.lower().split())
+
+
+# ── what a child is told when it goes wrong ────────────────────────────────
+#
+# Two failure modes, opposite directions. Say nothing and a child concludes
+# they are bad at this. Say it every time and it becomes nagging, and the true
+# thing stops being believed. So: model it constantly, announce it rarely.
+
+
+def test_the_child_block_says_a_bug_is_normal_rather_than_a_failure():
+    said = _child_block()
+    assert "not a failure" in said
+    assert "ordinary middle" in said or "normal" in said
+
+
+def test_the_child_block_makes_reporting_a_bug_the_skill_being_taught():
+    """The thing actually worth learning: notice you got something you did not
+    ask for, and say so clearly."""
+    said = _child_block()
+    assert "doing the job properly" in said
+    assert "what they saw and what they expected" in said
+
+
+def test_the_reassurance_is_saved_for_actual_frustration():
+    """Said after every mistake it is nagging. The behaviour is meant to teach
+    it; the speech is for when a child is ready to give up."""
+    said = _child_block()
+    assert "only if" in said and "fed up" in said
+    assert "nagging" in said
+
+
+def test_a_child_is_never_told_to_go_and_buy_a_better_model():
+    """They have no key, no card, and no say in what it spends. It also teaches
+    the wrong lesson -- that the tool was at fault, when the point was that the
+    loop is normal. That conversation belongs to the grown-up paying, and lives
+    in the manager's instructions instead."""
+    from pathlib import Path
+
+    said = _child_block()
+    for phrase in ("better model", "more capable model", "upgrade", "pay", "cost"):
+        assert phrase not in said, f"child prompt mentions {phrase!r}"
+
+    manager = Path("system_prompts/manager.md").read_text().lower()
+    assert "keeps getting things wrong" in manager
+    assert "grown-up" in manager
+    assert "a child has no key" in " ".join(manager.split())
+
+
+def test_the_child_block_does_not_have_it_apologise_on_a_loop():
+    said = _child_block()
+    assert "do not apologise over and over" in said
+    assert "never suggest they did something wrong" in said
