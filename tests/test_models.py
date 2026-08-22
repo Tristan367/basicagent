@@ -216,3 +216,50 @@ def test_the_list_is_ordered_by_what_it_costs(monkeypatch):
     # somebody nervous about money gets to see the app at all.
     assert all(m["price_label"].startswith("free") for m in free)
     assert not any("free to try" in m["price_label"] for m in offered)
+
+
+# ── a model the app cannot place ───────────────────────────────────────────
+
+
+def test_the_catalogue_knows_which_ids_it_can_place():
+    from agent_server.config import DYNAMIC_MODELS, MODELS, knows_model
+
+    assert knows_model(MODELS[0]["id"]) is True
+    assert knows_model("custom:someone/whatever") is True
+    assert knows_model("a-model-nobody-has-heard-of") is False
+    assert knows_model("") is False
+
+    DYNAMIC_MODELS["discovered-later"] = "gemini"
+    try:
+        assert knows_model("discovered-later") is True
+    finally:
+        DYNAMIC_MODELS.pop("discovered-later", None)
+
+
+async def test_switching_to_an_unknown_model_refuses_instead_of_guessing(db, tmp_path):
+    """`provider_for_model` has to return something, so an unrecognised id used
+    to be stored with DEFAULT_PROVIDER attached. The session kept working right
+    up until the next message, which came back "No API key is set up yet. Add
+    one in Settings" -- about a key that was never the problem, on a project
+    that had been fine a moment earlier.
+
+    Refusing keeps the session on what it was already using, which is always a
+    better outcome than a guess.
+    """
+    from fastapi import HTTPException
+
+    from agent_server.routes import sessions
+
+    session = await db.create_session(name="P", project_dir=str(tmp_path),
+                                      provider="gemini", model="gemini-3.7-flash")
+    with pytest.raises(HTTPException) as caught:
+        await sessions.switch_model(session["id"], None,
+                                    {"model": "not-a-real-model-id"})
+    assert caught.value.status_code == 400
+    said = caught.value.detail.lower()
+    assert "recognise" in said or "recognize" in said
+    assert "left this project on the one it was using" in said
+
+    after = await db.get_session(session["id"])
+    assert after["provider"] == "gemini", "it changed the session anyway"
+    assert after["model"] == "gemini-3.7-flash"

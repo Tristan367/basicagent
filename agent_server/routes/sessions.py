@@ -5,7 +5,12 @@ from fastapi.responses import StreamingResponse
 
 from agent_server import agent, parental
 from agent_server import database as db
-from agent_server.config import model_info, provider_for_model, split_custom_choice
+from agent_server.config import (
+    knows_model,
+    model_info,
+    provider_for_model,
+    split_custom_choice,
+)
 from agent_server.model_catalog import effective_default_model, offerable_models
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -219,6 +224,16 @@ async def switch_model(session_id: str, request: Request, payload: dict):
     model = (payload.get("model") or "").strip()
     if not model:
         raise HTTPException(400, "Model required")
+    # Refuse rather than guess. An id this app cannot place gets written to the
+    # session with DEFAULT_PROVIDER attached, and the next message comes back
+    # "No API key is set up yet. Add one in Settings" -- about a key that was
+    # never the problem, on a project that was working a moment ago.
+    if not knows_model(model):
+        raise HTTPException(
+            400,
+            "I do not recognise that model, so I have left this project on the "
+            "one it was using. Pick one from the list instead.",
+        )
 
     display_name = model_info(model).get("name", model)
 

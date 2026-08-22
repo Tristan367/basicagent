@@ -249,6 +249,23 @@ def provider_for_model(model_id: str) -> str:
     return DYNAMIC_MODELS.get(model_id, DEFAULT_PROVIDER)
 
 
+def knows_model(model_id: str) -> bool:
+    """Whether this id can be placed with a provider, rather than guessed at.
+
+    `provider_for_model` has to return something, so an id it has never seen
+    gets DEFAULT_PROVIDER. That guess is silent, and when it is wrong the
+    session it was written to stops working: the next thing the user sees is
+    "No API key is set up yet. Add one in Settings", which sends them to fix a
+    key that was never the problem. Anything that is about to *store* a choice
+    should ask this first and refuse rather than guess.
+    """
+    return bool(model_id) and (
+        model_id.startswith("custom:")
+        or model_id in MODELS_BY_ID
+        or model_id in DYNAMIC_MODELS
+    )
+
+
 def split_custom_choice(choice: str) -> tuple[str, str]:
     """Split a custom-endpoint picker value into (endpoint key, model id).
 
