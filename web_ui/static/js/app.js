@@ -3297,10 +3297,18 @@
     if (window.ResizeObserver && wrap) {
       new ResizeObserver(positionPlayBtn).observe(wrap);
     }
-    // Coming back to this window is the moment the answer is most likely to
-    // have gone stale, because the usual way to get here is having just closed
-    // the project's window by hand. Without this, Play went on offering to
-    // stop something that had already stopped until the next reply.
+    // Coming back to this window is when the answer is most likely to have
+    // gone stale, and nothing else asks between turns. Two different things
+    // change out here: the project's window can be closed, and the project
+    // itself can fall over.
+    //
+    // Those are NOT the same event and the buttons must not treat them as
+    // one. Closing the window leaves the server running, exactly as it would
+    // anywhere else -- Play still says Stop, because there is still something
+    // to stop. Only pointing goes away, because pointing needs a page. "Why
+    // is Stop still lit when I closed the window?" is a real question with a
+    // real answer about front ends and back ends, and it is worth more than
+    // the tidiness of making the button vanish.
     window.addEventListener('focus', () => { if (!picking) refreshPlay(); });
     refreshPlay();
   }

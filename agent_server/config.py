@@ -108,23 +108,30 @@ DEFAULT_THINKING_EFFORT = "high"
 REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 
 MODELS = [
+    # DeepSeek charges two rates: peak (01:00-04:00 and 06:00-10:00 UTC on
+    # weekdays) and off-peak everywhere else, at exactly half. There is one
+    # number here, and it is the peak one, on the same principle as the
+    # OpenRouter note below -- a bill that comes in under what this app said is
+    # a relief, and one that comes in over it is the thing this app must never
+    # do to somebody. Off-peak, which is most of the week, the real cost is
+    # half of what is shown.
     {
         "id": "deepseek-v4-pro",
         "name": "DeepSeek V4 Pro",
         "provider": "deepseek",
         "context": 1_000_000,
-        "price_in_hit": 0.003625,
-        "price_in_miss": 0.435,
-        "price_out": 0.87,
+        "price_in_hit": 0.044,
+        "price_in_miss": 1.32,
+        "price_out": 3.96,
     },
     {
         "id": "deepseek-v4-flash",
         "name": "DeepSeek V4 Flash",
         "provider": "deepseek",
         "context": 1_000_000,
-        "price_in_hit": 0.0028,
-        "price_in_miss": 0.14,
-        "price_out": 0.28,
+        "price_in_hit": 0.014,
+        "price_in_miss": 0.44,
+        "price_out": 1.32,
     },
     # Google, first-party. The Flash models have a free tier, which matters a
     # lot for this app's audience: someone can try the whole thing without

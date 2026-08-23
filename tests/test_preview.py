@@ -571,3 +571,28 @@ async def test_a_web_project_defaults_to_pointable_without_being_told(db, tmp_pa
     root.mkdir()
     session = await db.create_session(name="Site", project_dir=str(root))
     assert (await db.get_session(session["id"]))["preview_pickable"] == 1
+
+
+async def test_closing_the_window_does_not_stop_the_project(project):
+    """A front end and a back end are two things, and closing one is not
+    stopping the other. This is how it works everywhere else, and the question
+    it prompts -- "why is Stop still lit when I closed the window?" -- has a
+    real answer worth more than the tidiness of hiding the button.
+
+    Pointing is the one thing that does go away, because pointing needs a page.
+    """
+    port = free_port()
+    before = running_servers()
+    await preview.start("s", f"V=1 PORT={port} python preview_server.py",
+                        f"http://127.0.0.1:{port}", project)
+    assert running_servers() == before + 1
+
+    # No window was ever opened here -- `_show` is stubbed -- which is the same
+    # position the app is in once the user closes one.
+    assert preview.is_running("s") is True, "the server must outlive the window"
+    assert fetch(port) == "BUILD 1", "and go on serving"
+    assert preview.can_pick("s") is False, "but there is nothing left to point at"
+
+    await preview.stop("s")
+    await asyncio.sleep(0.4)
+    assert running_servers() == before, "and Stop must still actually stop it"

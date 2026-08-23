@@ -158,7 +158,11 @@ def test_the_default_is_the_cheapest_thing_they_can_reach(monkeypatch):
     offered = model_catalog.offerable_models()
     chosen = model_catalog.recommended_default_model()
     assert chosen == min(offered, key=lambda m: m["price_out"])["id"]
-    assert chosen == "deepseek-v4-flash", "the cheapest model in the catalogue moved"
+    # The rule above is the test. This line only records what it currently
+    # answers, so that a price edit has to notice it changed the default for
+    # everyone rather than doing it quietly. It last moved when DeepSeek's
+    # published prices were corrected and Flash stopped being the cheapest.
+    assert chosen == "meta-llama/llama-4-maverick", "the cheapest model moved"
 
 
 def test_a_model_on_their_own_computer_wins(monkeypatch):
