@@ -186,16 +186,72 @@ def ctx(tmp_path):
     return ToolContext(session_id="s", project_dir=str(tmp_path), abort=asyncio.Event())
 
 
-async def test_without_godot_it_says_who_can_install_it(ctx, monkeypatch):
-    """Not "Godot is not installed", which names a thing the reader has never
-    heard of and no way to act."""
-    from agent_server.tools.game import game
+async def test_without_godot_it_fetches_it_rather_than_explaining(ctx, monkeypatch):
+    """"Ask the Project Manager to install a 90 MB download" is four things to
+    understand and a conversation with a different assistant, in answer to
+    "make me a game". Every one of those is somewhere a child stops."""
+    from agent_server.tools import game as game_mod
+
+    installed = [False]
+    fetched = []
+
+    def fake_install(names, say):
+        fetched.append(names)
+        installed[0] = True
+        return True
+
+    monkeypatch.setattr(godot, "installed", lambda: installed[0])
+    monkeypatch.setattr(godot, "install", fake_install)
+    monkeypatch.setattr(godot, "new_project", lambda *a, **k: True)
+
+    result = await game_mod.game(ctx, action="new")
+    assert not result.is_error, result.output
+    assert fetched == [["web"]], "it should have fetched Godot itself"
+    assert "Project Manager" not in result.output
+
+
+async def test_a_download_that_fails_is_said_plainly(ctx, monkeypatch):
+    """The one thing left to say once fetching it did not work."""
+    from agent_server.tools import game as game_mod
 
     monkeypatch.setattr(godot, "installed", lambda: False)
-    result = await game(ctx, action="new")
+    monkeypatch.setattr(godot, "install", lambda names, say: False)
+
+    result = await game_mod.game(ctx, action="new")
     assert result.is_error
-    assert "Project Manager" in result.output
-    assert "90 MB" in result.output
+    assert "offline" in result.output
+    assert "Project Manager" not in result.output, "that is not the fix any more"
+
+
+async def test_the_download_does_not_block_every_other_project(ctx, monkeypatch):
+    """`godot.install` is ordinary blocking code. Awaited directly it would
+    stop the whole app, streaming replies included, for a 90 MB download."""
+    import inspect
+
+    from agent_server.tools import game as game_mod
+
+    source = inspect.getsource(game_mod._install_godot)
+    assert "asyncio.to_thread" in source
+    assert "async with _install_lock" in source, "two projects, one unpack"
+
+
+async def test_godot_is_never_downloaded_by_the_test_suite(ctx, monkeypatch):
+    """A guard on the tests themselves. The first version of the auto-install
+    left this path live, and running the suite quietly started an 80 MB
+    download from Godot's release server."""
+    from agent_server.tools import game as game_mod
+
+    monkeypatch.setattr(godot, "installed", lambda: False)
+
+    def explode(*a, **k):
+        raise AssertionError("a test reached the real downloader")
+
+    monkeypatch.setattr(godot, "install_editor", explode)
+    monkeypatch.setattr(godot, "install_targets", explode)
+    monkeypatch.setattr(godot, "install", lambda names, say: False)
+
+    result = await game_mod.game(ctx, action="new")
+    assert result.is_error
 
 
 async def test_changing_a_game_that_does_not_exist_says_to_start_one(ctx, monkeypatch):

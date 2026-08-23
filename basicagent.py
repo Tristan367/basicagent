@@ -71,6 +71,47 @@ def server_command() -> list[str]:
     return [VENV_PY, "-m", "uvicorn", "agent_server.main:app", "--host", HOST, "--port", PORT]
 
 
+def open_app_window() -> bool:
+    """Open the app's own window. True once it has been opened and closed again.
+
+    The returncode is the whole point. `subprocess.run` only raises when the
+    command cannot be started, and this one always starts -- it is our own
+    Python -- so a window that failed to open came back as a clean return and
+    the caller fell through to "Window closed", having never opened one.
+    Somebody whose Chromium had gone double-clicked the app and got nothing at
+    all: no window, no error, and no terminal to find out from.
+    """
+    try:
+        return subprocess.run(
+            [VENV_PY, "-m", "agent_server.desktop", URL], cwd=ROOT
+        ).returncode == 0
+    except Exception:
+        return False
+
+
+def repair_browser_and_retry() -> bool:
+    """Fetch Chromium again and have another go at the window.
+
+    Playwright keeps it in a cache directory, and a cache directory is the
+    first thing a "free up disk space" tool empties -- so the app losing its
+    own window is a thing that happens to people who did nothing wrong. The
+    only two people who could fix it are the user, who has no terminal, and
+    this function.
+    """
+    print("The app's window needs a piece that has gone missing.")
+    print("Fetching it now (about 150 MB, a few minutes). Nothing else to do.")
+    try:
+        got = subprocess.run(
+            [VENV_PY, "-m", "playwright", "install", "chromium"], cwd=ROOT
+        ).returncode == 0
+    except Exception:
+        got = False
+    if not got:
+        print("That did not work -- this computer may be offline.")
+        return False
+    return open_app_window()
+
+
 def open_in_browser_blocking() -> None:
     import webbrowser
 
@@ -126,18 +167,9 @@ def main() -> None:
             # all it takes) double-clicked the app and got nothing whatsoever:
             # no window, no error, no clue. The fallback below was written for
             # exactly that person and could never fire.
-            opened = False
-            try:
-                opened = subprocess.run(
-                    [VENV_PY, "-m", "agent_server.desktop", URL], cwd=ROOT
-                ).returncode == 0
-            except Exception:
-                opened = False
-            if not opened:
+            if not open_app_window() and not repair_browser_and_retry():
                 print("The app's own window would not open, so it is in your "
                       "browser instead.")
-                print("To get the window back, open Settings inside the app and "
-                      "ask the Project Manager to finish setting up.")
                 open_in_browser_blocking()
             else:
                 print("Window closed; stopping the server.")

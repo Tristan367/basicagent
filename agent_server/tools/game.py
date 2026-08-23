@@ -20,6 +20,7 @@ What it hides:
 * and the web export being served and shown, which is the whole point.
 """
 
+import asyncio
 from pathlib import Path
 
 from agent_server import godot
@@ -31,6 +32,30 @@ SHAREABLE = {"linux", "windows", "mac"}
 
 def _project(ctx: ToolContext) -> Path:
     return Path(ctx.project_dir) / "game"
+
+
+# One install at a time. Two projects both asked to make a game inside a minute
+# of each other would otherwise both start unpacking the same editor into the
+# same folder, and the loser corrupts the winner.
+_install_lock = asyncio.Lock()
+
+
+async def _install_godot(say) -> bool:
+    """Put Godot on the machine, off the event loop.
+
+    `godot.install` is ordinary blocking code -- it downloads and unpacks --
+    and running it here directly would stop every other project in the app,
+    the streaming replies included, for the length of a 90 MB download.
+    """
+    async with _install_lock:
+        if godot.installed():
+            return True
+        say("Godot was not installed, so I am fetching it (about 90 MB).")
+        try:
+            return await asyncio.to_thread(godot.install, ["web"], say)
+        except Exception as e:
+            say(f"The download did not finish: {e}")
+            return False
 
 
 async def game(
@@ -52,11 +77,17 @@ async def game(
         return ToolResult.error(
             f"unknown action '{action}'. Use {', '.join(ACTIONS)}.", "game")
 
-    if not godot.installed():
+    # Fetched here rather than reported. "Ask the Project Manager to install a
+    # 90 MB download" is four things to understand and a conversation with a
+    # different assistant, in answer to "make me a game" -- and every one of
+    # those is somewhere a child stops. It takes under a minute, and the first
+    # thing they hear back can be about the game.
+    if not godot.installed() and not await _install_godot(say):
         return ToolResult.error(
-            "Godot is not installed on this computer yet. Tell the user the "
-            "Project Manager can install it -- they only have to ask it -- and "
-            "that it is about a 90 MB download.",
+            "\n".join(said) + "\n\nGodot could not be downloaded, so there is no "
+            "way to make a game yet. Tell them plainly that the download failed "
+            "-- most likely this computer is offline -- and that it will work "
+            "again when it is back on the internet.",
             "game",
         )
 

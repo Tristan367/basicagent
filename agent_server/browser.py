@@ -130,14 +130,21 @@ async def _ensure_browser():
             from playwright.async_api import async_playwright
 
             _playwright = await async_playwright().start()
+        args = ["--no-sandbox", "--disable-dev-shm-usage"]
         try:
-            _browser = await _playwright.chromium.launch(
-                headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
-            )
+            _browser = await _playwright.chromium.launch(headless=True, args=args)
         except Exception as e:
+            # Telling the model to run `playwright install chromium` made the
+            # fix somebody else's turn, and put a shell command in a reply that
+            # a user might well have been shown. Fetching it is a second here
+            # and nobody has to know.
+            from agent_server import setup
+
+            if setup.looks_like_missing_browser(e) and await setup.ensure_chromium():
+                _browser = await _playwright.chromium.launch(headless=True, args=args)
+                return _browser
             raise BrowserError(
-                f"could not start Chromium: {e}. "
-                "If it is not installed, run: playwright install chromium"
+                f"could not start Chromium, and installing it did not help: {_brief(e)}"
             ) from e
         return _browser
 

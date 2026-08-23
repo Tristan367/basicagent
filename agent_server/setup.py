@@ -5,11 +5,20 @@ below are the heavier, optional ones (speech, browser). On first run the manager
 AI is told what is missing so it can install the rest for the user.
 """
 
+import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
 
 from agent_server.config import TTS_MODEL, TTS_VOICES, stt_available
+
+log = logging.getLogger(__name__)
+
+# Chromium is about 150 MB and the machine may be on a poor connection. Long
+# enough to be a real download, short enough that a hung mirror does not hold
+# a reply open forever.
+INSTALL_TIMEOUT = 15 * 60
 
 # The hints below are read by two audiences at once: the user, in a chat message
 # on first run, and the assistant, which is expected to act on them. So each one
@@ -55,6 +64,55 @@ def chromium_installed() -> bool:
         return False
     return any(p.name.startswith("chromium-") and "headless" not in p.name
                for p in cache.iterdir() if p.is_dir())
+
+
+def looks_like_missing_browser(e: Exception | str) -> bool:
+    """Whether a launch failure was "there is no Chromium here".
+
+    Matched on Playwright's own wording because Playwright does not give this
+    a type of its own. Both phrases are checked: the first is what a missing
+    executable says, the second is the line it prints telling you the fix.
+    """
+    text = str(e)
+    return "Executable doesn't exist" in text or "playwright install" in text
+
+
+_install_lock = asyncio.Lock()
+
+
+async def ensure_chromium() -> bool:
+    """Put Chromium back, without anybody being asked to do anything.
+
+    The user has no terminal. Telling them a 150 MB download is missing and
+    that somebody else can fetch it is a worse answer than fetching it, and
+    the installer already fetches it on the way in -- this is only ever the
+    repair after something removed it, which for a cache directory is
+    routinely a disk-cleaning tool the user ran for unrelated reasons.
+
+    Behind a lock because the app window, the preview and the `browser` tool
+    can all discover it missing within a second of each other, and three
+    simultaneous downloads of the same 150 MB would be a remarkable way to
+    fix a disk-space problem.
+    """
+    async with _install_lock:
+        if chromium_installed():
+            return True
+        log.info("Chromium is missing; installing it")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "playwright", "install", "chromium",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), INSTALL_TIMEOUT)
+        except (OSError, TimeoutError) as e:
+            log.warning("could not install Chromium: %s", e)
+            return False
+        if proc.returncode != 0:
+            log.warning("could not install Chromium (code %s): %s",
+                        proc.returncode, (out or b"").decode(errors="replace")[-500:])
+            return False
+        log.info("Chromium installed")
+        return chromium_installed()
 
 
 def godot_installed() -> bool:

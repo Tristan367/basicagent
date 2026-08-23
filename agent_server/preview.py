@@ -337,7 +337,21 @@ async def _show(session_id: str, url: str, confine: bool = False):
         context = await _launch(session_id, url, confine)
     except Exception as e:
         _contexts.pop(session_id, None)
-        raise PreviewError(_no_window(e)) from e
+        # A missing Chromium is a thing to go and fix, not a thing to report.
+        # The user has no terminal, and "ask somebody to download 150 MB" is a
+        # worse answer than downloading it. One retry: if it fails twice the
+        # problem is not the browser.
+        from agent_server import setup
+
+        if setup.looks_like_missing_browser(e) and await setup.ensure_chromium():
+            log.info("reinstalled Chromium; opening the window again")
+            try:
+                context = await _launch(session_id, url, confine)
+            except Exception as second:
+                _contexts.pop(session_id, None)
+                raise PreviewError(_no_window(second)) from second
+        else:
+            raise PreviewError(_no_window(e)) from e
 
     page = _live_page(context)
     if page is not None:
@@ -354,14 +368,18 @@ def _no_window(e: Exception) -> str:
     Playwright keeps Chromium in a cache directory, and a cache directory is
     the first thing any "free up disk space" tool empties.
     """
+    from agent_server import setup
+
     detail = _brief(e)
-    if "Executable doesn't exist" in str(e) or "playwright install" in str(e):
+    if setup.looks_like_missing_browser(e):
+        # Reached only when putting it back has already been tried and failed,
+        # which in practice means there is no way onto the internet from here.
         return (
             "the project is running, but the browser this app uses to show "
-            "people their work is not installed, so no window could be opened. "
-            "Tell them the Project Manager can install it -- it is about a "
-            "150 MB download -- and that everything works again afterwards. "
-            "Meanwhile they can see it at the address above in their own browser."
+            "people their work is missing, and downloading it again did not "
+            "work either -- most likely this computer is offline. Say that "
+            "plainly, and that they can see it meanwhile at the address above "
+            "in their own browser."
         )
     return (
         "the project is running, but a window could not be opened to show it "

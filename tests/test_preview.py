@@ -606,20 +606,102 @@ async def test_closing_the_window_does_not_stop_the_project(project):
 # failure, and the person it happens to cannot open a terminal to fix it.
 
 
+MISSING_BROWSER = Exception(
+    "BrowserType.launch_persistent_context: Executable doesn't exist at "
+    "/home/someone/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome"
+)
+
+
 def test_a_missing_browser_is_explained_rather_than_quoted():
-    """What came back before was a raw Playwright exception and an instruction
-    to go and visit an address -- the exact thing this app exists to spare
-    somebody, offered as the answer."""
-    broken = Exception(
-        "BrowserType.launch_persistent_context: Executable doesn't exist at "
-        "/home/someone/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome"
-    )
-    said = preview._no_window(broken)
-    assert "not installed" in said
-    assert "Project Manager" in said, "they cannot install it themselves"
-    assert "150 MB" in said, "worth knowing before it starts"
+    """This message is only reached once putting Chromium back has already been
+    tried and failed, so it must not send anybody off to install anything: that
+    is what just did not work. What it was before was a raw Playwright
+    exception and an instruction to go and visit an address."""
+    said = preview._no_window(MISSING_BROWSER)
+    assert "offline" in said, "the remaining explanation, once a download failed"
     assert "launch_persistent_context" not in said
     assert "Executable doesn't exist" not in said
+    assert "playwright" not in said.lower()
+    assert "install" not in said.lower(), "nobody is being asked to install anything"
+
+
+def test_any_other_window_failure_is_left_to_the_launch_to_report():
+    from agent_server import setup
+
+    assert setup.looks_like_missing_browser(MISSING_BROWSER) is True
+    assert setup.looks_like_missing_browser(Exception("Target crashed")) is False
+
+
+async def test_a_missing_browser_is_fetched_rather_than_reported(monkeypatch):
+    """The user has no terminal. "Somebody should download 150 MB" is a worse
+    answer than downloading it.
+
+    Deliberately without the `project` fixture: that one replaces `_show` with
+    a no-op, which is the function under test here.
+    """
+    from agent_server import setup
+
+    calls = {"launch": 0, "install": 0}
+
+    async def flaky_launch(session_id, url, confine):
+        calls["launch"] += 1
+        if calls["launch"] == 1:
+            raise MISSING_BROWSER
+        return object()
+
+    async def fake_install():
+        calls["install"] += 1
+        return True
+
+    monkeypatch.setattr(preview, "_launch", flaky_launch)
+    monkeypatch.setattr(preview, "_live_page", lambda ctx: None)
+    monkeypatch.setattr(setup, "ensure_chromium", fake_install)
+
+    await preview._show("s", "http://127.0.0.1:1/", False)
+    assert calls == {"launch": 2, "install": 1}, "install once, then try again"
+
+
+async def test_it_does_not_download_on_a_failure_a_download_cannot_fix(monkeypatch):
+    from agent_server import setup
+
+    installs = []
+
+    async def crashed(session_id, url, confine):
+        raise Exception("Target crashed while opening")
+
+    async def fake_install():
+        installs.append(1)
+        return True
+
+    monkeypatch.setattr(preview, "_launch", crashed)
+    monkeypatch.setattr(setup, "ensure_chromium", fake_install)
+
+    with pytest.raises(preview.PreviewError, match="Target crashed"):
+        await preview._show("s", "http://127.0.0.1:1/", False)
+    assert installs == [], "150 MB fetched for an unrelated crash"
+
+
+async def test_it_gives_up_after_one_repair(monkeypatch):
+    """If it fails twice the problem is not the browser, and a loop here would
+    download 150 MB over and over while somebody waits for a reply."""
+    from agent_server import setup
+
+    calls = {"launch": 0, "install": 0}
+
+    async def always_missing(session_id, url, confine):
+        calls["launch"] += 1
+        raise MISSING_BROWSER
+
+    async def fake_install():
+        calls["install"] += 1
+        return True
+
+    monkeypatch.setattr(preview, "_launch", always_missing)
+    monkeypatch.setattr(setup, "ensure_chromium", fake_install)
+
+    with pytest.raises(preview.PreviewError):
+        await preview._show("s", "http://127.0.0.1:1/", False)
+    assert calls == {"launch": 2, "install": 1}
 
 
 def test_any_other_window_failure_still_says_what_went_wrong():
