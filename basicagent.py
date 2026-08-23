@@ -116,11 +116,31 @@ def main() -> None:
             open_in_browser_blocking()
         else:
             # Open the Chromium app window; desktop.py blocks until it closes.
+            #
+            # The returncode is the whole point of this. `subprocess.run` only
+            # raises when the command cannot be started at all, and this one
+            # always starts -- it is our own Python -- so a window that failed
+            # to open came back as a clean return and this fell straight
+            # through to "Window closed", having never opened one. Somebody
+            # whose Chromium had gone (a disk cleaner reaching into ~/.cache is
+            # all it takes) double-clicked the app and got nothing whatsoever:
+            # no window, no error, no clue. The fallback below was written for
+            # exactly that person and could never fire.
+            opened = False
             try:
-                subprocess.run([VENV_PY, "-m", "agent_server.desktop", URL], cwd=ROOT)
+                opened = subprocess.run(
+                    [VENV_PY, "-m", "agent_server.desktop", URL], cwd=ROOT
+                ).returncode == 0
             except Exception:
+                opened = False
+            if not opened:
+                print("The app's own window would not open, so it is in your "
+                      "browser instead.")
+                print("To get the window back, open Settings inside the app and "
+                      "ask the Project Manager to finish setting up.")
                 open_in_browser_blocking()
-            print("Window closed; stopping the server.")
+            else:
+                print("Window closed; stopping the server.")
     except KeyboardInterrupt:
         # Ctrl-C: shut down quietly, with no traceback.
         print()

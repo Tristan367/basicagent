@@ -15,6 +15,7 @@ import socket
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -596,3 +597,50 @@ async def test_closing_the_window_does_not_stop_the_project(project):
     await preview.stop("s")
     await asyncio.sleep(0.4)
     assert running_servers() == before, "and Stop must still actually stop it"
+
+
+# ── When the browser it needs has gone ──────────────────────────────────────
+#
+# Playwright keeps Chromium in a cache directory, and a cache directory is the
+# first thing any "free up disk space" tool empties. So this is not an exotic
+# failure, and the person it happens to cannot open a terminal to fix it.
+
+
+def test_a_missing_browser_is_explained_rather_than_quoted():
+    """What came back before was a raw Playwright exception and an instruction
+    to go and visit an address -- the exact thing this app exists to spare
+    somebody, offered as the answer."""
+    broken = Exception(
+        "BrowserType.launch_persistent_context: Executable doesn't exist at "
+        "/home/someone/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome"
+    )
+    said = preview._no_window(broken)
+    assert "not installed" in said
+    assert "Project Manager" in said, "they cannot install it themselves"
+    assert "150 MB" in said, "worth knowing before it starts"
+    assert "launch_persistent_context" not in said
+    assert "Executable doesn't exist" not in said
+
+
+def test_any_other_window_failure_still_says_what_went_wrong():
+    """Only the case with a known fix gets rewritten. Swallowing the rest would
+    leave the assistant guessing at a problem it could have read."""
+    said = preview._no_window(Exception("Target crashed while opening"))
+    assert "Target crashed" in said
+
+
+def test_the_browser_is_looked_for_where_this_platform_keeps_it(monkeypatch):
+    """It checked the Linux path on every platform, so a Mac reported Chromium
+    missing however many times it had been installed."""
+    from agent_server import setup
+
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "/somewhere/else")
+    assert setup._playwright_cache() == Path("/somewhere/else")
+
+    # "0" is Playwright's own way of saying "beside the package", not a path.
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "0")
+    assert setup._playwright_cache() != Path("0")
+
+    monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH")
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert setup._playwright_cache().parts[-3:] == ("Library", "Caches", "ms-playwright")

@@ -48,8 +48,8 @@ PROVIDER_INFO = {
         "description": (
             "Worth adding once you know you want to keep going. The best of these "
             "at writing code — this app was built with it — and the cheapest paid "
-            "option by a distance: hours of work for less than a dollar, with no "
-            "daily limit to run into. It does need a card on file."
+            "option: hours of work for less than a dollar, with no daily limit to "
+            "run into. It does need a card on file."
         ),
         "key_hint": "sk-\u2026",
         "get_key_url": "https://platform.deepseek.com",

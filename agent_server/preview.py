@@ -337,16 +337,36 @@ async def _show(session_id: str, url: str, confine: bool = False):
         context = await _launch(session_id, url, confine)
     except Exception as e:
         _contexts.pop(session_id, None)
-        raise PreviewError(
-            "the project is running, but a window could not be opened to show it "
-            f"({_brief(e)}). Tell the user the address to visit."
-        ) from e
+        raise PreviewError(_no_window(e)) from e
 
     page = _live_page(context)
     if page is not None:
         with contextlib.suppress(Exception):
             await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             await page.bring_to_front()
+
+
+def _no_window(e: Exception) -> str:
+    """Why no window appeared, in words the assistant can pass straight on.
+
+    The missing-browser case is worth telling apart from every other launch
+    failure, because it is the one with a fix -- and because it is not exotic.
+    Playwright keeps Chromium in a cache directory, and a cache directory is
+    the first thing any "free up disk space" tool empties.
+    """
+    detail = _brief(e)
+    if "Executable doesn't exist" in str(e) or "playwright install" in str(e):
+        return (
+            "the project is running, but the browser this app uses to show "
+            "people their work is not installed, so no window could be opened. "
+            "Tell them the Project Manager can install it -- it is about a "
+            "150 MB download -- and that everything works again afterwards. "
+            "Meanwhile they can see it at the address above in their own browser."
+        )
+    return (
+        "the project is running, but a window could not be opened to show it "
+        f"({detail}). Tell the user the address to visit."
+    )
 
 
 def _live_page(context):

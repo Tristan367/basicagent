@@ -5,6 +5,7 @@ below are the heavier, optional ones (speech, browser). On first run the manager
 AI is told what is missing so it can install the rest for the user.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -21,10 +22,35 @@ from agent_server.config import TTS_MODEL, TTS_VOICES, stt_available
 # the environment the command has to run in.
 
 
+def _playwright_cache() -> Path:
+    """Where Playwright keeps its browsers on this machine.
+
+    Three different places, and this checked only the Linux one -- so on a Mac
+    it reported Chromium missing however many times it had been installed, and
+    the manager went on offering to install it forever.
+    """
+    override = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if override and override != "0":
+        return Path(override)
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "ms-playwright"
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(base) / "ms-playwright"
+    return Path.home() / ".cache" / "ms-playwright"
+
+
 def chromium_installed() -> bool:
     """Playwright's bundled Chromium is used for both the app window and the
-    `browser` tool, so its presence matters to more than just one feature."""
-    cache = Path.home() / ".cache" / "ms-playwright"
+    `browser` tool, so its presence matters to more than just one feature.
+
+    A directory check, which is cheap enough to run every time Settings is
+    drawn. It answers "has this been installed", which is what the setup list
+    is for. It does NOT promise the launch will work -- only the launch knows
+    that -- so the code that opens a window reports its own failure rather than
+    asking here first.
+    """
+    cache = _playwright_cache()
     if not cache.is_dir():
         return False
     return any(p.name.startswith("chromium-") and "headless" not in p.name
