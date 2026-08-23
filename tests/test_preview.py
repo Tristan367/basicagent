@@ -726,3 +726,46 @@ def test_the_browser_is_looked_for_where_this_platform_keeps_it(monkeypatch):
     monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH")
     monkeypatch.setattr(sys, "platform", "darwin")
     assert setup._playwright_cache().parts[-3:] == ("Library", "Caches", "ms-playwright")
+
+
+async def test_arming_a_page_with_no_picker_on_it_fails(monkeypatch):
+    """`window.__pickerArm && window.__pickerArm()` is `undefined` rather than
+    an error when there is no picker, so counting attempts counted a frame with
+    no picker in it exactly the same as one that armed. The check could not
+    fail. What the user got was the window coming forward with no crosshair,
+    clicks going through to their own page, and three minutes later a quiet
+    "nothing was picked"."""
+    class Frame:
+        def __init__(self, armed): self._armed = armed
+        async def evaluate(self, script): return self._armed
+
+    class Page:
+        def __init__(self, frames): self.frames = frames
+        async def bring_to_front(self): pass
+
+    monkeypatch.setattr(preview, "_live_page", lambda ctx: Page([Frame(False)]))
+    with pytest.raises(preview.PreviewError, match="not one this can point at"):
+        await preview.arm("s")
+
+    monkeypatch.setattr(preview, "_live_page", lambda ctx: Page([Frame(False), Frame(True)]))
+    await preview.arm("s")  # one frame armed is enough
+
+
+def test_the_arming_script_asks_for_a_yes_rather_than_an_absence():
+    """A truthiness check on `window.__pickerArm && ...` is what made this
+    unfailable. The script has to return a boolean of its own."""
+    import inspect
+
+    source = inspect.getsource(preview.arm)
+    assert "typeof window.__pickerArm === 'function'" in source
+    assert "if await frame.evaluate" in source
+
+
+def test_the_project_window_can_be_told_not_to_appear():
+    """The window is meant to open in front of whoever is using the app. When
+    that person is running the tests instead, it lands under their mouse and
+    takes the keyboard with it."""
+    import inspect
+
+    assert "headless=HEADLESS" in inspect.getsource(preview._launch)
+    assert preview.HEADLESS is True, "conftest sets this for the whole suite"

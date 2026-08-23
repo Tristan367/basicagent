@@ -51,6 +51,11 @@ MAX_LOG_CHARS = 6000
 # Longest `start` will wait for a URL to begin answering.
 MAX_WAIT_MS = 60_000
 
+# Set BASICAGENT_PREVIEW_HEADLESS=1 to run the project's window with no window.
+# For test runs and for machines with no screen; never for a real user, whose
+# whole reason for having this app is seeing the thing they made.
+HEADLESS = os.environ.get("BASICAGENT_PREVIEW_HEADLESS", "") == "1"
+
 
 class PreviewError(RuntimeError):
     pass
@@ -219,7 +224,13 @@ async def _launch(session_id: str, url: str, confine: bool):
     directory.mkdir(parents=True, exist_ok=True)
     context = await _playwright.chromium.launch_persistent_context(
         str(directory),
-        headless=False,
+        # Visible, because the entire job of this window is to be looked at.
+        # The override exists for the two places where nobody is looking: a
+        # test run, and a machine with no screen at all. Without it, running
+        # the tests on a desktop throws real windows at whoever is using it --
+        # under the mouse pointer, on a tiling compositor, taking the keyboard
+        # with them.
+        headless=HEADLESS,
         no_viewport=True,
         args=["--disable-features=Translate"],
     )
@@ -581,15 +592,28 @@ async def arm(session_id: str) -> None:
         await page.bring_to_front()
     # Every frame, not just the main one: an app that renders part of itself
     # in an iframe is still an app someone wants to point at.
+    #
+    # The frame has to SAY it armed. This counted attempts instead, and
+    # `window.__pickerArm && window.__pickerArm()` is `undefined` rather than
+    # an error when there is no picker on the page -- so a frame with no picker
+    # in it counted exactly the same as one that armed. The check could not
+    # fail, and what the user got was the window coming forward with no
+    # crosshair on it, clicks going through to their own page, and three
+    # minutes later a quiet "nothing was picked".
     armed = 0
     for frame in page.frames:
         try:
-            await frame.evaluate("() => window.__pickerArm && window.__pickerArm()")
-            armed += 1
+            if await frame.evaluate(
+                    "() => typeof window.__pickerArm === 'function'"
+                    " && (window.__pickerArm(), true)"):
+                armed += 1
         except Exception:
             continue  # cross-origin, or gone mid-navigation
     if not armed:
-        raise PreviewError("the page in the window would not respond.")
+        raise PreviewError(
+            "the page in that window is not one this can point at -- it may "
+            "still be loading, or it may be a PDF or an image rather than a page."
+        )
 
 
 async def disarm(session_id: str) -> None:

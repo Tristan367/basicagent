@@ -223,6 +223,34 @@
   // leave the dialog on screen for good.
   const MODAL_FADE_OUT_MS = 200;
 
+  /* Where the keyboard goes when a dialog closes.
+   *
+   * `remembered.focus()` looks like it does this on its own, and for a dialog
+   * opened by pressing a button it does. Two cases it silently does nothing at
+   * all for, and "nothing" here means focus lands on `<body>`: the next Tab
+   * starts again from the top of the document and a screen reader announces
+   * none of it.
+   *
+   *  - A dialog nothing opened. The welcome appears on load, when the active
+   *    element is the body, so the body is what gets remembered and refocused.
+   *    That is the first thing a new user meets.
+   *  - A button that has since been re-rendered away -- a project card, a
+   *    message action. The node is remembered, detached, and unfocusable.
+   *
+   * Both end the same way, so both are checked the same way: try, then look at
+   * where focus actually landed rather than trusting the call.
+   */
+  function restoreFocus(remembered) {
+    if (remembered && remembered.focus && remembered !== document.body
+        && document.contains(remembered)) {
+      remembered.focus();
+      if (document.activeElement === remembered) return;
+    }
+    const fallback = document.getElementById('chat-textarea')
+                  || document.getElementById('main-content');
+    if (fallback && fallback.focus) fallback.focus();
+  }
+
   window.__openModal = function (el, focusEl) {
     window.__modalEl = el;
     window.__modalReturn = document.activeElement;
@@ -256,7 +284,7 @@
     } else {
       setTimeout(settle, MODAL_FADE_OUT_MS);
     }
-    if (ret && ret.focus) ret.focus();
+    restoreFocus(ret);
     // So a dialog can clean up after itself however it was dismissed. The
     // camera needs this: Escape closes the dialog, and without a signal the
     // webcam would stay live -- and its light stay on -- until the tab closed.

@@ -14,6 +14,13 @@ from pathlib import Path
 _TMP_DATA = Path(tempfile.mkdtemp(prefix="basicagent-tests-"))
 os.environ["BASICAGENT_DATA_DIR"] = str(_TMP_DATA)
 os.environ["BASICAGENT_DB"] = str(_TMP_DATA / "test.db")
+# Nothing in a test run may put a window on somebody's screen. The preview
+# window is meant to appear in front of whoever is using the app, which is
+# exactly wrong when the person at the keyboard is doing something else: on a
+# tiling compositor it opens under the mouse pointer and takes the keyboard
+# with it. Set here rather than in a fixture because `preview` reads it once,
+# at import, and an import can happen before any fixture runs.
+os.environ["BASICAGENT_PREVIEW_HEADLESS"] = "1"
 
 import pytest  # noqa: E402
 
