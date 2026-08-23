@@ -17,7 +17,6 @@ os.environ["BASICAGENT_DB"] = str(_TMP_DATA / "test.db")
 
 import pytest  # noqa: E402
 
-
 LOOPBACK = {"127.0.0.1", "::1", "localhost", "0.0.0.0", ""}
 
 
