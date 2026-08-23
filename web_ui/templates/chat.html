@@ -267,6 +267,31 @@
                             </svg>
                         </button>
                         <input type="file" id="file-input" multiple hidden aria-label="Choose files to attach">
+                        {#
+                          Next to Attach, because it is the same idea: put a
+                          thing into the message that would be a nightmare to
+                          type. "The blue button" is not an identifier -- there
+                          are four blue buttons -- and working that sentence out
+                          is the step where somebody gives up and says "it looks
+                          wrong".
+
+                          Hidden until there is something open to point at, and
+                          hidden for a game, where the whole world is painted
+                          inside one canvas and pointing at it would answer
+                          "you pointed at the canvas" every single time. The
+                          button is there when it works and absent when it does
+                          not, and there is no third state -- a button that
+                          appears and then explains why it cannot help you is
+                          worse than no button at all.
+                        #}
+                        <button type="button" id="pick-btn" class="icon-btn" hidden
+                                aria-label="Point at something in your project"
+                                title="Point at it — click part of your project instead of describing it">
+                            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+                                <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
+                                      d="M6.5 3.2l11.7 8.1-4.9 1.1 2.7 5.5-2.6 1.3-2.7-5.5-3.4 3.6z"/>
+                            </svg>
+                        </button>
                         {# Hidden until a camera is found, so a machine without
                            one never shows a button that cannot work. #}
                         <button type="button" id="camera-btn" class="icon-btn" hidden

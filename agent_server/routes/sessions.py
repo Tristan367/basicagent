@@ -356,6 +356,7 @@ async def preview_state(session_id: str):
         "url": session.get("preview_url") or "",
         "running": preview.is_running(session_id),
         "busy": agent.is_running(session_id),
+        "pickable": preview.can_pick(session_id),
     }
 
 
@@ -377,10 +378,54 @@ async def preview_start(session_id: str):
         await preview.start(
             session_id, command, (session.get("preview_url") or "").strip(),
             session["project_dir"], confine=await parental.child_mode_enabled(),
+            pickable=bool(session.get("preview_pickable", 1)),
         )
     except preview.PreviewError as e:
         raise HTTPException(500, str(e).splitlines()[0]) from e
     return {"ok": True, "running": preview.is_running(session_id)}
+
+
+@router.post("/{session_id}/pick")
+async def preview_pick(session_id: str):
+    """Let the user click part of the running page, and say what they clicked.
+
+    Held open rather than polled. The gap between pressing the button and
+    finding the thing is however long it takes to find the thing, and a poll
+    that is fast enough not to feel laggy is a poll running all afternoon for
+    a feature used twice.
+    """
+    from agent_server import annotate, preview
+
+    session = await _require(session_id)
+    if not preview.can_pick(session_id):
+        raise HTTPException(409, "There is nothing open to point at.")
+    try:
+        await preview.arm(session_id)
+    except preview.PreviewError as e:
+        raise HTTPException(409, str(e).splitlines()[0]) from e
+
+    picked = await annotate.wait_for_pick(session_id)
+    if picked is None:
+        # Escape, a closed window, or three minutes of nothing. All the same
+        # to the person who is now looking at the app again.
+        await preview.disarm(session_id)
+        return {"picked": False}
+    return {
+        "picked": True,
+        "label": annotate.summarise(picked),
+        "description": annotate.describe(picked, session.get("project_dir") or ""),
+    }
+
+
+@router.post("/{session_id}/pick/cancel")
+async def preview_pick_cancel(session_id: str):
+    """Called when the user gives up from the app's side rather than the page's."""
+    from agent_server import annotate, preview
+
+    await _require(session_id)
+    annotate.forget(session_id)
+    await preview.disarm(session_id)
+    return {"ok": True}
 
 
 @router.post("/{session_id}/preview/stop")

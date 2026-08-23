@@ -16,6 +16,10 @@ async def preview(
     command: str = "",
     url: str = "",
     wait_ms: int = 20_000,
+    # Not in the schema the model sees, and deliberately: whether pointing at
+    # part of the page means anything is a fact about what is being run, not a
+    # decision for the assistant to make. Only the `game` tool sets it.
+    pickable: bool = True,
     **_,
 ) -> ToolResult:
     action = (action or "start").strip().lower()
@@ -46,7 +50,7 @@ async def preview(
     try:
         output = await runner.start(
             ctx.session_id, command.strip(), url.strip(), ctx.project_dir, wait_ms,
-            confine=await child_mode_enabled(),
+            confine=await child_mode_enabled(), pickable=pickable,
         )
     except runner.PreviewError as e:
         return ToolResult.error(str(e), "preview")
@@ -57,7 +61,8 @@ async def preview(
     from agent_server import database as db
 
     await db.update_session(
-        ctx.session_id, preview_command=command.strip(), preview_url=url.strip()
+        ctx.session_id, preview_command=command.strip(), preview_url=url.strip(),
+        preview_pickable=1 if pickable else 0,
     )
     return ToolResult(output=output, title=_title(command, url))
 

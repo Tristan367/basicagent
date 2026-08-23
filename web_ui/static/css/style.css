@@ -876,6 +876,16 @@ html[data-theme="dark"] .setup-banner {
 }
 .attachment-chip .rm:hover { color: var(--danger); background: var(--accent-dim); }
 
+/* A chip for something pointed at rather than something attached. Same shape
+   as a file chip -- it goes in the same row and does the same job -- with the
+   accent border that says this one came from the project's own window. */
+.point-chip { border-color: var(--accent); }
+.point-chip-icon { display: grid; place-items: center; color: var(--accent); flex: none; padding-left: 4px; }
+
+/* While the project window is waiting to be clicked. The button stays put and
+   pulses, because the thing to look at is the other window, not this one. */
+#pick-btn.busy { color: var(--accent); animation: dot-pulse 1.1s ease-in-out infinite; }
+
 #chat-textarea {
     width: 100%;
     border: none;

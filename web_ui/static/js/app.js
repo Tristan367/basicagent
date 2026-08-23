@@ -3193,6 +3193,7 @@
       ? 'Stop — close your project and shut it down'
       : 'Play — open your project so you can use it';
     if (has) positionPlayBtn();
+    renderPick();
   }
 
   // The mirror of the jump-to-newest button on the other side: just above the
@@ -3296,6 +3297,11 @@
     if (window.ResizeObserver && wrap) {
       new ResizeObserver(positionPlayBtn).observe(wrap);
     }
+    // Coming back to this window is the moment the answer is most likely to
+    // have gone stale, because the usual way to get here is having just closed
+    // the project's window by hand. Without this, Play went on offering to
+    // stop something that had already stopped until the next reply.
+    window.addEventListener('focus', () => { if (!picking) refreshPlay(); });
     refreshPlay();
   }
 
@@ -3373,6 +3379,12 @@
 
   let attachments = [];
   const attachmentsBox = document.getElementById('attachments');
+
+  // Things the user pointed at, kept apart from attachments on purpose: the
+  // model is told attachments are numbered and may be referred to by number,
+  // and quietly slipping a non-file into that list would shift every number
+  // the user can see.
+  let points = [];
 
   const FILE_ICON_SVG =
     '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
@@ -3630,9 +3642,10 @@
 
   function renderAttachments() {
     if (!attachmentsBox) return;
-    attachmentsBox.hidden = attachments.length === 0;
+    attachmentsBox.hidden = attachments.length === 0 && points.length === 0;
     attachmentsBox.innerHTML = '';
     saveAttachments();
+    renderPoints();
     attachments.forEach((a, i) => {
       const chip = document.createElement('span');
       chip.className = 'attachment-chip';
@@ -3790,8 +3803,145 @@
   function clearAttachments() {
     attachments.forEach((a) => { if (a.thumb && a.thumb.startsWith('blob:')) { try { URL.revokeObjectURL(a.thumb); } catch (e) {} } });
     attachments = [];
+    points = [];
+    savePoints();
     renderAttachments();
   }
+
+
+  /* ── Pointing at part of the running project ──────────────────────────────
+   *
+   * Press the button, the project's window comes to the front with a crosshair
+   * on it, click the thing, and a chip appears here saying what you clicked.
+   * What the AI receives is the element itself -- its tag, its text, its size,
+   * the styles that actually decide how it looks -- plus the component name and
+   * source file when the framework happens to expose them. Some do, some do
+   * not, and the AI is told to go and search when they do not.
+   *
+   * The point of the whole thing is the sentence nobody has to write: "the blue
+   * button", when there are four blue buttons, is where a beginner gets stuck.
+   */
+
+  const pickBtn = document.getElementById('pick-btn');
+  const pointsKey = 'points:' + sessionId;
+  let picking = false;
+
+  function renderPick() {
+    if (!pickBtn) return;
+    // Absent, not disabled. Unlike Play -- which greys out mid-turn so it does
+    // not move under a keyboard user's fingers -- this button only exists at
+    // all while a project is open, so its arrival and departure are already
+    // tied to something the user did.
+    pickBtn.hidden = !playState.pickable;
+    pickBtn.classList.toggle('busy', picking);
+    pickBtn.setAttribute('aria-label', picking
+      ? 'Waiting for you to click something in your project'
+      : 'Point at something in your project');
+  }
+
+  async function startPicking() {
+    if (picking) { await cancelPicking(); return; }
+    picking = true;
+    renderPick();
+    announce('Your project is in front. Click the part you want to talk about, '
+             + 'or press Escape.');
+    let data = null;
+    try {
+      const resp = await fetch('/api/sessions/' + sessionId + '/pick', { method: 'POST' });
+      data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        // Almost always the window was closed since the button last heard
+        // anything. Say so plainly and go and ask, so the button that should
+        // not have been there is gone by the time they read it.
+        showError((data && data.detail) || 'Nothing is open to point at.');
+        refreshPlay();
+        return;
+      }
+    } catch (e) {
+      showError('That did not work. Try pressing Play first.');
+      return;
+    } finally {
+      picking = false;
+      renderPick();
+    }
+    if (!data || !data.picked) {
+      announce('Nothing was picked.');
+      return;
+    }
+    points.push({ label: data.label, description: data.description });
+    savePoints();
+    renderAttachments();
+    announce('Added ' + data.label + ' to your message.');
+    textarea.focus();
+  }
+
+  async function cancelPicking() {
+    picking = false;
+    renderPick();
+    try {
+      await fetch('/api/sessions/' + sessionId + '/pick/cancel', { method: 'POST' });
+    } catch (e) {}
+  }
+
+  function savePoints() {
+    try { localStorage.setItem(pointsKey, JSON.stringify(points)); } catch (e) {}
+  }
+
+  function restorePoints() {
+    let saved = [];
+    try { saved = JSON.parse(localStorage.getItem(pointsKey) || '[]'); } catch (e) { return; }
+    if (!Array.isArray(saved)) return;
+    points = saved.filter((p) => p && p.description);
+    if (points.length) renderAttachments();
+  }
+
+  function removePoint(index) {
+    const [gone] = points.splice(index, 1);
+    savePoints();
+    renderAttachments();
+    if (gone) announce(gone.label + ' removed.');
+    (pickBtn && !pickBtn.hidden ? pickBtn : textarea).focus();
+  }
+
+  function renderPoints() {
+    points.forEach((p, i) => {
+      const chip = document.createElement('span');
+      chip.className = 'attachment-chip point-chip';
+
+      const icon = document.createElement('span');
+      icon.className = 'point-chip-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML =
+        '<svg viewBox="0 0 24 24" width="18" height="18">' +
+        '<path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" ' +
+        'd="M6.5 3.2l11.7 8.1-4.9 1.1 2.7 5.5-2.6 1.3-2.7-5.5-3.4 3.6z"/></svg>';
+      chip.appendChild(icon);
+
+      const name = document.createElement('span');
+      name.className = 'chip-name';
+      // "You pointed at" rather than the bare text, because the text alone
+      // ("Buy wheels") reads as something the user typed.
+      name.textContent = p.label;
+      chip.appendChild(name);
+
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'rm';
+      rm.innerHTML = '&times;';
+      rm.setAttribute('aria-label', 'Remove ' + p.label);
+      rm.addEventListener('click', () => removePoint(i));
+      chip.appendChild(rm);
+
+      attachmentsBox.appendChild(chip);
+    });
+  }
+
+  if (pickBtn) {
+    pickBtn.addEventListener('click', startPicking);
+    // Leaving the page with the crosshair still on would strand it there.
+    window.addEventListener('pagehide', () => { if (picking) cancelPicking(); });
+  }
+  restorePoints();
 
   // By name, not by whether a thumbnail could be made: an image dragged in
   // from somewhere else on the computer has no thumbnail, because the endpoint
@@ -3806,7 +3956,18 @@
     return attachments.filter(looksLikeImage).map((a) => a.path);
   }
 
+  // Below whatever the user typed rather than above it. "Make this bigger" is
+  // the message; the element is the footnote that says which "this". Putting
+  // the footnote first buries the sentence that carries the actual request.
+  function messageWithPoints(base) {
+    if (!points.length) return base;
+    const text = (base || '').trim();
+    const blocks = points.map((p) => p.description).join('\n\n');
+    return text ? text + '\n\n---\n\n' + blocks : blocks;
+  }
+
   function messageWithAttachments(base) {
+    base = messageWithPoints(base);
     if (!attachments.length) return base;
     // Numbered, and with the name the user is looking at. The model used to
     // get bare paths, so "delete number 2" and "the second picture" had

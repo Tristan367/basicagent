@@ -490,3 +490,84 @@ def test_the_blocked_page_cannot_be_used_to_put_markup_on_itself():
     page = preview._blocked_page('https://x/"><script>alert(1)</script>')
     assert "<script>alert(1)</script>" not in page
     assert "&lt;script&gt;" in page
+
+
+# ── Pointing at part of what is running ─────────────────────────────────────
+#
+# The pointing itself is a browser thing and lives in `test_annotate.py`. What
+# is here is the rule that decides whether the button exists at all, which is
+# the whole of the promise: present when it works, absent when it does not,
+# and never present-but-apologetic.
+
+
+async def test_a_web_project_can_be_pointed_at():
+    assert preview.Slot("s", "cmd").pickable is True
+
+
+async def test_a_game_says_it_cannot_be_pointed_at():
+    """One canvas with the whole world painted inside it. Clicking it would
+    answer "you pointed at the canvas" every single time."""
+    slot = preview.Slot("s", "cmd", pickable=False)
+    assert slot.pickable is False
+
+
+async def test_nothing_running_means_nothing_to_point_at():
+    assert preview.can_pick("nobody-here") is False
+
+
+async def test_a_project_with_no_window_open_cannot_be_pointed_at(project):
+    """`_show` is stubbed here, so the process runs with no window. The button
+    must go by whether there is a page, not by whether the server is up."""
+    port = free_port()
+    env = dict(os.environ, PORT=str(port))
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "preview_server.py", cwd=project, env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        slot = preview.Slot("s", "cmd", pickable=True, process=proc)
+        preview._slots["s"] = slot
+        assert preview.can_pick("s") is False
+    finally:
+        preview._slots.pop("s", None)
+        proc.terminate()
+        await proc.wait()
+
+
+async def test_arming_a_window_that_is_not_there_says_so():
+    with pytest.raises(preview.PreviewError, match="window is not open"):
+        await preview.arm("no-such-project")
+
+
+async def test_the_game_tool_opts_out_of_pointing():
+    """Not a judgement the assistant makes per call: whether pointing means
+    anything is a fact about what is being run."""
+    import inspect
+
+    from agent_server.tools import game
+
+    source = inspect.getsource(game)
+    starts = source.count("preview(ctx, action=\"start\"")
+    assert starts == 2, "the game tool opens a window in two places"
+    assert source.count("pickable=False") == 2, "and neither can be pointed at"
+
+
+async def test_pointing_survives_the_app_being_restarted(db, tmp_path):
+    """The Play button works tomorrow because the command is on the session
+    row. The pointing button has to agree with it, or a game reopened from the
+    row would offer a picker that answers "the canvas"."""
+    root = tmp_path / "game"
+    root.mkdir()
+    session = await db.create_session(name="Game", project_dir=str(root))
+    await db.update_session(session["id"], preview_command="serve",
+                            preview_url="http://127.0.0.1:8300", preview_pickable=0)
+    again = await db.get_session(session["id"])
+    assert again["preview_pickable"] == 0
+
+
+async def test_a_web_project_defaults_to_pointable_without_being_told(db, tmp_path):
+    """Every project made before this column existed, and every one the
+    assistant starts without mentioning it."""
+    root = tmp_path / "site"
+    root.mkdir()
+    session = await db.create_session(name="Site", project_dir=str(root))
+    assert (await db.get_session(session["id"]))["preview_pickable"] == 1

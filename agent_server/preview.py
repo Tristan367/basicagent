@@ -32,6 +32,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_server import annotate
 from agent_server.config import DATA_DIR
 
 log = logging.getLogger(__name__)
@@ -61,6 +62,10 @@ class Slot:
     command: str
     url: str = ""
     cwd: str = ""
+    # Whether "point at something" makes sense for what is in the window. A
+    # web page: yes. A game, which is one `<canvas>` with everything painted
+    # inside it, would hand back that canvas every time and mean nothing.
+    pickable: bool = True
     process: object = None
     log_path: Path | None = None
     started_at: float = field(default_factory=time.monotonic)
@@ -220,6 +225,17 @@ async def _launch(session_id: str, url: str, confine: bool):
     )
     _contexts[session_id] = context
 
+    # Installed once, for every page and every frame this window ever loads,
+    # and inert until something arms it. Doing it here rather than per-page is
+    # what makes it survive a navigation -- the user clicks through to another
+    # page of their own app and pointing still works.
+    with contextlib.suppress(Exception):
+        await context.expose_binding(
+            "__annotatePick",
+            lambda _source, payload: annotate.deliver(session_id, payload),
+        )
+        await context.add_init_script(annotate.PICKER_JS)
+
     if confine:
         await _confine(context)
     return context
@@ -343,6 +359,10 @@ def _live_page(context):
 
 
 async def _close_window(session_id: str):
+    # Anyone waiting on a pick is waiting on a window that is about to not
+    # exist. Told now, they get "cancelled"; left alone, they get three
+    # minutes of nothing.
+    annotate.forget(session_id)
     context = _contexts.pop(session_id, None)
     if context is not None:
         with contextlib.suppress(Exception):
@@ -395,7 +415,8 @@ async def _wait_for(url: str, slot: Slot, timeout_ms: int) -> bool:
 
 
 async def start(session_id: str, command: str, url: str = "", cwd: str = "",
-                wait_ms: int = 20_000, confine: bool = False) -> str:
+                wait_ms: int = 20_000, confine: bool = False,
+                pickable: bool = True) -> str:
     """Run the project, replacing whatever this project was running before."""
     async with _lock:
         # The window deliberately stays open across a restart. Closing it and
@@ -405,6 +426,7 @@ async def start(session_id: str, command: str, url: str = "", cwd: str = "",
         await _stop_locked(session_id, close_window=False)
 
         slot = await _spawn(session_id, command, cwd)
+        slot.pickable = pickable
         _slots[session_id] = slot
 
         # A command that fails immediately is the common case -- a typo, a
@@ -492,6 +514,54 @@ def status(session_id: str) -> str:
 def is_running(session_id: str) -> bool:
     slot = _slots.get(session_id)
     return bool(slot and slot.running())
+
+
+# ── pointing at something in the window ─────────────────────────────────────
+
+
+def can_pick(session_id: str) -> bool:
+    """Whether the button that says "point at something" should be there.
+
+    It should be there when pointing would work and gone when it would not,
+    and there is no third state. A button that appears and then explains why
+    it cannot help you is worse than no button, especially for the person this
+    app is for -- so a game simply has no such button, the way a machine with
+    no camera has no camera button.
+    """
+    slot = _slots.get(session_id)
+    if slot is None or not slot.running() or not slot.pickable:
+        return False
+    return _live_page(_contexts.get(session_id)) is not None
+
+
+async def arm(session_id: str) -> None:
+    """Put the window in front and let the user click something in it."""
+    page = _live_page(_contexts.get(session_id))
+    if page is None:
+        raise PreviewError("the project's window is not open.")
+    with contextlib.suppress(Exception):
+        await page.bring_to_front()
+    # Every frame, not just the main one: an app that renders part of itself
+    # in an iframe is still an app someone wants to point at.
+    armed = 0
+    for frame in page.frames:
+        try:
+            await frame.evaluate("() => window.__pickerArm && window.__pickerArm()")
+            armed += 1
+        except Exception:
+            continue  # cross-origin, or gone mid-navigation
+    if not armed:
+        raise PreviewError("the page in the window would not respond.")
+
+
+async def disarm(session_id: str) -> None:
+    """Take the crosshair away again, wherever the user got to."""
+    page = _live_page(_contexts.get(session_id))
+    if page is None:
+        return
+    for frame in page.frames:
+        with contextlib.suppress(Exception):
+            await frame.evaluate("() => window.__pickerDisarm && window.__pickerDisarm()")
 
 
 async def close_all():

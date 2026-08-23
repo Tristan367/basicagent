@@ -100,6 +100,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     # after the app has been restarted, when nothing is in memory any more.
     ("sessions", "preview_command", "TEXT"),
     ("sessions", "preview_url", "TEXT"),
+    # Whether pointing at part of what is running makes any sense. A web page:
+    # yes. A game, which is one canvas with the whole world painted inside it,
+    # would answer "you pointed at the canvas" every time. Stored rather than
+    # worked out each run, so pressing Play tomorrow gets the same answer.
+    ("sessions", "preview_pickable", "INTEGER DEFAULT 1"),
     ("messages", "reasoning_content", "TEXT"),
     ("messages", "tool_name", "TEXT"),
     ("messages", "is_error", "INTEGER DEFAULT 0"),
@@ -193,7 +198,7 @@ async def _execute(sql: str, params: tuple = ()) -> int:
 SESSION_FIELDS = {
     "name", "description", "project_dir", "provider", "model", "thinking_effort",
     "kind", "system_prompt", "compact_threshold", "is_archived",
-    "preview_command", "preview_url",
+    "preview_command", "preview_url", "preview_pickable",
 }
 # `profile` is deliberately NOT in that set, and a test defends the omission.
 # `update_session` is reachable from a PATCH body, so anything listed there can

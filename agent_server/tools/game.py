@@ -110,7 +110,7 @@ async def game(
         from agent_server.tools.preview import preview
 
         result = await preview(ctx, action="start", command=command, url="",
-                               wait_ms=8000)
+                               wait_ms=8000, pickable=False)
         if result.is_error:
             return result
         return ToolResult(
@@ -127,7 +127,8 @@ async def game(
     from agent_server.tools.preview import preview
 
     result = await preview(ctx, action="start", command=command,
-                           url=f"http://127.0.0.1:{port}/index.html", wait_ms=15000)
+                           url=f"http://127.0.0.1:{port}/index.html", wait_ms=15000,
+                           pickable=False)
     if result.is_error:
         return result
     say("")
