@@ -159,7 +159,14 @@ async def upload_attachment(session_id: str, file: UploadFile = File(...)):
                     )
                 out.write(chunk)
         if not written:
-            raise HTTPException(400, "Empty file")
+            # The client puts this straight in front of the user, so it says
+            # which file and what is wrong with it. "Empty file" is a log line,
+            # not a sentence -- it names nothing and suggests nothing, and an
+            # empty file is an ordinary thing to have: a download that failed
+            # part-way, a document made and not yet typed into.
+            raise HTTPException(
+                400, f"There is nothing inside {name}, so there is nothing to "
+                     "attach. Try a different file.")
     except Exception:
         target.unlink(missing_ok=True)
         raise

@@ -398,3 +398,33 @@ async def test_an_attachment_cannot_be_written_outside_the_attachments_folder(
     assert Path(result["path"]).parent == tmp_path
     assert "passwd" in Path(result["path"]).name
     assert ".." not in result["path"]
+
+
+async def test_an_empty_file_is_refused_in_a_sentence(db, tmp_path, monkeypatch):
+    """An empty file is an ordinary thing to have -- a download that stopped
+    part-way, a document made and not yet typed into -- and the message the
+    server gives goes straight to the status bar the user is reading. It said
+    "Empty file", which names nothing, suggests nothing, and reads like
+    something has gone wrong with the app rather than with the file.
+    """
+    from fastapi import HTTPException
+
+    import agent_server.routes.chat as chat_routes
+
+    monkeypatch.setattr(chat_routes, "ATTACH_DIR", tmp_path)
+    session = await db.create_session("A", str(tmp_path), "gemini", "gemini-3.7-flash")
+
+    class Upload:
+        filename = "notes.txt"
+
+        async def read(self, size=-1):
+            return b""
+
+    with pytest.raises(HTTPException) as caught:
+        await chat_routes.upload_attachment(session["id"], Upload())
+    said = caught.value.detail
+    assert caught.value.status_code == 400
+    assert "notes.txt" in said, f"it does not say which file: {said}"
+    assert said.rstrip().endswith("."), f"not a sentence: {said}"
+    assert len(said.split()) > 4, f"still a log line: {said}"
+    assert not list(tmp_path.iterdir()), "an empty file was left behind"

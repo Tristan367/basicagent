@@ -3,7 +3,7 @@
 from openai import AsyncOpenAI
 
 from agent_server.config import APP_SLUG, APP_URL
-from agent_server.providers.openai_compat import OpenAICompatibleProvider
+from agent_server.providers.openai_compat import OpenAICompatibleProvider, _timeouts
 
 # Sent on every request. OpenRouter uses these for attribution and for
 # rate-limit tiering; without them requests are treated as anonymous. `X-Title`
@@ -28,7 +28,7 @@ class OpenRouterProvider(OpenAICompatibleProvider):
                 api_key=key,
                 base_url=self.base_url,
                 max_retries=2,
-                timeout=600.0,
+                timeout=_timeouts(),
                 default_headers=_ATTRIBUTION,
             )
             self._client_key = key

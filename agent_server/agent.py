@@ -49,6 +49,57 @@ _aborts: dict[str, asyncio.Event] = {}
 _tool_tasks: dict[str, set[asyncio.Task]] = {}
 
 
+async def _stoppable(stream: AsyncIterator[dict], abort: asyncio.Event):
+    """A provider stream that ends when Stop is pressed, not when it feels like it.
+
+    The abort check used to sit inside the loop over this stream, which meant
+    Stop could only be noticed between two events. A provider that accepts the
+    request and then sends nothing at all produces no events, so there was
+    nothing to check between: the loop sat inside a single `await` for the ten
+    minutes of the client's timeout, Stop did nothing at all, and reloading the
+    page brought back a Stop button and no way to send. The user's only way out
+    was to close an app they were told never needs closing.
+
+    That is not exotic. It is a proxy holding a connection open, a provider
+    under load, a captive-portal wifi that swallowed the socket after the
+    request went out -- and on a laptop, that is Tuesday.
+
+    So the wait itself races the abort. Whichever finishes first wins, and the
+    stream is closed on the way out so the connection goes with it rather than
+    being left to the timeout.
+    """
+    iterator = stream.__aiter__()
+    stopped = asyncio.ensure_future(abort.wait())
+    try:
+        while True:
+            # Checked before waiting as well as while waiting. A stream whose
+            # next event is already in hand resolves the race instantly and
+            # would otherwise deliver one more event after Stop -- including
+            # the case where Stop was pressed before the request even left.
+            if abort.is_set():
+                return
+            nxt = asyncio.ensure_future(iterator.__anext__())
+            done, _ = await asyncio.wait(
+                {nxt, stopped}, return_when=asyncio.FIRST_COMPLETED)
+            if nxt not in done:
+                nxt.cancel()
+                with contextlib.suppress(BaseException):
+                    await nxt
+                return
+            try:
+                event = nxt.result()
+            except StopAsyncIteration:
+                return
+            yield event
+    finally:
+        stopped.cancel()
+        with contextlib.suppress(BaseException):
+            await stopped
+        # Closes the generator, and with it whatever socket it was reading.
+        with contextlib.suppress(BaseException):
+            await iterator.aclose()
+
+
 def _track(session_id: str, task: asyncio.Task):
     _tool_tasks.setdefault(session_id, set()).add(task)
     task.add_done_callback(lambda t: _tool_tasks.get(session_id, set()).discard(t))
@@ -478,11 +529,14 @@ async def _loop(
         failed = False
         refused_pictures = False
 
-        async for event in provider.chat_completion(
-            messages=messages,
-            tools=tools,
-            model=session["model"],
-            thinking_effort=session.get("thinking_effort"),
+        async for event in _stoppable(
+            provider.chat_completion(
+                messages=messages,
+                tools=tools,
+                model=session["model"],
+                thinking_effort=session.get("thinking_effort"),
+            ),
+            abort,
         ):
             if abort.is_set():
                 break

@@ -21,6 +21,18 @@ from agent_server.providers.base import (
 
 log = logging.getLogger(__name__)
 
+# A whole reply may legitimately take ten minutes; three minutes of complete
+# silence in the middle of one is not slow, it is gone. The flat 600-second
+# timeout could not tell those apart, so a connection that had been accepted
+# and then abandoned -- a proxy holding it open, wifi that went away after the
+# request left -- held the turn for the full ten minutes with nothing arriving.
+# Now the reply gets its ten minutes and each individual silence gets three.
+def _timeouts():
+    import httpx
+
+    return httpx.Timeout(600.0, connect=30.0, read=180.0)
+
+
 class OpenAICompatibleProvider(Provider):
     """Base for any OpenAI-compatible API (DeepSeek, OpenRouter, custom, etc.)."""
 
@@ -33,7 +45,8 @@ class OpenAICompatibleProvider(Provider):
     def _get_client(self) -> AsyncOpenAI:
         key = self.api_key()
         if self._client is None or self._client_key != key:
-            self._client = AsyncOpenAI(api_key=key, base_url=self.base_url, max_retries=2, timeout=600.0)
+            self._client = AsyncOpenAI(api_key=key, base_url=self.base_url,
+                                       max_retries=2, timeout=_timeouts())
             self._client_key = key
         return self._client
 
