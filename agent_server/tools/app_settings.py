@@ -89,6 +89,114 @@ async def show_settings(ctx: ToolContext, **_) -> ToolResult:
     return ToolResult(output="\n".join(lines), title="checked the settings")
 
 
+# ── saying what actually changed ───────────────────────────────────────────
+#
+# Every one of these tools used to answer "Done: dark mode." whether the app
+# had just gone dark or had been dark for a week. So "make it dark" got the
+# same reply either way, and the assistant had no way to notice that the thing
+# the user was unhappy about was already switched on -- which is the moment it
+# should be saying "it already is, so the problem is something else" instead of
+# cheerfully reporting success and leaving them where they started.
+#
+# Every setting a tool touches is now read before and after, and both are in
+# the answer.
+
+VOLUME_KEYS = {"tts_volume", "sound_volume"}
+FLAG_LABELS = {
+    "tts_auto": "read-aloud", "stt_enabled": "dictation",
+    "uses_screen_reader": "screen reader mode",
+    "sound_cues": "chimes", "sound_ticks": "ticking",
+}
+FLAG_DEFAULTS = {"stt_enabled": "1", "sound_cues": "1"}
+
+
+async def _read(keys) -> dict:
+    """What the settings are right now, for the keys a tool is about to touch."""
+    return {key: await db.get_setting(key, FLAG_DEFAULTS.get(key, "")) for key in keys}
+
+
+def _human(key: str, value: str) -> str:
+    """One setting, said the way somebody would say it out loud."""
+    value = value or ""
+    if key in FLAG_LABELS:
+        return "on" if value == "1" else "off"
+    if key == "theme":
+        return f"{value or 'dark'} mode"
+    if key == "accent":
+        return _colour_name(value)
+    if key == "zoom":
+        return f"{round(float(value or 1) * 100)}%"
+    if key in VOLUME_KEYS:
+        return f"{round(float(value or 0) * 100)}%"
+    if key == "tts_speed":
+        return f"{value or '1.25'}x"
+    if key == "tts_voice":
+        return tts_service.voice_label(value) if value else "the usual voice"
+    if key == "whisper_size":
+        from agent_server import config
+
+        return next((c["name"] for c in config.WHISPER_MODEL_CHOICES
+                     if c["id"] == value), value or "the usual one")
+    if key == "default_model":
+        from agent_server.model_catalog import offerable_models
+
+        return next((m["name"] for m in offerable_models() if m["id"] == value),
+                    value or "whichever is cheapest")
+    return value
+
+
+def _label(key: str) -> str:
+    return FLAG_LABELS.get(key) or {
+        "theme": "theme", "accent": "colour", "zoom": "text size",
+        "tts_voice": "voice", "tts_speed": "speaking speed",
+        "tts_volume": "reading volume", "sound_volume": "sound volume",
+        "default_model": "the AI", "whisper_size": "dictation quality",
+    }.get(key, key)
+
+
+def _prose(before: dict, after: dict) -> tuple[list[str], list[str]]:
+    """What moved, and what was already where it was asked to be."""
+    moved, already = [], []
+    for key, was in before.items():
+        now = after.get(key, was)
+        # Compared as the words, not as the stored values. A setting nobody has
+        # ever touched is stored as "" and reads back as its default, so a raw
+        # comparison reported "theme: dark mode -> dark mode" as a change the
+        # first time anybody asked for the theme it was already on -- which is
+        # the exact case this whole thing exists to notice.
+        before_said, now_said = _human(key, was), _human(key, now)
+        if before_said == now_said:
+            already.append(f"{_label(key)} was already {now_said}")
+        else:
+            moved.append(f"{_label(key)}: {before_said} -> {now_said}")
+    return moved, already
+
+
+async def _done(title: str, before: dict, extra: str = "") -> ToolResult:
+    """The answer every set_* tool gives: what it was, what it is, what to say."""
+    after = await _read(before)
+    moved, already = _prose(before, after)
+    lines = []
+    if moved:
+        lines.append("Changed: " + "; ".join(moved) + ".")
+    if already:
+        # The useful half. Somebody asking for a thing that is already set is
+        # telling you the setting is not their problem.
+        lines.append(
+            "Already as asked: " + "; ".join(already) + ". "
+            "Say so rather than reporting it as a change -- if they asked for "
+            "this, what they actually want is something else.")
+    if extra:
+        lines.append(extra)
+    if not moved and not already:
+        lines.append("Nothing changed.")
+    if moved:
+        lines.append("It is already on their screen, so say it is done rather "
+                     "than telling them to do anything.")
+    return ToolResult(output=" ".join(lines),
+                      title=title if moved else f"{title} (no change)")
+
+
 # ── how it looks ───────────────────────────────────────────────────────────
 
 # The colours somebody asks for by name. Not a full list of anything -- these
@@ -116,17 +224,25 @@ async def set_appearance(
     ctx: ToolContext, *, theme: str = "", text_size: str = "", colour: str = "",
     color: str = "", **_
 ) -> ToolResult:
-    changed = []
     theme = (theme or "").strip().lower()
+    wanted_colour = (colour or color or "").strip().lower()
+    size = (text_size or "").strip().lower()
+    touched = ([("accent")] if wanted_colour else []) + \
+              (["theme"] if theme else []) + (["zoom"] if size else [])
+    if not touched:
+        return ToolResult.error(
+            "nothing to change -- pass theme, colour, text_size, or any mix",
+            "change how it looks")
+    before = await _read(touched)
+    changed = []
 
     # Both spellings, because which one a model writes depends on which side of
     # an ocean its training data came from, and being told "unknown parameter"
     # for that is a silly way to fail.
-    wanted = (colour or color or "").strip().lower()
+    wanted = wanted_colour
     if wanted:
         if wanted in ("default", "normal", "reset"):
             await db.delete_setting("accent")
-            changed.append("the colour back to normal")
         else:
             hex_value = COLOURS.get(wanted, wanted if wanted.startswith("#") else "")
             if len(hex_value) != 7:
@@ -136,14 +252,11 @@ async def set_appearance(
                     "change the colour",
                 )
             await db.set_setting("accent", hex_value)
-            changed.append(f"the colour {wanted}")
     if theme:
         if theme not in ("light", "dark"):
             return ToolResult.error("theme must be 'light' or 'dark'", "change how it looks")
         await db.set_setting("theme", theme)
-        changed.append(f"{theme} mode")
 
-    size = (text_size or "").strip().lower()
     if size:
         now = float(await db.get_setting("zoom", "1") or 1)
         if size in ("bigger", "larger", "up", "increase"):
@@ -167,23 +280,13 @@ async def set_appearance(
                 want = want / 100
         want = round(_bounded(want, ZOOM_MIN, ZOOM_MAX), 2)
         await db.set_setting("zoom", str(want))
-        if want != now:
-            changed.append(f"text size {round(want * 100)}%")
-        else:
-            changed.append(
-                f"text size already as {'big' if want == ZOOM_MAX else 'small'}"
-                f" as it goes ({round(want * 100)}%)"
-            )
+        if want == now and want in (ZOOM_MIN, ZOOM_MAX):
+            edge = "big" if want == ZOOM_MAX else "small"
+            changed.append(f"the text is as {edge} as it goes")
 
-    if not changed:
-        return ToolResult.error(
-            "nothing to change -- pass theme, text_size, or both", "change how it looks"
-        )
-    return ToolResult(
-        output=f"Done: {', '.join(changed)}. It is already on their screen, so say it is done "
-               f"rather than telling them to do anything.",
-        title=f"Set {' and '.join(changed)}",
-    )
+    return await _done(
+        "changed how it looks", before,
+        extra=("Note: " + "; ".join(changed) + "." ) if changed else "")
 
 
 # ── voice and speech ───────────────────────────────────────────────────────
@@ -192,7 +295,15 @@ async def set_voice(
     ctx: ToolContext, *, read_aloud=None, voice: str = "", speed=None, volume=None,
     dictation=None, screen_reader=None, **_
 ) -> ToolResult:
-    title = "change voice and speech"
+    title = "changed voice and speech"
+    touched = [key for key, given in (
+        ("tts_auto", read_aloud), ("tts_voice", voice.strip() if voice else ""),
+        ("tts_speed", speed), ("tts_volume", volume),
+        ("stt_enabled", dictation), ("uses_screen_reader", screen_reader),
+    ) if given not in (None, "")]
+    if not touched:
+        return ToolResult.error("nothing to change -- pass at least one of them", title)
+    before = await _read(touched)
     changed = []
 
     if (want := _onoff(read_aloud)) is not None:
@@ -244,10 +355,7 @@ async def set_voice(
         await db.set_setting("uses_screen_reader", "1" if want else "0")
         changed.append("screen reader mode " + ("on" if want else "off"))
 
-    if not changed:
-        return ToolResult.error("nothing to change -- pass at least one of them", title)
-    return ToolResult(output=f"Done: {', '.join(changed)}.",
-                      title=f"Set {', '.join(changed)}")
+    return await _done(title, before)
 
 
 # ── the sounds it makes ────────────────────────────────────────────────────
@@ -255,7 +363,13 @@ async def set_voice(
 async def set_sounds(
     ctx: ToolContext, *, chimes=None, ticking=None, volume=None, **_
 ) -> ToolResult:
-    title = "change the sounds"
+    title = "changed the sounds"
+    touched = [key for key, given in (
+        ("sound_cues", chimes), ("sound_ticks", ticking), ("sound_volume", volume),
+    ) if given is not None]
+    if not touched:
+        return ToolResult.error("nothing to change -- pass at least one of them", title)
+    before = await _read(touched)
     changed = []
     for key, value, say in (
         ("sound_cues", chimes, "chimes"), ("sound_ticks", ticking, "ticking"),
@@ -276,10 +390,7 @@ async def set_sounds(
         await db.set_setting("sound_volume", str(number))
         changed.append(f"sound volume {round(number * 100)}%")
 
-    if not changed:
-        return ToolResult.error("nothing to change -- pass at least one of them", title)
-    return ToolResult(output=f"Done: {', '.join(changed)}.",
-                      title=f"Set {', '.join(changed)}")
+    return await _done(title, before)
 
 
 # ── child mode ─────────────────────────────────────────────────────────────
@@ -376,17 +487,22 @@ async def set_model(ctx: ToolContext, *, model: str = "", **_) -> ToolResult:
             + ", ".join(described(m) for m in available),
             "no such AI")
 
+    before = await _read(["default_model"])
+    # `default_model` is empty until somebody chooses one, and reads back as
+    # whatever is cheapest -- so store the model that is actually in use, or
+    # "already on it" would never fire on the first change.
+    if not before["default_model"]:
+        before["default_model"] = effective_default_model(await db.get_all_settings())
     await db.set_setting("default_model", match["id"])
     # The home session is pinned to a model of its own, so without this the
     # change would apply to new projects and not to the conversation the user
     # is having right now -- which reads as it not having worked.
     await ensure_home_session()
-    return ToolResult(
-        output=f"Now using {described(match)}. New projects start on it too. "
-               f"Projects that are already open keep the model they were using; "
-               f"say so if they wanted those changed as well.",
-        title=f"switched to {match['name']}",
-    )
+    return await _done(
+        f"switched to {match['name']}", before,
+        extra=f"That is {described(match)}. New projects start on it too; "
+              f"projects already open keep the model they were using, so say so "
+              f"if they wanted those changed as well.")
 
 
 async def set_dictation_quality(ctx: ToolContext, *, quality: str = "", **_) -> ToolResult:
@@ -423,22 +539,19 @@ async def set_dictation_quality(ctx: ToolContext, *, quality: str = "", **_) -> 
             f"'{quality}' is not one of them. The choices are: {catalogue}.",
             "no such setting")
 
+    before = {"whisper_size": config.whisper_size()}
     if not config.set_whisper_size(match["id"]):
-        return ToolResult(
-            output=f"Dictation is already set to {match['name']}. Nothing to do.",
-            title="already set")
+        return await _done("dictation quality", before)
     await db.set_setting("whisper_size", match["id"])
     # Drop the loaded model so the next sentence uses the new one. It reloads
     # in the background rather than making this reply wait on a download.
     await stt_service.reload_model()
     _background.add(task := asyncio.create_task(stt_service.warmup()))
     task.add_done_callback(_background.discard)
-    return ToolResult(
-        output=f"Dictation set to {match['name']} ({match['size']}). "
-               f"{match['note']} The first sentence after this may take a moment "
-               f"while it loads.",
-        title=f"dictation: {match['name']}",
-    )
+    return await _done(
+        f"dictation: {match['name']}", before,
+        extra=f"{match['note']} ({match['size']}.) The first sentence after this "
+              f"may take a moment while it loads.")
 
 
 # Background reloads, held so they are not garbage-collected mid-flight.

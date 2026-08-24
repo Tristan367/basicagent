@@ -62,12 +62,12 @@ async def _install_godot(say) -> bool:
 async def game(
     ctx: ToolContext,
     *,
-    action: str = "play",
+    action: str = "run",
     name: str = "",
     target: str = "web",
     **_,
 ) -> ToolResult:
-    action = (action or "play").strip().lower()
+    action = (action or "run").strip().lower()
     target = (target or "web").strip().lower()
     said: list[str] = []
 

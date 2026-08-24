@@ -45,15 +45,24 @@ def test_a_subagent_has_everything_the_parent_has_except_the_browser():
     reaches subagents too. The old list was six entries written by hand, and it
     had fallen behind by five."""
     parent = {n for n in TOOLS if n not in MANAGER_TOOLS}
-    assert set(subagent_tools()) == parent - {"browser", "task"}
+    assert set(subagent_tools()) == parent - {"browser", "preview", "game", "task"}
 
 
-def test_the_browser_is_the_one_thing_held_back():
-    """Not caution -- collision. The browser is a live Chromium keyed by
-    session id, so a subagent driving it is driving the parent's own browser:
-    same page, same history, same login, halfway through whatever the parent
-    was doing with it."""
-    assert "browser" not in subagent_tools()
+@pytest.mark.parametrize("held_back", ["browser", "preview", "game"])
+def test_a_subagent_cannot_take_over_the_screen(held_back):
+    """Not caution -- collision. Each of these is a handle on something there
+    is exactly one of per project, and the user is watching it.
+
+    The browser is a live Chromium keyed by session id, so a subagent driving
+    it is driving the parent's own: same page, same login, mid-task. `preview`
+    is the window on screen, and starting one replaces what the parent had
+    running, in front of somebody who was never told a second assistant
+    existed. `game` calls `preview`, so it is the same thing wearing a hat.
+
+    A subagent can still rewrite every file in the project. What it cannot do
+    is show anybody anything -- that belongs to the assistant being talked to.
+    """
+    assert held_back not in subagent_tools()
 
 
 def test_a_subagent_cannot_call_a_subagent():
@@ -122,10 +131,10 @@ async def test_the_destructive_guard_still_applies_to_a_subagent(sub_ctx):
     assert "destructive" in result.output
 
 
-def test_the_prompt_warns_about_the_window_the_user_is_watching():
-    """`preview` is one slot per project. A subagent starting one replaces
-    what the parent had running, in front of somebody who is looking at it."""
-    assert "preview" in SUBAGENT_PROMPT.lower()
+def test_the_prompt_says_it_cannot_show_anybody_anything():
+    """So it reports back rather than trying and finding the tool absent."""
+    lowered = SUBAGENT_PROMPT.lower()
+    assert "user's screen" in lowered or "on the user" in lowered
 
 
 def test_nothing_calls_the_old_read_only_gate():

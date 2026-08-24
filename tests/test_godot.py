@@ -345,3 +345,80 @@ def test_the_environment_only_mentions_godot_when_it_is_there(monkeypatch, tmp_p
     # And never to the manager, which does not build anything.
     monkeypatch.setattr(system_prompt, "_env_cache", {})
     assert "Godot" not in system_prompt.environment_block(str(tmp_path), "c", manager=True)
+
+
+# ── the scene file is Godot's to write ─────────────────────────────────────
+
+
+def test_the_opening_scene_is_written_by_godot_not_by_us():
+    """A .tscn is the one file in a Godot project whose format is genuinely the
+    engine's business, and it drifts.
+
+    4.7.2 writes `unique_id=` on every node and generates resource ids like
+    `1_0xm2m`; the template here had neither, having been written against an
+    older release. It still loaded, because Godot is forgiving -- but "still
+    loads" is where a format sits right up until it does not, and the symptom
+    then is a child's game opening to a blank window for a reason nobody in the
+    conversation can see.
+
+    There is no `godot --create-project` to lean on (`--project-manager` is the
+    graphical one, `--path` needs a project.godot that already exists), so
+    project.godot is still written here. That one is a plain INI whose keys are
+    stable and which Godot normalises itself on load. The scene is handed back.
+    """
+    import inspect
+
+    source = inspect.getsource(godot.new_project)
+    assert "_write_scene" in source, "the scene is hand-written again"
+    assert "MAIN_TSCN" not in source, "the template is being written directly"
+
+    scaffold = inspect.getsource(godot)
+    assert "PackedScene" in scaffold and "ResourceSaver.save" in scaffold, (
+        "the scene is not being built with Godot's own API")
+
+
+def test_the_scaffold_script_does_not_stay_in_the_project():
+    """It is a build step, not part of anybody's game. Left behind it would be
+    the first thing in the folder a child opens and the last thing they should
+    be reading."""
+    import inspect
+
+    source = inspect.getsource(godot._write_scene)
+    assert "unlink" in source
+    assert "finally" in source, "a failed run would leave it behind"
+
+
+def test_there_is_still_a_scene_if_godot_will_not_run():
+    """A sandbox, no display server, a binary that is there and will not start.
+    A project with a scene Godot might grumble about beats one with no scene."""
+    import inspect
+
+    source = inspect.getsource(godot._write_scene)
+    assert "MAIN_TSCN" in source, "no fallback: the project would have no scene"
+
+
+# ── which way a game is shown ──────────────────────────────────────────────
+
+
+def test_a_game_runs_as_a_game_unless_the_browser_was_asked_for():
+    """`play` -- the browser build -- was the default, so every game got shown
+    through a browser whether or not that was what anybody wanted. A user who
+    only ever sees that concludes this app makes browser games, which is both
+    untrue and smaller than what they actually have."""
+    import agent_server.tools.game as game_mod
+    from agent_server.tools.registry import TOOLS
+
+    assert inspect_default(game_mod.game, "action") == "run"
+    action = TOOLS["game"].parameters["properties"]["action"]
+    assert "Default `run`" in action["description"]
+
+    described = TOOLS["game"].description
+    assert "desktop game" in described
+    assert "Only do this if they asked" in described, (
+        "nothing tells it when the browser build is appropriate")
+
+
+def inspect_default(func, name):
+    import inspect
+
+    return inspect.signature(func).parameters[name].default

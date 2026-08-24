@@ -285,6 +285,52 @@ renderer/rendering_method="forward_plus"
 renderer/rendering_method.web="gl_compatibility"
 """
 
+# A one-off script that builds the opening scene with Godot's own API and asks
+# Godot to write it out. Deleted the moment it has run.
+#
+# The scene file used to be a template written here, and a scene file is the one
+# artifact in a Godot project whose format is genuinely the engine's business.
+# 4.7.2 writes `unique_id=` on every node and generates resource ids like
+# `1_0xm2m`; the template had neither, having been written against an older
+# release. It still loaded, because Godot is forgiving -- but "still loads" is
+# the state a format sits in right up until it does not, and by then the symptom
+# is a child's game opening to a blank window for a reason nobody can see.
+#
+# There is no `godot --create-project`: `--project-manager` is the graphical
+# one and `--path` needs a project.godot that already exists. So project.godot
+# is still written here, which is fine -- it is a plain INI whose keys are
+# stable and which Godot normalises itself on first load. The scene is the part
+# worth handing back to the engine, and this hands it back.
+SCAFFOLD_GD = """\
+extends SceneTree
+
+func _initialize() -> void:
+\tvar root := Node2D.new()
+\troot.name = "Main"
+\troot.set_script(load("res://main.gd"))
+\tvar dbg := Node.new()
+\tdbg.name = "Debug"
+\tdbg.set_script(load("res://debug.gd"))
+\troot.add_child(dbg)
+\tdbg.owner = root
+\tvar packed := PackedScene.new()
+\tif packed.pack(root) != OK:
+\t\tprinterr("SCAFFOLD pack failed")
+\t\tquit(1)
+\t\treturn
+\tvar err := ResourceSaver.save(packed, "res://main.tscn")
+\tif err == OK:
+\t\tprint("SCAFFOLD ok")
+\t\tquit(0)
+\telse:
+\t\tprinterr("SCAFFOLD save failed ", err)
+\t\tquit(1)
+"""
+
+# Kept as a fallback for the case where Godot will not run headless at all --
+# no display server, a sandbox, a machine where the binary is there and will
+# not start. A project with a scene Godot might grumble about beats a project
+# with no scene at all.
 MAIN_TSCN = """\
 [gd_scene load_steps=3 format=3]
 
@@ -493,16 +539,34 @@ def new_project(folder: Path, name: str = "Game", say=print) -> bool:
     (project / "project.godot").write_text(
         PROJECT_GODOT.format(name=name, version=".".join(VERSION.split(".")[:2])),
         encoding="utf-8")
-    (project / "main.tscn").write_text(MAIN_TSCN, encoding="utf-8")
     (project / "main.gd").write_text(MAIN_GD, encoding="utf-8")
     (project / "debug.gd").write_text(DEBUG_GD, encoding="utf-8")
     (project / "export_presets.cfg").write_text(
         PRESETS.format(slug=_slug(name)), encoding="utf-8")
+    _write_scene(project, say)
     # Outside the project, because Godot re-imports whatever is inside it.
     (folder / "build").mkdir(exist_ok=True)
     say(f"Made a Godot project in {project}")
     say(f"Run it with:    {binary() or 'godot'} --path {project}")
     return True
+
+
+def _write_scene(project: Path, say=print) -> None:
+    """Have Godot write the opening scene, rather than writing one at it."""
+    scaffold = project / "_scaffold.gd"
+    scaffold.write_text(SCAFFOLD_GD, encoding="utf-8")
+    try:
+        result = _run(["--headless", "--path", str(project),
+                       "--script", "res://_scaffold.gd"], timeout=120)
+        made = "SCAFFOLD ok" in (result.stdout or "")
+    except (OSError, subprocess.SubprocessError, FileNotFoundError) as e:
+        made = False
+        say(f"(Godot could not write the scene itself: {e})")
+    finally:
+        scaffold.unlink(missing_ok=True)
+    if not made or not (project / "main.tscn").exists():
+        say("(Wrote the opening scene from a template; Godot would not do it.)")
+        (project / "main.tscn").write_text(MAIN_TSCN, encoding="utf-8")
 
 
 # ── running, exporting, checking ───────────────────────────────────────────

@@ -428,3 +428,73 @@ def _ctx():
     from agent_server.tools.base import ToolContext
 
     return ToolContext(session_id="home", project_dir="/tmp", abort=asyncio.Event())
+
+
+# ── before and after ───────────────────────────────────────────────────────
+
+
+async def test_asking_for_a_setting_that_is_already_on_says_so(db):
+    """"Make it dark" when it is already dark used to come back "Done: dark
+    mode", so the assistant reported success and left the user exactly where
+    they were -- and never learned the thing they are unhappy about was already
+    switched on. That is the moment to say "it already is", because whatever is
+    wrong is something else.
+    """
+    from agent_server.tools import app_settings
+
+    ctx = _ctx()
+    await app_settings.set_appearance(ctx, theme="dark")
+    result = await app_settings.set_appearance(ctx, theme="dark")
+    assert "already" in result.output.lower(), result.output
+    assert "no change" in (result.title or "").lower(), result.title
+
+
+async def test_a_real_change_says_what_it_was_and_what_it_is_now(db):
+    from agent_server.tools import app_settings
+
+    ctx = _ctx()
+    await app_settings.set_appearance(ctx, theme="dark")
+    result = await app_settings.set_appearance(ctx, theme="light")
+    assert "dark mode -> light mode" in result.output, result.output
+
+
+async def test_a_setting_nobody_has_ever_touched_compares_by_its_default(db):
+    """Stored as "" until somebody sets it, and reads back as its default. A
+    raw comparison called the first "make it dark" a change from dark to dark,
+    which is the exact case this exists to notice."""
+    from agent_server.tools import app_settings
+
+    result = await app_settings.set_appearance(_ctx(), theme="dark")
+    assert "->" not in result.output, result.output
+    assert "already" in result.output.lower()
+
+
+async def test_several_changes_at_once_are_each_reported(db):
+    from agent_server.tools import app_settings
+
+    ctx = _ctx()
+    await app_settings.set_appearance(ctx, theme="dark")
+    result = await app_settings.set_appearance(ctx, theme="light", text_size="bigger")
+    assert "theme:" in result.output and "text size:" in result.output
+
+
+async def test_a_mix_of_changed_and_already_is_split_apart(db):
+    """Because "one of the two things you asked for was already the case" is
+    the answer, and a single "Done" cannot say it."""
+    from agent_server.tools import app_settings
+
+    ctx = _ctx()
+    await app_settings.set_appearance(ctx, theme="dark")
+    result = await app_settings.set_appearance(ctx, theme="dark", text_size="bigger")
+    lowered = result.output.lower()
+    assert "changed:" in lowered and "already as asked:" in lowered, result.output
+
+
+async def test_the_volume_is_reported_in_the_words_a_person_uses(db):
+    """Not 0.4 -> 0.8. Nobody has ever asked for a volume of nought point four."""
+    from agent_server.tools import app_settings
+
+    ctx = _ctx()
+    await app_settings.set_sounds(ctx, volume=0.4)
+    result = await app_settings.set_sounds(ctx, volume=0.8)
+    assert "40% -> 80%" in result.output, result.output

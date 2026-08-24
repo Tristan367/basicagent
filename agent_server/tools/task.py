@@ -15,10 +15,21 @@ from scratch off a summary. The one real boundary is kept -- it writes inside
 the project and nowhere else -- because that is a safety rule rather than a
 preference about how it should work.
 
-`browser` is the exception, and the only one. It is a live Chromium keyed by
-session id, so a subagent driving it is driving the *parent's* browser: the
-same page, the same history, the same login, halfway through whatever the
-parent was doing with it.
+The exceptions are the three tools that are not really tools but handles on
+something the user can see, of which there is exactly one per project:
+
+* `browser` is a live Chromium keyed by session id, so a subagent driving it is
+  driving the *parent's* browser -- the same page, the same history, the same
+  login, halfway through whatever the parent was doing with it.
+* `preview` is the window the user is looking at. There is one slot per
+  project, so a subagent starting something replaces what the parent had
+  running, on screen, in front of somebody who is watching it happen and was
+  never told a second assistant existed.
+* `game` calls `preview`, so it is the same thing wearing a hat.
+
+None of these is about trust. A subagent can rewrite every file in the project;
+what it cannot do is take over the one window somebody is watching. Work that
+genuinely needs the screen belongs to the assistant the user is talking to.
 
 The subagent keeps its conversation in memory and runs on the parent's model at
 low effort.
@@ -47,10 +58,9 @@ Two things are yours to respect:
 * Change only what the task told you to change. You are working in a project \
 somebody else is also working in, and edits you were not asked for will be a \
 surprise to them and to the user.
-* `preview` puts something on the user's screen, and there is one window per \
-project. Starting it replaces whatever the assistant that called you had \
-running there, in front of somebody who is watching. Use it only if the task \
-you were given asked you to.
+* You have no way to put anything on the user's screen -- no window, no \
+browser, no running game. Those belong to the assistant that called you. Do \
+the work, and let it show them.
 * You cannot write outside this project, and you cannot ask anybody anything. \
 Nobody is reading your messages until you finish, so decide and carry on.
 
@@ -69,7 +79,8 @@ def subagent_tools() -> tuple[str, ...]:
 
     return tuple(
         name for name in TOOLS
-        if name not in MANAGER_TOOLS and name not in ("browser", "task")
+        if name not in MANAGER_TOOLS
+        and name not in ("browser", "preview", "game", "task")
     )
 
 

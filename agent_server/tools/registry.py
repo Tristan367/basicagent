@@ -263,23 +263,31 @@ register(Tool(
         "game -- a game hand-written in a browser canvas hits a ceiling within an "
         "afternoon and cannot be rescued afterwards. Only use HTML and JavaScript "
         "when what they asked for is a website that happens to be playful.\n"
+        "**A Godot game is a real desktop game. Show it as one.**\n"
         "`new` writes a project that already runs and moves: start every game with "
-        "it, and never hand-write project.godot or a .tscn. Then change main.gd. "
+        "it, and never hand-write project.godot or a .tscn. Then change main.gd.\n"
         "`check` runs it headless, presses a key and reports what moved -- three "
         "seconds, and it catches the script errors that only appear when the engine "
-        "loads the file, so do it after every change. `play` builds it for the "
-        "browser and puts it on their screen, exactly like a website; call it again "
-        "after every change you want them to see. `export` with linux, windows or "
-        "mac makes a standalone game they can give away. `run` starts it natively in "
-        "its own window instead, for what a browser cannot do -- then use `capture`."
+        "loads the file, so do it after every change.\n"
+        "`run` (the default) starts the game in a window of its own, the way a game "
+        "they installed would start. This is how you show them their game. Use "
+        "`capture` afterwards to look at it yourself.\n"
+        "`play` builds it for the *browser* and puts it in the preview window "
+        "instead. Only do this if they asked for it in a browser, or asked for a "
+        "link they can send somebody. It is not the normal way to show a game, and "
+        "reaching for it by habit teaches them their game only works in a browser, "
+        "which is not true and is a smaller thing than what they have.\n"
+        "`export` with linux, windows or mac makes a standalone game they can give "
+        "away -- a real file, for the computer they actually use."
     ),
     parameters={
         "type": "object",
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["new", "check", "play", "export", "run"],
-                "description": "Default play.",
+                "enum": ["new", "check", "run", "play", "export"],
+                "description": "Default `run` -- the game in its own window. "
+                               "`play` is the browser build, and only when asked.",
             },
             "name": {"type": "string", "description": "For `new`: what to call it"},
             "target": {
