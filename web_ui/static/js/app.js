@@ -1928,6 +1928,7 @@
     set_child_mode: 'Child mode',
     set_model: 'Choosing the AI',
     set_dictation_quality: 'Adjusting dictation',
+    draw: 'Drawing a picture',
   };
 
   // ── What the assistant is doing, while it does it ─────────────────────────
@@ -1952,6 +1953,7 @@
     show_settings: 'setting', set_appearance: 'setting', set_voice: 'setting',
     set_sounds: 'setting', set_child_mode: 'setting',
     set_model: 'setting', set_dictation_quality: 'setting',
+    draw: 'write',
   };
 
   // Shape and sound per family, from the server so there is only one table.

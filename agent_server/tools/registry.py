@@ -20,6 +20,7 @@ from agent_server.tools.base import ToolContext, ToolResult
 from agent_server.tools.bash import run_bash
 from agent_server.tools.browser import browser as browser_tool
 from agent_server.tools.capture import capture
+from agent_server.tools.draw import draw
 from agent_server.tools.file_ops import edit_file, read_file, write_file
 from agent_server.tools.game import game
 from agent_server.tools.preview import preview
@@ -346,6 +347,52 @@ register(Tool(
         "required": [],
     },
     handler=preview,
+))
+
+register(Tool(
+    name="draw",
+    description=(
+        "Make a real picture and put it in the project: a sprite, a background, "
+        "a header image, a diagram. Use it instead of a grey placeholder or a "
+        "coloured rectangle -- somebody who asked for a dragon wants a dragon.\n"
+        "`prompt` is what to draw, said the way you would say it to an "
+        "illustrator: what it is, what style, and what the background should be "
+        "('a friendly cartoon dragon, flat colours, transparent background'). "
+        "Say the size and shape you need in words if it matters.\n"
+        "`change` takes the path of a picture already in the project and alters "
+        "it instead of starting again -- 'make the dragon green', 'remove the "
+        "background'. That is usually what somebody means the second time.\n"
+        "It saves into the project's `images` folder unless you give `filePath`, "
+        "and returns the path. **Put that path on its own line in your reply** "
+        "and the user sees the picture with a button to open its folder. Do not "
+        "then describe the picture to them; they are looking at it.\n"
+        "Pictures cost about ten times an ordinary reply each and are billed "
+        "even where text is free, so make one when it is wanted, not to check "
+        "that this works."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "prompt": {"type": "string", "description": "What to draw"},
+            "change": {
+                "type": "string",
+                "description": "Path of a picture in the project to alter "
+                               "instead of drawing a new one",
+            },
+            "filePath": {
+                "type": "string",
+                "description": "Where to save it. Defaults to images/ in the "
+                               "project, named after what was asked for.",
+            },
+            "model": {
+                "type": "string",
+                "description": "Which picture model. Leave it out for the best "
+                               "one available.",
+            },
+        },
+        "required": [],
+    },
+    handler=draw,
 ))
 
 register(Tool(
@@ -807,7 +854,25 @@ def allowed_tool_names(session: dict) -> list[str]:
             n for n in TOOLS
             if (n in MANAGER_TOOLS or n in MANAGER_EXTRA_TOOLS) and n not in withheld
         ]
-    return [n for n in TOOLS if n not in MANAGER_TOOLS]
+    hidden = set()
+    if not _can_draw():
+        # Withheld rather than refused, on the same reasoning as the child's
+        # missing manager tools: a tool in the list is a tool the model will
+        # try, and a round trip spent being told there is no key for it is a
+        # round trip the user waits through for nothing. Nobody with a DeepSeek
+        # key alone should ever hear the word "picture".
+        hidden.add("draw")
+    return [n for n in TOOLS if n not in MANAGER_TOOLS and n not in hidden]
+
+
+def _can_draw() -> bool:
+    from agent_server import imagegen
+
+    try:
+        return imagegen.can_draw()
+    except Exception:  # pragma: no cover - a provider that will not load
+        log.warning("could not work out whether anything can draw", exc_info=True)
+        return False
 
 
 def tool_schemas(

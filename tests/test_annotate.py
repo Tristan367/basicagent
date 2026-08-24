@@ -270,3 +270,67 @@ def test_the_noise_list_reaches_the_javascript_as_valid_json():
     not JavaScript, and single quotes inside a `%`-formatted literal would be."""
     assert '"Boundary"' in annotate.PICKER_JS
     assert "'Boundary'" not in annotate.PICKER_JS
+
+
+# ── nobody gets stranded in picking mode ───────────────────────────────────
+#
+# Verified end to end in a real window before these were written: cancel from
+# the app, Escape in the window, and a completed pick all leave the banner gone
+# and the user's own page clickable again. These pin the three exits, because
+# the failure they prevent is silent -- a page that looks normal and eats every
+# click, in an app whose user has no idea a picking mode exists.
+
+
+def test_the_page_is_let_go_however_the_pick_ends():
+    """A pick that comes back with nothing is Escape, a closed window, or three
+    minutes of silence. All three leave a page still armed unless something
+    says otherwise, and an armed page swallows every click."""
+    import inspect
+
+    from agent_server.routes import sessions
+
+    source = inspect.getsource(sessions.preview_pick)
+    after_none = source.split("if picked is None")[1]
+    assert "preview.disarm" in after_none, (
+        "a pick that returns nothing leaves the page eating clicks")
+
+
+def test_cancelling_from_the_app_reaches_the_page():
+    """The button doubles as a cancel, and the app cancelling only its own
+    side would leave the window in picking mode with nothing on screen in the
+    app to suggest why the project has stopped responding."""
+    import inspect
+
+    from agent_server.routes import sessions
+
+    source = inspect.getsource(sessions.preview_pick_cancel)
+    assert "annotate.forget" in source, "the waiter is left hanging"
+    assert "preview.disarm" in source, "the page is left armed"
+
+
+def test_a_successful_pick_disarms_the_page_itself():
+    """Not from Python -- from inside the page, at the moment of the click, so
+    there is no window in which the next click is also swallowed."""
+    from agent_server.annotate import PICKER_JS
+
+    pick_body = PICKER_JS.split("function pick(")[1].split("function ")[0]
+    assert "disarm()" in pick_body, "picking something leaves the picker on"
+
+
+def test_the_banner_says_how_to_get_out():
+    """The one instruction that matters, on screen, in the window itself --
+    not in the app, which is not where the user is looking."""
+    from agent_server.annotate import PICKER_JS
+
+    assert "Esc" in PICKER_JS
+    banner = [line for line in PICKER_JS.splitlines() if "textContent" in line
+              and "Esc" in line]
+    assert banner, "the way out is not written on the banner"
+
+
+def test_picking_cannot_outlast_the_user_s_patience():
+    """A pick nobody ever makes has to end by itself: the window may have been
+    walked away from, and the request behind it is holding a connection."""
+    from agent_server.annotate import PICK_TIMEOUT
+
+    assert 60 <= PICK_TIMEOUT <= 600, PICK_TIMEOUT

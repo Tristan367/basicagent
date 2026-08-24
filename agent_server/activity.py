@@ -48,6 +48,7 @@ TOOL_FAMILY: dict[str, str] = {
     "show_settings": "setting", "set_appearance": "setting", "set_voice": "setting",
     "set_sounds": "setting", "set_child_mode": "setting",
     "set_model": "setting", "set_dictation_quality": "setting",
+    "draw": "write",
 }
 
 DEFAULT_FAMILY = "run"
