@@ -27,12 +27,11 @@ import asyncio
 import contextlib
 import logging
 import os
-import signal
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agent_server import annotate
+from agent_server import annotate, processes
 from agent_server.config import DATA_DIR
 
 log = logging.getLogger(__name__)
@@ -109,12 +108,9 @@ async def _spawn(session_id: str, command: str, cwd: str) -> Slot:
         # stopping `npm run dev` kills the shell and leaves node holding the
         # port -- and the next start fails on an address already in use, which
         # reads as a bug in the project rather than in this.
-        kwargs = {"start_new_session": True} if os.name != "nt" else {
-            "creationflags": getattr(__import__("subprocess"), "CREATE_NEW_PROCESS_GROUP", 0)
-        }
         process = await asyncio.create_subprocess_shell(
             command, cwd=cwd or None, stdout=handle, stderr=asyncio.subprocess.STDOUT,
-            stdin=asyncio.subprocess.DEVNULL, **kwargs,
+            stdin=asyncio.subprocess.DEVNULL, **processes.spawn_kwargs(),
         )
     except Exception as e:
         handle.close()
@@ -131,30 +127,15 @@ async def _kill(slot: Slot):
     process = slot.process
     if not process or process.returncode is not None:
         return
-    # SIGKILL does not exist on Windows, where `_signal_group` uses taskkill
-    # for both passes anyway.
-    hard = getattr(signal, "SIGKILL", signal.SIGTERM)
-    for sig, wait in ((signal.SIGTERM, GRACE_SECONDS), (hard, 2.0)):
-        _signal_group(process, sig)
+    # Windows has no SIGKILL, and no SIGTERM worth the name either -- there
+    # both passes are the same taskkill. `processes.HARD` is whichever of the
+    # two this machine actually has.
+    for sig, wait in ((processes.SOFT, GRACE_SECONDS), (processes.HARD, 2.0)):
+        processes.signal_tree(process, sig)
         with contextlib.suppress(asyncio.TimeoutError):
             await asyncio.wait_for(process.wait(), timeout=wait)
             return
     log.warning("preview for %s would not stop", slot.session_id)
-
-
-def _signal_group(process, sig):
-    """Signal the whole tree, falling back to the one process we know about."""
-    try:
-        if os.name == "nt":  # pragma: no cover - platform specific
-            import subprocess
-
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)],
-                           capture_output=True, check=False)
-            return
-        os.killpg(os.getpgid(process.pid), sig)
-    except (ProcessLookupError, PermissionError, OSError):
-        with contextlib.suppress(ProcessLookupError, OSError):
-            process.send_signal(sig)
 
 
 # ── the window ──────────────────────────────────────────────────────────────
@@ -387,11 +368,10 @@ def _no_window(e: Exception) -> str:
         # will not start, and no amount of downloading changes that.
         return (
             "the project is running, but the window cannot open: Chromium is "
-            "installed and this computer is missing system libraries it needs. "
-            "That takes an administrator to fix -- `playwright install-deps` -- "
-            "and cannot be done from in here. Say that once, and tell them they "
-            "can see their work meanwhile at the address above in their own "
-            "browser."
+            "installed and this computer is missing the system libraries it "
+            "links against. That takes an administrator and cannot be done "
+            "from in here. Say that once, and tell them they can see their "
+            "work meanwhile at the address above in their own browser."
         )
     if setup.looks_like_missing_browser(e):
         # Reached only when putting it back has already been tried and failed,

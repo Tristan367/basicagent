@@ -198,6 +198,25 @@ CHROMIUM_STARTS = (
 )
 
 
+def _dependency_hint(stderr: str) -> list:
+    """The useful part of Playwright's missing-libraries complaint.
+
+    It knows this machine's package manager and this machine's missing
+    packages; nothing here does. So the lines it prints are passed along
+    verbatim rather than paraphrased into a command that may not exist on the
+    distribution somebody is actually running.
+    """
+    keep = []
+    for raw in (stderr or "").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("<3"):
+            continue
+        if ("install" in line or "apt" in line or "dnf" in line or "pacman" in line
+                or line.startswith("lib") or "missing" in line.lower()):
+            keep.append(line)
+    return keep[:8] or ["(it did not say which libraries)"]
+
+
 def install_browser() -> bool:
     """Chromium, used both for the app's own window and for showing the user
     whatever they have built. Optional in the sense that the app starts without
@@ -220,14 +239,22 @@ def install_browser() -> bool:
         return True
 
     if "missing dependencies" in (check.stderr or ""):
+        # Linux only, and not because of a check that says so: Chromium on
+        # Windows and macOS ships with everything it links against, and
+        # Playwright never prints this there. The fix is also not one command
+        # -- `playwright install-deps` is Debian and Ubuntu only, and naming it
+        # on Arch or Fedora sends somebody to a command that fails -- so what
+        # gets printed is Playwright's own answer for this machine rather than
+        # a guess made here.
         say()
-        say("  The browser downloaded, but this computer is missing some system")
-        say("  libraries it needs to run. One command fixes it, and it needs an")
-        say("  administrator password:")
+        say("  The browser downloaded, but this computer does not have the system")
+        say("  libraries it needs to run it. This is a minimal Linux install; it")
+        say("  does not happen on Windows or a Mac. Playwright says:")
         say()
-        say(f"      sudo {VENV_PY} -m playwright install-deps chromium")
+        for line in _dependency_hint(check.stderr):
+            say(f"    {line}")
         say()
-        say("  Run that, and everything works. Without it the app still runs and")
+        say("  That needs an administrator. Without it the app still runs and")
         say("  still writes code, but it cannot show you a window of your work.")
     else:
         say("  The browser downloaded but would not start here. The app still")

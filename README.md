@@ -19,7 +19,12 @@ tool for everybody else too.
 ## Installing it
 
 You need [Python](https://www.python.org/downloads/) 3.11, 3.12 or 3.13 and
-about 3 GB of disk. Then:
+about 3 GB of disk. Download this folder, then:
+
+**Windows** — double-click **`install.bat`**. (On the Python installer's first
+screen, tick *Add python.exe to PATH*.)
+
+**Mac or Linux** —
 
 ```bash
 git clone https://github.com/Tristan367/BasicCodingAgent.git
@@ -36,16 +41,19 @@ If your computer's Python is too new for one of the parts, the installer finds a
 suitable one that is already installed, or fetches one with
 [uv](https://docs.astral.sh/uv/) if you have it — it does not just fail.
 
+Options go on the end either way — `install.bat --minimal` on Windows,
+`python3 install.py --minimal` elsewhere:
+
 | | |
 |---|---|
-| `python3 install.py --minimal` | Skip the speech downloads (saves about 800 MB). The assistant can install them later — just ask it. |
-| `python3 install.py --no-shortcut` | Do not add a menu entry or desktop icon. |
+| `--minimal` | Skip the speech downloads (saves about 800 MB). The assistant can install them later — just ask it. |
+| `--no-shortcut` | Do not add a menu entry or desktop icon. |
 
-**Starting it:** click the icon. Or `./bin/basicagent`, or
-`.venv/bin/python basicagent.py`.
+**Starting it:** click the icon. Or `./bin/basicagent` on a Mac or Linux;
+`.venv\Scripts\python basicagent.py` on Windows.
 
-**Updating it:** `git pull && python3 install.py`. Your projects and settings
-live outside the folder, so nothing is lost.
+**Updating it:** `git pull`, then run the installer again. Your projects and
+settings live outside the folder, so nothing is lost.
 
 **Removing it:** delete the folder, delete
 `~/.local/share/basicagent` (`%APPDATA%\basicagent` on Windows), and delete the

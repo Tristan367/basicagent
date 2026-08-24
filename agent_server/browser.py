@@ -126,10 +126,11 @@ def _cannot_start(e: Exception) -> str:
     if setup.looks_like_missing_system_libraries(e):
         return (
             "Chromium is installed on this computer but cannot run: the "
-            "system is missing libraries it needs. This one cannot be fixed "
-            "from inside the app -- it needs an administrator to run "
-            "`playwright install-deps`. Say that plainly, once, and carry on "
-            "without checking pages yourself."
+            "system libraries it links against are missing. This is a Linux "
+            "machine with a minimal install, it cannot be fixed from inside "
+            "the app, and it needs an administrator -- the exact command "
+            "depends on the distribution. Say that plainly, once, and carry "
+            "on without checking pages yourself."
         )
     if setup.looks_like_missing_browser(e):
         return (

@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 
+from agent_server import processes
 from agent_server.config import MAX_TOOL_RESULT_CHARS
 from agent_server.tools.base import ToolContext, ToolResult, truncate
 
@@ -32,6 +33,77 @@ PROTECTED_RM_TARGETS = {
 # expanded path.
 PROTECTED_RM_TARGETS.add(os.path.expanduser("~"))
 _BLOCK_DEV_RE = re.compile(r"/dev/(sd[a-z]+|hd[a-z]+|nvme\d+n\d+|vd[a-z]+|xvd[a-z]+|mmcblk\d+|disk|mapper)")
+
+# The same guard for the computer most people using this actually have.
+#
+# Everything above is POSIX-shaped: `rm -rf /`, `/dev/sda`, a fork bomb written
+# in shell. None of it can even be typed on Windows, where the shell is cmd and
+# the commands are `del`, `rd` and `format` -- so on Windows this guard was a
+# guard against nothing at all, protecting the one group of users who cannot
+# possibly notice what went wrong or put it back.
+#
+# Written with the same restraint as the POSIX half: it fires on the handful of
+# things that take the machine with them, and never on `rd /s /q build` or
+# `del /q *.log`, which are ordinary and correct.
+_WINDOWS_DRIVE_ROOT = re.compile(r"^[a-z]:[\\/]?\*?$")
+_WINDOWS_PROTECTED = {
+    r"%userprofile%", r"%homepath%", r"%systemroot%", r"%windir%",
+    r"%programfiles%", r"%programdata%", r"%appdata%", r"%localappdata%",
+    r"$env:userprofile", r"$env:systemroot", r"$env:windir", r"$home",
+    r"c:\windows", r"c:\users", r"c:\program files", r"c:\programdata",
+    r"c:/windows", r"c:/users",
+}
+
+
+def _windows_target_is_protected(token: str) -> bool:
+    """Whether a path is one whose recursive deletion ends the computer.
+
+    The trailing `\\*` matters and is easy to miss: `del /s /q %USERPROFILE%`
+    is an error, and `del /s /q %USERPROFILE%\\*` is somebody's photographs.
+    Every wildcard and separator on the end comes off before comparing.
+    """
+    bare = token.strip("\"'").lower()
+    if _WINDOWS_DRIVE_ROOT.match(bare):
+        return True
+    stripped = bare.rstrip("*").rstrip("\\/") or bare
+    return stripped in _WINDOWS_PROTECTED
+
+
+def _windows_danger(command: str) -> str | None:
+    """The Windows half of `danger_reason`. None when the command is fine."""
+    lowered = command.lower()
+
+    # Formatting a drive, or repartitioning one. There is no version of either
+    # that belongs in a project folder.
+    if re.search(r"\bformat\s+[a-z]:", lowered):
+        return "format of a drive"
+    if re.search(r"\b(diskpart|bcdedit)\b.*\b(clean|delete|format)\b", lowered):
+        return "repartitioning the disk"
+
+    try:
+        tokens = shlex.split(command, posix=False)
+    except ValueError:
+        tokens = command.split()
+    lowered_tokens = [t.lower() for t in tokens]
+    if not lowered_tokens:
+        return None
+
+    verbs = {os.path.basename(t.strip('"\'')) for t in lowered_tokens}
+    recursive = any(t in ("/s", "-recurse", "-r") for t in lowered_tokens)
+    # `del` needs /s to be recursive; `rd` and `rmdir` need it to remove a tree
+    # at all; Remove-Item needs -Recurse. Without one of those, a protected
+    # path is at worst an empty-directory error.
+    if not recursive:
+        return None
+    if not (verbs & {"del", "erase", "rd", "rmdir", "remove-item", "ri", "del.exe"}):
+        return None
+
+    for token in tokens:
+        if token.startswith(("/", "-")) and len(token) <= 12:
+            continue  # a flag, not a path
+        if _windows_target_is_protected(token):
+            return f"recursive delete of {token}"
+    return None
 
 
 def _has_flag(tokens: list[str], flag: str, long: str = "") -> bool:
@@ -89,7 +161,12 @@ def danger_reason(command: str) -> str | None:
     if re.search(r"[>]\s*" + _BLOCK_DEV_RE.pattern, s):
         return "raw disk write"
 
-    return None
+    # Checked on every computer, not only Windows. The guard costs nothing here
+    # and a project *is* sometimes built on one machine for another -- but the
+    # real reason is that a rule which only runs where it was written is a rule
+    # that gets forgotten the moment somebody develops on Linux, which is the
+    # exact situation this was written in.
+    return _windows_danger(s)
 
 
 def is_read_only(command: str) -> bool:
@@ -189,7 +266,10 @@ async def run_bash(
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE if has_sudo else asyncio.subprocess.DEVNULL,
             cwd=cwd,
-            start_new_session=True,
+            # In a group of its own, so `_kill` can reach whatever it starts.
+            # Windows needs a different flag for the same thing, which is why
+            # this is not `start_new_session=True` written here.
+            **processes.spawn_kwargs(),
             env={**os.environ, "TERM": "dumb", "NO_COLOR": "1", "PAGER": "cat", **(env or {})},
         )
         if has_sudo and proc.stdin is not None:
@@ -293,14 +373,12 @@ async def _collect(proc) -> tuple[bytes, bytes, bool]:
 
 
 def _kill(proc):
-    if proc is None or proc.returncode is not None:
-        return
-    import signal
+    """Stop a command that ran over its time, and everything it started.
 
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, OSError):
-        try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
+    This used to reach for `os.killpg` and `signal.SIGKILL` directly, neither
+    of which exists on Windows -- and the `except (ProcessLookupError,
+    PermissionError, OSError)` around it does not catch an AttributeError. So
+    on Windows the app's answer to "that command took too long" was a crash in
+    the cleanup path.
+    """
+    processes.kill_tree(proc)

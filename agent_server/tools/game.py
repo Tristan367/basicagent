@@ -21,6 +21,7 @@ What it hides:
 """
 
 import asyncio
+import sys
 from pathlib import Path
 
 from agent_server import godot
@@ -154,7 +155,14 @@ async def game(
 
     build = Path(ctx.project_dir) / "build" / "web"
     port = 8300 + (abs(hash(ctx.session_id)) % 400)
-    command = f'python3 -m http.server {port} --bind 127.0.0.1 -d "{build}"'
+    # This app's own interpreter, by full path, rather than `python3`. There is
+    # no `python3` on Windows -- the command is `python`, or `py`, or the full
+    # path, depending on how it was installed -- so a finished game built fine
+    # and then would not open, with `'python3' is not recognized` buried in a
+    # preview log nobody reads. Quoted because the path to it goes through
+    # "Program Files" and "AppData" as often as not.
+    command = (f'"{sys.executable}" -m http.server {port} '
+               f'--bind 127.0.0.1 -d "{build}"')
     from agent_server.tools.preview import preview
 
     result = await preview(ctx, action="start", command=command,

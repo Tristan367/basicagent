@@ -460,8 +460,11 @@ def test_missing_libraries_is_not_mistaken_for_a_missing_browser():
 
 async def test_missing_libraries_downloads_nothing_and_says_what_it_is(monkeypatch):
     """Nobody can fix this from inside the app, so the one useful thing to do
-    is name it -- somebody sitting with the user can act on `install-deps`, and
-    can act on nothing at all if they are told the browser "would not start"."""
+    is name it. Somebody sitting with the user can act on "the system libraries
+    are missing" and can act on nothing at all if they are told the browser
+    "would not start". Deliberately not a command: `playwright install-deps` is
+    Debian and Ubuntu only, and printing it on Arch or Fedora sends whoever is
+    helping to something that fails."""
     from agent_server import browser as browser_mod
     from agent_server import setup
 
@@ -483,8 +486,10 @@ async def test_missing_libraries_downloads_nothing_and_says_what_it_is(monkeypat
 
     with pytest.raises(browser_mod.BrowserError) as caught:
         await browser_mod._ensure_browser()
+    said = str(caught.value)
     assert installs == [], "it downloaded Chromium to fix a library problem"
-    assert "install-deps" in str(caught.value), str(caught.value)
+    assert "librar" in said, said
+    assert "administrator" in said, f"nobody is told who can fix it: {said}"
 
 
 def test_the_installer_checks_the_browser_actually_starts():
@@ -499,4 +504,13 @@ def test_the_installer_checks_the_browser_actually_starts():
 
     source = Path("install.py").read_text()
     assert "missing dependencies" in source, "the installer does not check"
-    assert "install-deps" in source, "it does not say what would fix it"
+    assert "_dependency_hint" in source, (
+        "it does not pass on what Playwright said would fix it")
+    # Not a command written here. Playwright knows this machine's package
+    # manager and its missing packages; the installer does not, and an
+    # apt-only command printed on Arch is worse than no command. (The Python
+    # checks elsewhere in the file do name apt, but they say "On Ubuntu or
+    # Debian" first, which is the difference.)
+    browser_part = source.split("def install_browser")[1].split("\ndef ")[0]
+    assert "sudo" not in browser_part, (
+        "the installer prescribes a distro-specific fix for the browser")
