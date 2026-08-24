@@ -302,8 +302,12 @@ async def run_bash(
         # i.e. a real background process. Say so, otherwise the model sees a
         # suspiciously empty result and retries a server it already started.
         parts.append(
-            "[note] the shell exited and left a background process running; "
-            "it was not killed and any later output is not captured"
+            "[note] the shell exited and left a background process running. "
+            "Nothing in this app can stop it -- not the Stop button, not closing "
+            "the project, not deleting it -- and its output is no longer being "
+            "captured. If it is a server the user needs, stop it and start it "
+            "with `preview` instead, which owns what it starts. Two servers go "
+            "in one `preview` command with `&` between them."
         )
     if has_sudo and code != 0:
         # Otherwise the model reads "sudo: no password was provided" as a bug in

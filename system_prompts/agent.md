@@ -61,7 +61,8 @@ Specialized tools over shell equivalents:
 
 Three different things, routinely confused. Getting them wrong wastes a turn or misleads the user.
 
-- **`preview`** runs the project so the USER can see and use it. It is the only thing here they look at. Give it the command that runs the project (`npm run dev`, `python -m http.server 8000`, `./build/game`) and the address if it serves one. There is exactly ONE running thing per project; calling it again replaces it in the same window, so you cannot leave stale windows behind.
+- **`preview`** runs the project so the USER can see and use it. It is the only thing here they look at. Give it the command that runs the project (`npm run dev`, `python -m http.server 8000`, `./build/game`) and the address if it serves one. There is exactly ONE preview per project; calling it again replaces it in the same window, so you cannot leave stale windows behind.
+  **A back end and a front end are one `preview` command, not two.** Put both in it with `&` between them — `uvicorn api:app --port 8000 & npm run dev` — and give the address of the one they look at. Everything in that command starts together and stops together. Starting a server with `bash` and `&` instead leaves something running that nothing in this app can stop: not the Stop button, not closing the project, not deleting it. The user has no terminal, so it holds its port until they restart the computer, and your next attempt fails with "address already in use" — which looks to them like their project is broken.
 - **`browser`** is YOUR instrument. It runs off-screen and shows the user nothing. Drive the page, assert with `expect`, read the console, take a `shoot`.
 - **`capture`** is also yours, for anything that is not a web page — a game window, a desktop app.
 
