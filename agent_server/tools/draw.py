@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from agent_server import imagegen
+from agent_server import imagegen, money
 from agent_server.tools.base import ToolContext, ToolResult
 
 DEFAULT_FOLDER = "images"
@@ -62,6 +62,40 @@ def _price(model) -> str:
     if model.priced:
         return f"about ${model.about_each:.2f} a picture"
     return "price not published, so nobody here knows what it costs"
+
+
+async def _no_funds(model, why: str) -> ToolResult:
+    """The account cannot pay for pictures, and here is exactly how to fix it.
+
+    The only failure here whose remedy is a person on a website with a card, so
+    it is the only one that gets more than a sentence. Two deliveries of the
+    same answer, on purpose:
+
+    The assistant is told the steps so it can talk somebody through them, which
+    matters because this app is used by people who cannot read a screen and are
+    being read to.
+
+    And the app puts them on screen itself, because these have to be exactly
+    right. An assistant retelling the Google flow will one day say
+    console.cloud.google.com -- a real page, a plausible one, and not where the
+    button is -- and a parent will lose an evening to it before deciding the
+    whole thing is beyond them.
+    """
+    reachable = await imagegen.catalogue()
+    steps = money.advice(model.provider, reachable)
+    return ToolResult(
+        output=(
+            f"{why}\n\n{steps}\n\n"
+            "Say this in your own words, but keep the address and the amount "
+            "exactly as they are -- they are on the screen too, and the two "
+            "disagreeing is worse than either alone. It is not their fault and "
+            "nothing is broken; everything else about the app still works, and "
+            "the pictures will work the moment the account has money on it."
+        ),
+        is_error=True,
+        title="no funds for pictures",
+        action=money.panel(model.provider, reachable),
+    )
 
 
 async def _listing() -> ToolResult:
@@ -177,6 +211,8 @@ async def draw(
     try:
         drawn = await imagegen.draw(prompt, model=chosen, reference=reference,
                                     reference_mime=reference_mime)
+    except imagegen.NoFunds as e:
+        return await _no_funds(chosen, str(e))
     except imagegen.ImageError as e:
         return ToolResult.error(str(e), title)
     except Exception as e:  # a shape nothing anticipated

@@ -1648,6 +1648,84 @@
     return button;
   }
 
+  /* How to put money on the account, drawn by the app rather than said by the
+   * assistant.
+   *
+   * The assistant says it too, and that copy matters -- somebody being read to
+   * needs the words. But the address has to be exactly right, and a retold
+   * address is a guessed address: console.cloud.google.com is a real page, a
+   * plausible one, and not where the button is. A parent who loses an evening
+   * to the wrong page does not conclude that the model misremembered. They
+   * conclude the whole thing is beyond them, and that is the end of it.
+   *
+   * So the link here is a link. Nobody has to type it, which also makes this
+   * reachable for somebody working entirely by voice. */
+  function appendFunds(action) {
+    const wrap = document.createElement('div');
+    wrap.className = 'message fund';
+    const card = document.createElement('div');
+    card.className = 'fund-card';
+
+    const who = action.name || 'this';
+    const title = document.createElement('h3');
+    title.className = 'fund-title';
+    /* Whose job this is, said to whoever is actually holding the keyboard. A
+     * child cannot fix this and should not be left feeling they broke it. */
+    title.textContent = document.body.classList.contains('child-mode')
+      ? 'Ask a grown-up to put money on the ' + who + ' account'
+      : 'Making pictures needs money on the ' + who + ' account';
+    card.appendChild(title);
+
+    const why = document.createElement('p');
+    why.className = 'fund-why';
+    why.textContent = 'Nothing is broken. Pictures are paid for separately '
+      + 'from everything else, so the rest of the app carries on working.';
+    card.appendChild(why);
+
+    if (action.url) {
+      const go = document.createElement('p');
+      go.className = 'fund-go';
+      go.appendChild(link(action.url, 'Open ' + (action.url_label || action.url)
+        + '  →'));
+      card.appendChild(go);
+    }
+
+    const steps = document.createElement('ol');
+    steps.className = 'fund-steps';
+    (action.steps || []).forEach(function (parts) {
+      const li = document.createElement('li');
+      (parts || []).forEach(function (part) {
+        li.appendChild(part.href ? link(part.href, part.text)
+          : document.createTextNode(part.text || ''));
+      });
+      steps.appendChild(li);
+    });
+    card.appendChild(steps);
+
+    if (action.count) {
+      const count = document.createElement('p');
+      count.className = 'fund-count';
+      count.textContent = action.count;
+      card.appendChild(count);
+    }
+
+    wrap.appendChild(card);
+    messages.appendChild(wrap);
+    scrollToBottom();
+    announce(title.textContent + '. The steps are on the screen.');
+
+    function link(href, text) {
+      const a = document.createElement('a');
+      a.href = href;
+      // A new tab, because the app is the page underneath and navigating away
+      // from a conversation to reach a billing page loses the conversation.
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = text;
+      return a;
+    }
+  }
+
   function appendSummary(summaryText) {
     const wrap = document.createElement('div');
     wrap.className = 'message summary';
@@ -2903,6 +2981,11 @@
       if (window.__askChildMode) window.__askChildMode(!!action.on);
     } else if (action.kind === 'delete_projects') {
       askRemoveProjects(action.sessions || []);
+    } else if (action.kind === 'add_funds') {
+      // Not a question, so not a dialog. It goes into the conversation and
+      // stays there, to be read at whatever pace and shown to whoever has the
+      // card -- which may be somebody who is not in the room yet.
+      appendFunds(action);
     }
   }
 

@@ -743,6 +743,45 @@ html[data-theme="dark"] .setup-banner {
 }
 .open-project-btn:hover { background: var(--accent-dim); }
 
+/* Adding money to the account. Deliberately not styled as an error: nothing
+ * has gone wrong, something has run out, and a red panel would tell a child
+ * they broke it. It is a set of instructions, so it looks like one. */
+.message.fund { justify-content: center; }
+.fund-card {
+    width: 100%;
+    max-width: 100%;
+    padding: 18px 22px;
+    border: 2px solid var(--accent);
+    border-radius: 14px;
+    background: var(--surface);
+}
+.fund-title {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+.fund-why { margin: 0 0 14px; color: var(--text-dim); }
+.fund-go { margin: 0 0 14px; }
+.fund-go a {
+    display: inline-block;
+    padding: 11px 22px;
+    background: var(--accent-btn);
+    color: var(--user-text);
+    border-radius: 999px;
+    text-decoration: none;
+    font-weight: 600;
+}
+.fund-go a:hover { filter: brightness(1.08); }
+.fund-steps { margin: 0; padding-left: 1.4em; }
+.fund-steps li { margin-bottom: 9px; }
+.fund-steps a { color: var(--accent); }
+.fund-count {
+    margin: 14px 0 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-weight: 600;
+}
+
 /* A collapsed note marking where earlier messages were summarised away. */
 .message.summary { justify-content: center; }
 .summary-note {

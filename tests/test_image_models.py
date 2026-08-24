@@ -537,6 +537,32 @@ async def test_a_guessed_model_tries_both_ways_then_owns_up(monkeypatch):
     assert "was a guess from its name" in str(e.value)
 
 
+async def test_no_money_stops_the_guessing_instead_of_being_buried(monkeypatch):
+    """Found by running it. A guessed model tries two wire shapes, and wrapping
+    both failures said "this model does not draw" over the top of the one
+    sentence that was true and fixable -- while paying a second time to be told
+    the same thing. Money is not a wrong-shape problem, so it ends it."""
+    tries = []
+
+    def handler(method, url, kw):
+        tries.append(url)
+        return FakeResponse(
+            {"error": {"message": "Insufficient credits on this account."}},
+            status=402)
+
+    fake_httpx(monkeypatch, handler)
+    only_providers(monkeypatch, **{"custom:box": FakeProvider(
+        "box", "http://box/v1", "", credentials=True)})
+
+    model = imagegen.ImageModel("dream-image-1", "dream-image-1", "custom:box",
+                                route=imagegen.EITHER, sure=False)
+    with pytest.raises(imagegen.NoFunds) as e:
+        await imagegen.draw("a dragon", model=model)
+    assert len(tries) == 1, "it paid to be told the same thing twice"
+    assert "was a guess from its name" not in str(e.value)
+    assert "not enough money" in str(e.value)
+
+
 async def test_a_picture_returned_as_a_link_is_fetched_now(monkeypatch):
     """Some servers hand back a URL that expires in an hour. Fetching it now is
     the difference between a picture in the project and a dead link in it."""

@@ -133,6 +133,15 @@ class ImageError(RuntimeError):
     """Something went wrong that the assistant should say out loud."""
 
 
+class NoFunds(ImageError):
+    """The account cannot pay for this, and a person has to go and fix that.
+
+    Its own class because it is the only failure here whose remedy is somebody
+    opening a website with a card, rather than the app trying something
+    different. The tool that catches this puts the steps on the screen.
+    """
+
+
 @dataclass
 class Drawn:
     data: bytes
@@ -481,11 +490,21 @@ async def draw(prompt: str, *, model: ImageModel, reference: bytes = b"",
         # of them use for pictures and fall back to the other. Both failing is
         # reported as both failing: the model was a guess, and the guess was
         # wrong, which is worth saying rather than dressing up.
+        #
+        # Money is the exception, and it took a live run to notice. An account
+        # that cannot pay says so on the first attempt, and asking a second way
+        # gets the same refusal for a second fee -- while the "it was a guess
+        # and it does not draw" wrapper buried the one sentence that was true
+        # and actionable. So a money refusal ends it here, unchanged.
         try:
             return await _images(prompt, model, reference)
+        except NoFunds:
+            raise
         except ImageError as first:
             try:
                 return await _chat(prompt, model, reference, reference_mime)
+            except NoFunds:
+                raise
             except ImageError as second:
                 raise ImageError(
                     f"{model.name} was a guess from its name and it does not "
@@ -589,7 +608,7 @@ async def _gemini(prompt: str, model: ImageModel, reference: bytes,
         raise ImageError(f"could not reach Google: {type(e).__name__}") from e
 
     if response.status_code != 200:
-        raise ImageError(_why(response.status_code, response.text))
+        raise _failure(response.status_code, response.text)
 
     try:
         data = response.json()
@@ -678,7 +697,7 @@ async def _chat(prompt: str, model: ImageModel, reference: bytes,
             response = await send()
 
     if response.status_code != 200:
-        raise ImageError(_why(response.status_code, response.text))
+        raise _failure(response.status_code, response.text)
 
     try:
         message = response.json()["choices"][0]["message"]
@@ -741,7 +760,7 @@ async def _images(prompt: str, model: ImageModel, reference: bytes) -> Drawn:
                          f"{type(e).__name__}") from e
 
     if response.status_code != 200:
-        raise ImageError(_why(response.status_code, response.text))
+        raise _failure(response.status_code, response.text)
 
     try:
         first = response.json()["data"][0]
@@ -797,30 +816,60 @@ def _refused(said: str) -> str:
               "what was asked for rather than trying the same thing again.")
 
 
-def _why(status: int, text: str) -> str:
-    """An HTTP failure, in words worth passing on."""
-    detail = ""
+def _detail(text: str) -> str:
+    """The provider's own sentence, dug out of whatever it wrapped it in."""
     try:
         import json
 
         body = json.loads(text)
         error = body.get("error") if isinstance(body, dict) else None
         if isinstance(error, dict):
-            detail = error.get("message", "")
-        elif isinstance(error, str):
-            detail = error
+            return error.get("message", "") or text[:200]
+        if isinstance(error, str):
+            return error
     except Exception:
-        detail = ""
-    detail = detail or text[:200]
-    lower = detail.lower()
+        pass
+    return text[:200]
 
-    # Out of money and out of allowance are the same wall to the person hitting
-    # it, and the way past both is somebody else -- a parent, a teacher --
-    # topping the account up. That is worth saying, because a child told
-    # "quota exceeded" will assume they broke it.
+
+def _kind(status: int, detail: str) -> str:
+    """What sort of refusal this is, decided once.
+
+    `funds` is the one that matters, because it is the only one where the fix
+    is a person doing something on a website rather than the app trying
+    differently. It has to be told apart from a key that is wrong (a different
+    website, a different fix) and from credit merely held against a request
+    still running (no fix at all -- it clears).
+    """
+    lower = (detail or "").lower()
     broke = ("insufficient" in lower or "credit" in lower or "balance" in lower
-             or "billing" in lower or "payment" in lower)
+             or "billing" in lower or "payment" in lower or "quota" in lower)
     if broke and "in-flight" in lower:
+        return "waiting"
+    if status == 402 or (status in (400, 403) and broke):
+        return "funds"
+    # Pictures have no free allowance on the tiers this app's users are on, so
+    # a 429 on an image model is nearly always "this account has never been set
+    # up to pay for pictures" rather than "you have been going too fast". Both
+    # end at the same website, so both are `funds` -- the wording below is what
+    # keeps the difference.
+    if status == 429:
+        return "funds"
+    if status in (401, 403):
+        return "key"
+    if status == 404:
+        return "gone"
+    if status == 400 and "modalit" in lower:
+        return "modality"
+    return "other"
+
+
+def _why(status: int, text: str) -> str:
+    """An HTTP failure, in words worth passing on."""
+    detail = _detail(text)
+    kind = _kind(status, detail)
+
+    if kind == "waiting":
         # Not out of money -- reserved against something already running. It
         # comes back on its own, and telling somebody to top up an account that
         # has money in it sends them to a payment page for nothing.
@@ -828,30 +877,43 @@ def _why(status: int, text: str) -> str:
                 "right this second, because something else is still running "
                 "against it. It clears on its own. Wait for whatever else is "
                 f"going to finish, then try once more. ({detail[:160]})")
-    if status == 402 or (status in (400, 403) and broke):
+    if kind == "funds" and status == 429:
+        return ("no more pictures right now -- the allowance is used up. "
+                "Pictures are billed separately from text, so this happens "
+                "while ordinary replies still work, and on most accounts "
+                "there is no free allowance for pictures at all. It may come "
+                "back on its own in a few minutes; if it does not, the account "
+                f"needs money on it. ({detail[:160]})")
+    if kind == "funds":
         return ("there is not enough money on this account for pictures. "
                 "Pictures are paid for separately from replies, so ordinary "
                 "chat can keep working while this does not. Whoever set the "
                 "account up has to add funds -- for a child that is a parent "
                 "or a teacher, and it is not something they can fix "
                 f"themselves. ({detail[:160]})")
-    if status == 429:
-        return ("no more pictures right now -- the allowance is used up. "
-                "Pictures are billed separately from text, so this can happen "
-                "while ordinary replies still work. It may come back on its "
-                "own in a few minutes; if it does not, the account needs funds "
-                f"adding, which is a grown-up's job. ({detail[:160]})")
-    if status in (401, 403):
+    if kind == "key":
         return ("the key was refused for pictures. Making pictures often has "
                 "to be switched on for an account separately from text, and a "
                 "key that chats happily can still be told no here. "
                 f"({detail[:160]})")
-    if status == 404:
+    if kind == "gone":
         return ("that model is not there. It may have been renamed or "
                 f"withdrawn -- ask for the list again. ({detail[:160]})")
-    if status == 400 and "modalit" in lower:
+    if kind == "modality":
         return f"that model cannot return a picture. ({detail[:160]})"
     return f"the picture was refused ({status}). {detail[:200]}"
+
+
+def _failure(status: int, text: str) -> ImageError:
+    """The refusal as an exception of the right sort.
+
+    Money is its own class because the tool does something different with it:
+    it puts the steps for fixing it on the screen. Everything else is prose.
+    """
+    message = _why(status, text)
+    if _kind(status, _detail(text)) == "funds":
+        return NoFunds(message)
+    return ImageError(message)
 
 
 def _blocked(response) -> str:
