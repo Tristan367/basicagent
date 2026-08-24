@@ -136,16 +136,15 @@ async def test_the_assistant_is_told_not_to_describe_it(ctx, drew):
 # ── when it cannot ─────────────────────────────────────────────────────────
 
 
-def test_nothing_that_cannot_draw_is_offered(monkeypatch):
-    """Withheld, not refused. A tool in the list is a tool the model will try,
-    and a round trip spent being told there is no key is a round trip the user
-    waits through for nothing."""
-    from agent_server.tools import registry
+def test_the_tool_is_there_whether_or_not_anything_can_draw_yet():
+    """It was withheld when no key could draw, which sounds tidy and is not:
+    the tool list is frozen when a session starts, so adding a Google key
+    halfway through a conversation did nothing until a new one was started.
+    "Start a new session" is not a sentence to say to somebody who does not
+    know what a session is."""
+    from agent_server.tools.registry import allowed_tool_names
 
-    monkeypatch.setattr(registry, "_can_draw", lambda: False)
-    assert "draw" not in registry.allowed_tool_names({"kind": "project"})
-    monkeypatch.setattr(registry, "_can_draw", lambda: True)
-    assert "draw" in registry.allowed_tool_names({"kind": "project"})
+    assert "draw" in allowed_tool_names({"kind": "project"})
 
 
 def test_the_project_manager_does_not_draw():
@@ -162,7 +161,10 @@ async def test_with_no_key_it_says_what_would_fix_it(ctx, monkeypatch):
     assert "Google" in result.output and "Settings" in result.output
 
 
-async def test_an_empty_prompt_is_refused_before_it_is_billed(ctx, monkeypatch):
+async def test_an_empty_prompt_never_reaches_the_thing_that_charges(ctx, monkeypatch):
+    """It means "tell me what can draw" now, not "draw nothing" -- and either
+    way no request goes out, because a blank prompt billed as a picture is the
+    worst possible answer to a model that slipped."""
     monkeypatch.setattr(imagegen, "available", lambda: [imagegen.IMAGE_MODELS[1]])
     sent = []
 
@@ -172,8 +174,9 @@ async def test_an_empty_prompt_is_refused_before_it_is_billed(ctx, monkeypatch):
 
     monkeypatch.setattr(imagegen, "draw", fake)
     result = await draw(ctx, prompt="   ")
-    assert result.is_error
-    assert not sent
+    assert not result.is_error
+    assert "Nano Banana" in result.output
+    assert not sent, "an empty prompt was sent to be billed"
 
 
 def test_a_quota_failure_is_told_apart_from_a_broken_key():
@@ -197,3 +200,41 @@ def test_every_model_offered_says_what_it_costs():
     for model in imagegen.IMAGE_MODELS:
         assert model.about_each > 0, model.id
         assert model.name and model.provider
+
+
+# ── finding out what can draw, without spending anything ───────────────────
+
+
+async def test_calling_it_with_nothing_lists_what_can_draw(ctx, drew):
+    """The answer to "can you make me a picture?" and to "how much?", in one
+    call that costs nothing."""
+    result = await draw(ctx)
+    assert not result.is_error
+    assert "Nano Banana" in result.output
+    assert "$" in result.output
+
+
+async def test_the_list_warns_that_pictures_are_billed(ctx, drew):
+    """Text is free on Google's lower tiers and pictures are not, which is
+    exactly the surprise this app must never spring on somebody."""
+    result = await draw(ctx)
+    assert "charged" in result.output
+    assert "wait for them to say yes" in result.output
+
+
+async def test_asking_with_no_key_is_an_answer_not_an_error(ctx, monkeypatch):
+    """"Nothing can draw yet" is information. Returned as an error it reads as
+    a fault, and a model that has just been handed an error tries again."""
+    monkeypatch.setattr(imagegen, "available", list)
+    result = await draw(ctx)
+    assert not result.is_error
+    assert "Google key" in result.output and "Settings" in result.output
+
+
+def test_the_description_says_to_ask_before_spending():
+    from agent_server.tools.registry import TOOLS
+
+    described = TOOLS["draw"].description
+    assert "no arguments first" in described
+    assert "charged" in described
+    assert "wait for a yes" in described

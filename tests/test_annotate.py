@@ -334,3 +334,60 @@ def test_picking_cannot_outlast_the_user_s_patience():
     from agent_server.annotate import PICK_TIMEOUT
 
     assert 60 <= PICK_TIMEOUT <= 600, PICK_TIMEOUT
+
+
+# ── where the button lives, and how anybody learns it is there ─────────────
+
+
+def test_the_pick_button_is_not_in_the_composer():
+    """The composer's icon row acts on the message being written -- attach a
+    file to it, dictate into it, read it back. Pointing at something is about
+    the window the project runs in, which is what Play is about. A row that
+    keeps growing unrelated meanings is a row a non-technical user stops
+    reading.
+    """
+    from pathlib import Path
+
+    page = Path("web_ui/templates/chat.html").read_text()
+    composer = page.split('<div class="composer">')[1].split("</form>")[0]
+    assert 'id="pick-btn"' not in composer, "it is back in the composer"
+    assert 'class="pick-fab"' in page, "it is not beside Play either"
+
+
+def test_it_is_shaped_like_play_because_it_belongs_with_play():
+    from pathlib import Path
+
+    css = Path("web_ui/static/css/style.css").read_text()
+    assert ".pick-fab {" in css
+    for shared in ("position: fixed", "border-radius: 999px"):
+        assert shared in css.split(".pick-fab {")[1].split("}")[0], shared
+    # And it collapses to the glyph in a narrow gutter, exactly as Play does,
+    # rather than lying across the last line of the conversation.
+    assert ".pick-fab.pick-fab-tight" in css
+    assert ".pick-fab[hidden], .pick-fab.no-room { display: none; }" in css
+
+
+def test_there_is_one_line_that_says_the_feature_exists():
+    """Nothing in the app explains this and the assistant is never told about
+    it, which is right for a power feature and wrong for a first encounter:
+    somebody who never learns it is there never uses it."""
+    from pathlib import Path
+
+    page = Path("web_ui/templates/chat.html").read_text()
+    assert 'id="pick-hint"' in page
+    assert 'id="pick-hint-close"' in page, "no way to make it go away"
+
+    js = Path("web_ui/static/js/app.js").read_text()
+    assert "pick-hint-seen" in js, "it would come back every time"
+    # Using the feature is also learning it exists.
+    assert "dismissPickHint();" in js.split("async function startPicking()")[1][:200]
+
+
+def test_the_hint_only_appears_beside_a_button_that_is_there():
+    """A hint pointing at something not on screen is worse than no hint."""
+    from pathlib import Path
+
+    js = Path("web_ui/static/js/app.js").read_text()
+    body = js.split("function maybeShowPickHint()")[1].split("\n  }")[0]
+    assert "pick.hidden" in body
+    assert "no-room" in body

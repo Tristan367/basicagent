@@ -1685,6 +1685,84 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
 }
 
+/* The quieter twin of Play, stacked directly above it. Same shape so the two
+   read as a pair; surface-coloured rather than accent, because Play is the one
+   that matters and two solid pills competing would say otherwise.
+
+   Positioned by JS in the same pass as Play, so it follows the composer up and
+   down and disappears with it when there is no room. */
+.pick-fab {
+    position: fixed;
+    left: 20px;
+    bottom: 164px;
+    z-index: 20;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 18px 0 15px;
+    height: 46px;
+    border: 1.5px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+    transition: transform 0.12s ease, background-color 0.18s ease,
+                box-shadow 0.18s ease;
+}
+.pick-fab[hidden], .pick-fab.no-room { display: none; }
+.pick-fab.pick-fab-tight {
+    width: 46px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+}
+.pick-fab.pick-fab-tight .pick-fab-word { display: none; }
+.pick-fab-glyph { display: grid; place-items: center; }
+.pick-fab:hover { transform: scale(1.05); box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28); }
+.pick-fab:active { transform: scale(0.94); }
+/* Waiting for a click in the project window. The accent says "this is live"
+   without the button moving or changing size under the pointer. */
+.pick-fab.busy {
+    background: var(--accent-btn);
+    border-color: var(--accent-btn);
+    color: #fff;
+}
+
+/* Said once, ever. Sits just above the composer, out of the conversation, and
+   is dismissed by the button inside it or by using the feature. */
+.pick-hint {
+    position: fixed;
+    z-index: 19;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(520px, calc(100vw - 40px));
+    padding: 10px 12px 10px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.95rem;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.26);
+}
+.pick-hint[hidden] { display: none; }
+.pick-hint button {
+    flex: none;
+    padding: 7px 14px;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent-btn);
+    color: #fff;
+    font-family: var(--font);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
 /* Respect users who prefer less motion: turn animations off entirely. */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

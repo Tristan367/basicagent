@@ -355,6 +355,15 @@ register(Tool(
         "Make a real picture and put it in the project: a sprite, a background, "
         "a header image, a diagram. Use it instead of a grey placeholder or a "
         "coloured rectangle -- somebody who asked for a dragon wants a dragon.\n"
+        "**Call it with no arguments first.** That costs nothing and answers "
+        "what can draw on this computer and what each one charges. Not every "
+        "computer can: it needs a Google key, and a project that has been "
+        "running on DeepSeek all along may have had one added five minutes ago "
+        "-- so ask rather than assuming either way.\n"
+        "**Pictures are charged, and charged even where replies are free.** "
+        "Before the first one in a conversation, tell them roughly what it "
+        "costs and wait for a yes; after that, get on with it. If they care "
+        "which model, the list says what each is good at.\n"
         "`prompt` is what to draw, said the way you would say it to an "
         "illustrator: what it is, what style, and what the background should be "
         "('a friendly cartoon dragon, flat colours, transparent background'). "
@@ -854,25 +863,7 @@ def allowed_tool_names(session: dict) -> list[str]:
             n for n in TOOLS
             if (n in MANAGER_TOOLS or n in MANAGER_EXTRA_TOOLS) and n not in withheld
         ]
-    hidden = set()
-    if not _can_draw():
-        # Withheld rather than refused, on the same reasoning as the child's
-        # missing manager tools: a tool in the list is a tool the model will
-        # try, and a round trip spent being told there is no key for it is a
-        # round trip the user waits through for nothing. Nobody with a DeepSeek
-        # key alone should ever hear the word "picture".
-        hidden.add("draw")
-    return [n for n in TOOLS if n not in MANAGER_TOOLS and n not in hidden]
-
-
-def _can_draw() -> bool:
-    from agent_server import imagegen
-
-    try:
-        return imagegen.can_draw()
-    except Exception:  # pragma: no cover - a provider that will not load
-        log.warning("could not work out whether anything can draw", exc_info=True)
-        return False
+    return [n for n in TOOLS if n not in MANAGER_TOOLS]
 
 
 def tool_schemas(

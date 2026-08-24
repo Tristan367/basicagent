@@ -218,6 +218,46 @@
         <span class="play-fab-word" id="play-fab-word">Play</span>
     </button>
 
+    {#
+      Point at it, above Play and shaped like it.
+
+      It lived in the composer, in the row with the paperclip and the camera.
+      That row is for the message being written -- attach a file to it, dictate
+      into it, read it back. Pointing at something is not about the message; it
+      is about the window the project is running in, which is what Play is
+      about. So it sits with Play, appears under the same condition, and is the
+      quieter of the two because Play is the one that matters.
+
+      Absent, not disabled, when there is nothing to point at -- a game, a
+      project that is not running, a window showing a PDF. There is no third
+      state to explain.
+    #}
+    <button type="button" class="pick-fab" id="pick-btn" hidden
+            aria-label="Point at something in your project"
+            title="Point at it — click part of your project instead of describing it">
+        <span class="pick-fab-glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+                <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
+                      d="M6.5 3.2l11.7 8.1-4.9 1.1 2.7 5.5-2.6 1.3-2.7-5.5-3.4 3.6z"/>
+            </svg>
+        </span>
+        <span class="pick-fab-word" id="pick-fab-word">Point at it</span>
+    </button>
+
+    {#
+      Said once, ever, and then never again.
+
+      The feature is invisible by design -- nothing in the app explains it and
+      the assistant is never told it exists. That is right for a power feature
+      and wrong for a first encounter: somebody who never learns it is there
+      never uses it. One line, the first time a project is running and pointable,
+      with a way to make it go away.
+    #}
+    <div class="pick-hint" id="pick-hint" hidden>
+        <span>You can <strong>point at</strong> part of your project instead of describing it.</span>
+        <button type="button" id="pick-hint-close" aria-label="Got it, hide this">Got it</button>
+    </div>
+
     <div class="composer-wrap">
         <form id="chat-form" autocomplete="off">
             <div class="composer">
@@ -284,14 +324,6 @@
                           appears and then explains why it cannot help you is
                           worse than no button at all.
                         #}
-                        <button type="button" id="pick-btn" class="icon-btn" hidden
-                                aria-label="Point at something in your project"
-                                title="Point at it — click part of your project instead of describing it">
-                            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
-                                <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
-                                      d="M6.5 3.2l11.7 8.1-4.9 1.1 2.7 5.5-2.6 1.3-2.7-5.5-3.4 3.6z"/>
-                            </svg>
-                        </button>
                         {# Hidden until a camera is found, so a machine without
                            one never shows a button that cannot work. #}
                         <button type="button" id="camera-btn" class="icon-btn" hidden

@@ -62,11 +62,38 @@ async def draw(
     **_,
 ) -> ToolResult:
     title = "drawing a picture"
-    # Checked here as well as in `imagegen`, because here it costs nothing and
-    # there it is one layer inside the thing that spends money.
-    if not (prompt or "").strip():
-        return ToolResult.error(
-            "say what the picture should be of -- `prompt` was empty", title)
+
+    # Called with nothing: what can draw, and what each one costs.
+    #
+    # This exists because the tool list is frozen when a session starts. Hiding
+    # the tool when no key could draw meant that adding a Google key halfway
+    # through a conversation did nothing until a new one was started -- and
+    # "start a new session" is not a sentence to say to somebody who does not
+    # know what a session is. It is always here now, and asking it is how you
+    # find out where you stand, mid-conversation, without spending anything.
+    if not (prompt or "").strip() and not change:
+        reachable = imagegen.available()
+        if not reachable:
+            return ToolResult(
+                output="Nothing on this computer can make pictures yet. "
+                       "Google's models can, and they use the same key as "
+                       "everything else -- so this needs a Google key in "
+                       "Settings. Tell them that plainly; the Project Manager "
+                       "walks people through getting one.",
+                title="nothing can draw yet")
+        lines = ["These can make pictures, dearest first:"]
+        lines += [f"- {m.name} -- about ${m.about_each:.2f} a picture"
+                  + (f". {m.note}" if m.note else "")
+                  for m in reachable]
+        lines.append("")
+        lines.append(
+            "Every picture is charged, and charged even on the free tier "
+            "where ordinary replies are not. Before the first one in a "
+            "conversation, say what it will cost and wait for them to say "
+            "yes. After that, carry on -- asking twenty times is its own kind "
+            "of rude. Call this again with a `prompt` to actually draw.")
+        return ToolResult(output="\n".join(lines), title="what can draw")
+
     try:
         chosen = imagegen.pick(model)
     except imagegen.ImageError as e:

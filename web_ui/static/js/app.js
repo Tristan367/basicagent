@@ -3270,6 +3270,89 @@
     const bar = document.querySelector('.app-bar');
     const barBottom = bar ? bar.getBoundingClientRect().bottom : 0;
     if (composer.top - gap - height < barBottom + 8) playBtn.classList.add('no-room');
+    positionPickBtn();
+  }
+
+  // Stacked directly on top of Play, in the same gutter, following the same
+  // rules -- narrow to the glyph where the gutter is tight, and out of the way
+  // entirely when Play itself has nowhere to be. Placed from Play's own
+  // measured box rather than from a constant, so the two never overlap however
+  // the pill has been sized.
+  function positionPickBtn() {
+    const pick = document.getElementById('pick-btn');
+    const wrap = document.querySelector('.composer-wrap');
+    const inner = document.querySelector('.chat-scroll-inner');
+    if (!pick || !wrap || !inner || pick.hidden) return;
+    const gap = 16;
+    pick.classList.remove('no-room', 'pick-fab-tight');
+
+    const composer = wrap.getBoundingClientRect();
+    const contentLeft = inner.getBoundingClientRect().left;
+    // Above Play when Play is there, and in Play's place when it is not --
+    // pointing at a running project without a Stop button is not a state the
+    // app can reach, but a button that vanishes because its neighbour did
+    // would be a puzzle rather than a rule.
+    const playVisible = playBtn && !playBtn.hidden
+                        && !playBtn.classList.contains('no-room');
+    const floor = window.innerHeight - composer.top + gap;
+    pick.style.bottom = (playVisible ? floor + playBtn.offsetHeight + 10 : floor) + 'px';
+
+    if (contentLeft - gap - pick.offsetWidth < gap) {
+      pick.classList.add('pick-fab-tight');
+    }
+    pick.style.left =
+      Math.max(composer.left + gap, contentLeft - gap - pick.offsetWidth) + 'px';
+
+    const bar = document.querySelector('.app-bar');
+    const barBottom = bar ? bar.getBoundingClientRect().bottom : 0;
+    const top = window.innerHeight - parseFloat(pick.style.bottom) - pick.offsetHeight;
+    if (top < barBottom + 8) pick.classList.add('no-room');
+    positionPickHint();
+  }
+
+  /* The one-time line that says this exists at all.
+   *
+   * Kept in localStorage rather than in settings: it is a per-person, per-
+   * screen nicety, and the cost of getting it wrong is somebody being told
+   * once more than they needed to be, which is not a cost worth a database
+   * column and a migration for.
+   */
+  const PICK_HINT_KEY = 'pick-hint-seen';
+
+  function pickHintSeen() {
+    try { return localStorage.getItem(PICK_HINT_KEY) === '1'; } catch (e) { return true; }
+  }
+
+  function dismissPickHint() {
+    const hint = document.getElementById('pick-hint');
+    if (hint) hint.hidden = true;
+    try { localStorage.setItem(PICK_HINT_KEY, '1'); } catch (e) {}
+  }
+
+  function maybeShowPickHint() {
+    const hint = document.getElementById('pick-hint');
+    const pick = document.getElementById('pick-btn');
+    if (!hint || !pick) return;
+    // Only alongside the button it is about, and only while it is actually
+    // reachable -- a hint pointing at something that is not on screen is worse
+    // than no hint.
+    const show = !pick.hidden && !pick.classList.contains('no-room')
+                 && !pickHintSeen();
+    if (hint.hidden !== !show) hint.hidden = !show;
+    if (show) positionPickHint();
+  }
+
+  function positionPickHint() {
+    const hint = document.getElementById('pick-hint');
+    const pick = document.getElementById('pick-btn');
+    const wrap = document.querySelector('.composer-wrap');
+    if (!hint || !pick || !wrap || hint.hidden) return;
+    const composer = wrap.getBoundingClientRect();
+    hint.style.bottom = (window.innerHeight - composer.top + 16) + 'px';
+    // Beside the button rather than under it, and clamped so a narrow window
+    // never pushes it off the right-hand edge.
+    const left = pick.getBoundingClientRect().right + 12;
+    hint.style.left = Math.min(left, window.innerWidth - hint.offsetWidth - 16) + 'px';
   }
 
   // Both floating buttons hang off the composer, so both have to be put back
@@ -3875,6 +3958,10 @@
     // tied to something the user did.
     pickBtn.hidden = !playState.pickable;
     pickBtn.classList.toggle('busy', picking);
+    const word = document.getElementById('pick-fab-word');
+    if (word) word.textContent = picking ? 'Click it…' : 'Point at it';
+    if (!pickBtn.hidden) positionPickBtn();
+    maybeShowPickHint();
     pickBtn.setAttribute('aria-label', picking
       ? 'Waiting for you to click something in your project'
       : 'Point at something in your project');
@@ -3882,6 +3969,7 @@
 
   async function startPicking() {
     if (picking) { await cancelPicking(); return; }
+    dismissPickHint();
     picking = true;
     renderPick();
     announce('Your project is in front. Click the part you want to talk about, '
@@ -3982,6 +4070,8 @@
     // Leaving the page with the crosshair still on would strand it there.
     window.addEventListener('pagehide', () => { if (picking) cancelPicking(); });
   }
+  const pickHintClose = document.getElementById('pick-hint-close');
+  if (pickHintClose) pickHintClose.addEventListener('click', dismissPickHint);
   restorePoints();
 
   // By name, not by whether a thumbnail could be made: an image dragged in
