@@ -458,3 +458,24 @@ committing, and take the domain and the GitHub org the same day.
 - **A turn survives losing the connection.** The message stays on screen, the
   page waits half a minute for the app to come back, and picks the turn up
   again by itself if it does.
+
+## Changing a picture on an endpoint that only generates
+
+**Status: deferred, and small.**
+
+Pictures are made three ways: Google's native call, an ordinary chat request
+with an image modality (which is how the aggregators do it), and
+`/images/generations` (which is what a local server or a plain
+OpenAI-compatible box is most likely to offer). The first two can be handed an
+existing picture and asked to change it. The third cannot — editing there is a
+separate `/images/edits` endpoint taking a multipart upload rather than JSON,
+and it is not implemented.
+
+Asking to change a picture on one of those says so plainly and stops, rather
+than quietly drawing something new, which is the failure that looks like
+success. That is the right behaviour and it is not the good behaviour.
+
+Left for now because the people it affects are the people running Stable
+Diffusion behind a proxy on their own hardware, and they are not the people
+this app is for. If that stops being true, it is one more function beside
+`_images` in `imagegen.py` and a `route` that knows about it.

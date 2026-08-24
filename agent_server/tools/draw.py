@@ -52,6 +52,84 @@ def _free(folder: Path, name: str) -> Path:
                               "give the picture a name of its own")
 
 
+def _price(model) -> str:
+    """What one picture costs, or an honest admission that nobody knows.
+
+    A made-up price is worse than no price. The person who pays for these is
+    usually not the person asking for them, and "about 4p" said confidently
+    about a model charging 40 is how a child spends somebody else's money.
+    """
+    if model.priced:
+        return f"about ${model.about_each:.2f} a picture"
+    return "price not published, so nobody here knows what it costs"
+
+
+async def _listing() -> ToolResult:
+    """What can draw on this computer, found rather than assumed.
+
+    Three different answers, because three different situations need three
+    different things said. Something known-good is here: choose one and get on
+    with it. Only guesses are here: offer them as guesses and let the user
+    decide whether to gamble. Nothing at all: say what would fix it.
+    """
+    found = await imagegen.catalogue()
+    sure = [m for m in found if m.sure]
+    guesses = [m for m in found if not m.sure]
+
+    if not found:
+        return ToolResult(
+            output="Nothing on this computer can make pictures yet, and "
+                   "nothing it can reach looks like it could. Google's models "
+                   "can, and they use the same key as everything else -- so "
+                   "this needs a Google key in Settings. Tell them that "
+                   "plainly; the Project Manager walks people through getting "
+                   "one.",
+            title="nothing can draw yet")
+
+    lines: list[str] = []
+    if sure:
+        # Tested-first rather than strictly cheapest-first, and it says so:
+        # the top of this list is what gets chosen when nobody chooses, and
+        # that should be a model somebody has actually driven.
+        lines.append("These can make pictures. The ones this app has been "
+                     "tested against come first:")
+        lines += [f"- {m.name} -- {_price(m)}" + (f". {m.note}" if m.note else "")
+                  for m in sure]
+        lines.append("")
+        lines.append(
+            "Pick one yourself. Weigh the price against what the picture is "
+            "for -- a sprite or a background does not need the dear one, and "
+            "text inside a picture does. They asked for a picture, not a menu, "
+            "so do not make them choose between models they have never heard "
+            "of.")
+    if guesses:
+        lines.append("")
+        lines.append(
+            "These *might* also draw. Their names say so and nothing has "
+            "confirmed it:" if sure else
+            "Nothing here is known to make pictures, but these look like they "
+            "might, going by their names:")
+        lines += [f"- {m.name} -- {_price(m)}" + (f". {m.note}" if m.note else "")
+                  for m in guesses]
+        if not sure:
+            lines.append("")
+            lines.append(
+                "Say which ones you found, that you are not certain any of "
+                "them draws, and that nobody here knows what they charge. Let "
+                "them choose one to try, and pass its name as `model`. If it "
+                "does not work, say so and stop rather than working down the "
+                "list spending their money.")
+
+    lines.append("")
+    lines.append(
+        "Every picture is charged, and charged even on a free tier where "
+        "ordinary replies are not. Before the first one in a conversation, say "
+        "what it will cost and wait for them to say yes. After that, carry on "
+        "-- asking twenty times is its own kind of rude. Call this again with "
+        "a `prompt` to actually draw.")
+    return ToolResult(output="\n".join(lines).strip(), title="what can draw")
+
+
 async def draw(
     ctx: ToolContext,
     *,
@@ -72,30 +150,10 @@ async def draw(
     # know what a session is. It is always here now, and asking it is how you
     # find out where you stand, mid-conversation, without spending anything.
     if not (prompt or "").strip() and not change:
-        reachable = imagegen.available()
-        if not reachable:
-            return ToolResult(
-                output="Nothing on this computer can make pictures yet. "
-                       "Google's models can, and they use the same key as "
-                       "everything else -- so this needs a Google key in "
-                       "Settings. Tell them that plainly; the Project Manager "
-                       "walks people through getting one.",
-                title="nothing can draw yet")
-        lines = ["These can make pictures, dearest first:"]
-        lines += [f"- {m.name} -- about ${m.about_each:.2f} a picture"
-                  + (f". {m.note}" if m.note else "")
-                  for m in reachable]
-        lines.append("")
-        lines.append(
-            "Every picture is charged, and charged even on the free tier "
-            "where ordinary replies are not. Before the first one in a "
-            "conversation, say what it will cost and wait for them to say "
-            "yes. After that, carry on -- asking twenty times is its own kind "
-            "of rude. Call this again with a `prompt` to actually draw.")
-        return ToolResult(output="\n".join(lines), title="what can draw")
+        return await _listing()
 
     try:
-        chosen = imagegen.pick(model)
+        chosen = await imagegen.pick(model)
     except imagegen.ImageError as e:
         return ToolResult.error(str(e), title)
 
@@ -148,11 +206,12 @@ async def draw(
 
     shown = str(target)
     size = f"{len(drawn.data) // 1024} KB"
+    cost = (f"about ${drawn.model.about_each:.2f}" if drawn.model.priced
+            else "cost not published")
     lines = [
         f"{shown}",
         "",
-        f"Drawn by {drawn.model.name} ({size}, about "
-        f"${drawn.model.about_each:.2f}).",
+        f"Drawn by {drawn.model.name} ({size}, {cost}).",
     ]
     if drawn.said:
         lines.append(drawn.said)

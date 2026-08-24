@@ -22,6 +22,13 @@ from agent_server.tools.base import ToolContext
 from agent_server.tools.draw import _filename, _free, draw
 
 
+def only(*models):
+    """Stand in for discovery: exactly these models, no network."""
+    async def catalogue(refresh=False):
+        return list(models)
+    return catalogue
+
+
 @pytest.fixture
 def ctx(tmp_path):
     return ToolContext(session_id="d", project_dir=str(tmp_path), abort=asyncio.Event())
@@ -38,8 +45,7 @@ def drew(monkeypatch):
                               mime="image/jpeg", model=model)
 
     monkeypatch.setattr(imagegen, "draw", fake)
-    monkeypatch.setattr(imagegen, "available",
-                        lambda: [imagegen.IMAGE_MODELS[1]])
+    monkeypatch.setattr(imagegen, "catalogue", only(imagegen.IMAGE_MODELS[1]))
     return calls
 
 
@@ -155,7 +161,7 @@ def test_the_project_manager_does_not_draw():
 
 
 async def test_with_no_key_it_says_what_would_fix_it(ctx, monkeypatch):
-    monkeypatch.setattr(imagegen, "available", list)
+    monkeypatch.setattr(imagegen, "catalogue", only())
     result = await draw(ctx, prompt="a dragon")
     assert result.is_error
     assert "Google" in result.output and "Settings" in result.output
@@ -165,7 +171,7 @@ async def test_an_empty_prompt_never_reaches_the_thing_that_charges(ctx, monkeyp
     """It means "tell me what can draw" now, not "draw nothing" -- and either
     way no request goes out, because a blank prompt billed as a picture is the
     worst possible answer to a model that slipped."""
-    monkeypatch.setattr(imagegen, "available", lambda: [imagegen.IMAGE_MODELS[1]])
+    monkeypatch.setattr(imagegen, "catalogue", only(imagegen.IMAGE_MODELS[1]))
     sent = []
 
     async def fake(prompt, **kw):
@@ -184,16 +190,16 @@ def test_a_quota_failure_is_told_apart_from_a_broken_key():
     that happens while ordinary replies still work -- and reading it as a bad
     key sends somebody to Settings to fix something that is not wrong."""
     assert "allowance is used up" in imagegen._why(429, "{}")
-    assert "refused the key" in imagegen._why(403, "{}")
+    assert "key was refused" in imagegen._why(403, "{}")
 
 
 def test_a_refusal_is_not_reported_as_a_fault():
     """The model declining to draw something is an answer, not an error to
     retry -- and retrying the same words spends money to be refused again."""
-    import inspect
-
-    source = inspect.getsource(imagegen._gemini)
-    assert "declining rather than a fault" in source
+    assert "declining rather than a fault" in imagegen._refused(
+        "I can't make pictures of real people.")
+    assert "real people" in imagegen._refused(
+        "I can't make pictures of real people.")
 
 
 def test_every_model_offered_says_what_it_costs():
@@ -225,7 +231,7 @@ async def test_the_list_warns_that_pictures_are_billed(ctx, drew):
 async def test_asking_with_no_key_is_an_answer_not_an_error(ctx, monkeypatch):
     """"Nothing can draw yet" is information. Returned as an error it reads as
     a fault, and a model that has just been handed an error tries again."""
-    monkeypatch.setattr(imagegen, "available", list)
+    monkeypatch.setattr(imagegen, "catalogue", only())
     result = await draw(ctx)
     assert not result.is_error
     assert "Google key" in result.output and "Settings" in result.output

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
 from agent_server import database as db
-from agent_server import parental
+from agent_server import imagegen, parental
 from agent_server.model_catalog import any_credentials
 from agent_server.providers import (
     get_provider,
@@ -49,6 +49,11 @@ async def save_settings(request: Request):
             changed = True
         if changed:
             get_provider(ps["key"]).invalidate_key_cache()
+            # A new key may bring picture models with it, and the list of those
+            # is cached for a quarter of an hour. Somebody who has just pasted
+            # a key in should not have to wait that out to be told they can
+            # draw now.
+            imagegen.forget_catalogue()
 
     model = str(form.get("default_model", "")).strip()
     if model:
