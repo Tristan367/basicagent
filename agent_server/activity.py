@@ -47,6 +47,7 @@ TOOL_FAMILY: dict[str, str] = {
     # and a chip saying so would be a small lie about what just happened.
     "show_settings": "setting", "set_appearance": "setting", "set_voice": "setting",
     "set_sounds": "setting", "set_child_mode": "setting",
+    "set_model": "setting", "set_dictation_quality": "setting",
 }
 
 DEFAULT_FAMILY = "run"

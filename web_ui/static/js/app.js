@@ -1926,6 +1926,8 @@
     set_voice: 'Changing the voice',
     set_sounds: 'Changing the sounds',
     set_child_mode: 'Child mode',
+    set_model: 'Choosing the AI',
+    set_dictation_quality: 'Adjusting dictation',
   };
 
   // ── What the assistant is doing, while it does it ─────────────────────────
@@ -1949,6 +1951,7 @@
     delete_projects: 'project', list_projects: 'project', assign_project: 'project',
     show_settings: 'setting', set_appearance: 'setting', set_voice: 'setting',
     set_sounds: 'setting', set_child_mode: 'setting',
+    set_model: 'setting', set_dictation_quality: 'setting',
   };
 
   // Shape and sound per family, from the server so there is only one table.

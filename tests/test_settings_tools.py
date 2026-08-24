@@ -324,3 +324,107 @@ async def test_the_live_settings_carry_everything_the_page_applies(db):
     # The contrast is worked out on the server so there is one implementation of
     # it; getting it wrong makes the user's own messages unreadable.
     assert payload["accent_text"] in ("#000000", "#ffffff")
+
+
+# ── everything on the settings page except the key ─────────────────────────
+
+
+def test_the_manager_can_reach_every_setting_but_the_key():
+    """The rule is "everything in Settings besides pasting an API key" -- a key
+    typed into a conversation is a key stored in a conversation, and that is
+    the one thing that stays on the page.
+
+    Two were missing: which AI answers, which is what everything costs, and how
+    well dictation listens, which is the difference between talking to this app
+    and giving up on it.
+    """
+    from agent_server.tools.registry import MANAGER_TOOLS
+
+    for reachable in ("set_appearance", "set_voice", "set_sounds",
+                      "set_model", "set_dictation_quality", "set_child_mode",
+                      "show_settings"):
+        assert reachable in MANAGER_TOOLS, reachable
+
+
+def test_no_tool_takes_an_api_key():
+    """Not an oversight to be fixed later -- the boundary itself."""
+    from agent_server.tools.registry import TOOLS
+
+    for name, tool in TOOLS.items():
+        properties = tool.parameters.get("properties", {})
+        for field in properties:
+            assert "api_key" not in field.lower(), f"{name}.{field}"
+            assert field.lower() != "key", f"{name}.{field}"
+
+
+def test_set_appearance_changes_several_things_at_once():
+    """"Dark mode and make it blue" is one sentence and should be one call, not
+    two round trips with a visible flicker between them."""
+    from agent_server.tools.registry import TOOLS
+
+    properties = TOOLS["set_appearance"].parameters["properties"]
+    assert {"theme", "colour", "text_size"} <= set(properties)
+    assert not TOOLS["set_appearance"].parameters.get("required"), (
+        "every field is optional, so any combination is one call")
+
+
+async def test_asking_which_ai_without_naming_one_reads_the_list_back(db, monkeypatch):
+    """Called with nothing it answers "what is it using, and what else is
+    there, and what does each cost" -- which is the actual question behind
+    "is there a cheaper one?"."""
+    from agent_server.tools import app_settings
+
+    monkeypatch.setattr(
+        "agent_server.model_catalog.offerable_models",
+        lambda: [
+            {"id": "cheap-1", "name": "Cheap", "provider_label": "DeepSeek",
+             "price_label": "$1.32 per million", "price_out": 1.32},
+            {"id": "dear-1", "name": "Dear", "provider_label": "Google",
+             "price_label": "free for now", "price_out": 0.0},
+        ])
+    ctx = _ctx()
+    result = await app_settings.set_model(ctx)
+    assert not result.is_error
+    assert "Cheap" in result.output and "Dear" in result.output
+    assert "per million" in result.output, "the price is not said"
+
+
+async def test_a_model_nobody_has_a_key_for_cannot_be_chosen(db, monkeypatch):
+    from agent_server.tools import app_settings
+
+    monkeypatch.setattr(
+        "agent_server.model_catalog.offerable_models",
+        lambda: [{"id": "cheap-1", "name": "Cheap", "provider_label": "DeepSeek",
+                  "price_label": "cheap", "price_out": 1.0}])
+    result = await app_settings.set_model(_ctx(), model="gpt-9")
+    assert result.is_error
+    assert "Cheap" in result.output, "it does not say what there is instead"
+
+
+async def test_dictation_quality_takes_the_words_somebody_would_use(db):
+    from agent_server import config
+    from agent_server.tools import app_settings
+
+    before = config.whisper_size()
+    try:
+        result = await app_settings.set_dictation_quality(_ctx(), quality="faster")
+        assert not result.is_error, result.output
+        assert config.whisper_size() == "base.en"
+    finally:
+        config.set_whisper_size(before)
+
+
+async def test_dictation_quality_with_nothing_reads_it_back(db):
+    from agent_server.tools import app_settings
+
+    result = await app_settings.set_dictation_quality(_ctx())
+    assert not result.is_error
+    assert "Most accurate" in result.output or "Faster" in result.output
+
+
+def _ctx():
+    import asyncio
+
+    from agent_server.tools.base import ToolContext
+
+    return ToolContext(session_id="home", project_dir="/tmp", abort=asyncio.Event())

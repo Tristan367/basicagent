@@ -10,6 +10,8 @@ from typing import Any
 from agent_server.tools.app_settings import (
     set_appearance,
     set_child_mode,
+    set_dictation_quality,
+    set_model,
     set_sounds,
     set_voice,
     show_settings,
@@ -227,15 +229,26 @@ register(Tool(
 register(Tool(
     name="task",
     description=(
-        "Delegate open-ended research to a read-only subagent that works autonomously "
-        "and reports back once. Give it a self-contained prompt; it sees none of this "
-        "conversation."
+        "Hand a piece of work to a subagent that runs on its own and reports back "
+        "once. It has every tool you have except `browser`, so it can read, search, "
+        "edit, write and run commands -- give it work to do, not only questions to "
+        "answer.\n"
+        "It sees none of this conversation, so the prompt has to stand alone: what "
+        "to do, which files, and what 'done' looks like. **Say exactly what it may "
+        "change.** It can edit anything inside the project, so anything you do not "
+        "name is something it may touch by accident -- and while it works you cannot "
+        "see what it is doing. Do not give it a file you are also editing.\n"
+        "It cannot write outside the project and it cannot ask you anything."
     ),
     parameters={
         "type": "object",
         "properties": {
             "description": {"type": "string", "description": "3-5 word label"},
-            "prompt": {"type": "string", "description": "Complete instructions"},
+            "prompt": {
+                "type": "string",
+                "description": "Complete instructions, including which files are "
+                               "its to change and which are not",
+            },
         },
         "required": ["description", "prompt"],
     },
@@ -681,10 +694,57 @@ register(Tool(
     handler=set_child_mode,
 ))
 
+register(Tool(
+    name="set_model",
+    description=(
+        "Change which AI answers, by name -- 'Gemini', 'the cheap one', 'deepseek "
+        "flash'. Call it with nothing to read back what is in use and what else "
+        "there is, with the price of each, which is what to do when somebody asks "
+        "what it costs or what their options are.\n"
+        "Only models there is already a key for are offered. This does not touch "
+        "keys: connecting a new provider means pasting a key into Settings, which "
+        "is the one thing that never happens in a conversation."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "model": {
+                "type": "string",
+                "description": "The AI to switch to, as the user named it. Leave "
+                               "it out to read back the current one and the list.",
+            },
+        },
+    },
+    handler=set_model,
+))
+
+register(Tool(
+    name="set_dictation_quality",
+    description=(
+        "How well the Talk button listens, against how fast it answers: 'most "
+        "accurate', 'faster', 'fastest'. For when somebody says dictation is slow "
+        "on their computer, or that it keeps mishearing them. Call it with nothing "
+        "to read back what is set. Whether the Talk button is offered at all is "
+        "`set_voice`, not this."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "quality": {
+                "type": "string",
+                "description": "'most accurate', 'faster', or 'fastest'. Leave it "
+                               "out to read back the current setting.",
+            },
+        },
+    },
+    handler=set_dictation_quality,
+))
+
 MANAGER_TOOLS = frozenset({
     "create_project", "list_projects", "open_project", "rename_project",
     "delete_projects", "assign_project",
     "show_settings", "set_appearance", "set_voice", "set_sounds", "set_child_mode",
+    "set_model", "set_dictation_quality",
 })
 
 # Tools the home session may use in addition to the manager tools: enough to
@@ -747,10 +807,16 @@ def get_tool(name: str) -> Tool | None:
 
 
 async def _subagent_guard(name: str, args: dict, ctx: ToolContext) -> ToolResult | None:
-    """Subagents are read-only and must not write outside the project.
+    """A subagent works inside the project and nowhere else.
 
-    A subagent runs autonomously inside `task` and cannot prompt the
-    user, so it gets a hard boundary rather than the (absent) permission gate.
+    That is the whole rule now. It used to also be forbidden every shell
+    command that was not observational, which made it an agent that could
+    describe work and not do it -- so the parent read the description and did
+    the work again itself, off a summary, having paid for both.
+
+    What is left is a boundary rather than a preference: a subagent runs
+    autonomously and cannot prompt anybody, so writing outside the project is
+    something nobody would get the chance to stop.
     """
     if ctx.subagent_tier <= 0:
         return None
@@ -770,15 +836,6 @@ async def _subagent_guard(name: str, args: dict, ctx: ToolContext) -> ToolResult
         if is_denied(path) or not within:
             return ToolResult.error(
                 f"{name} to {path} is outside the project and a subagent cannot write there",
-                name,
-            )
-        return None
-    if name == "bash":
-        from agent_server.tools.bash import is_read_only
-
-        if not is_read_only(args.get("command", "")):
-            return ToolResult.error(
-                "subagents may only run read-only commands; ask the parent agent to run this",
                 name,
             )
     return None

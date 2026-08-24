@@ -317,3 +317,129 @@ async def set_child_mode(ctx: ToolContext, *, on: bool = True, **_) -> ToolResul
         title=f"Asked to turn child mode {'on' if want else 'off'}",
         action={"kind": "child_mode", "on": want},
     )
+
+
+# ── which AI, and how well it listens ──────────────────────────────────────
+#
+# The last two things on the settings page the assistant could not reach. Both
+# matter more than their size suggests: the model is what everything costs, and
+# the dictation model is the difference between talking to this app and giving
+# up on it. Neither is an API key, which is the one thing that stays out of the
+# chat -- a key typed into a conversation is a key stored in a conversation.
+
+
+async def set_model(ctx: ToolContext, *, model: str = "", **_) -> ToolResult:
+    """Choose which AI answers, by name, from the ones there is a key for."""
+    from agent_server.model_catalog import effective_default_model, offerable_models
+    from agent_server.system_prompt import ensure_home_session
+
+    available = offerable_models()
+    if not available:
+        return ToolResult.error(
+            "There is no AI connected yet, so there is nothing to choose between. "
+            "Walk them through connecting one in Settings first.",
+            "no AI connected")
+
+    def described(entry: dict) -> str:
+        return (f"{entry['name']} ({entry['provider_label']}, "
+                f"{entry.get('price_label', '')})".replace(", )", ")"))
+
+    wanted = (model or "").strip()
+    if not wanted:
+        current = effective_default_model(await db.get_all_settings())
+        now = next((m for m in available if m["id"] == current), None)
+        lines = [f"Using {described(now) if now else current}. Also available:"]
+        lines += [f"- {described(m)}" for m in available if m["id"] != current]
+        return ToolResult(output="\n".join(lines), title="which AI is in use")
+
+    # By id first, then by name, then by any distinctive word in it -- because
+    # what arrives here is whatever the user said out loud, which is "the cheap
+    # one", "Gemini", or "deepseek flash", and never an id.
+    lowered = wanted.lower()
+    match = next((m for m in available if m["id"].lower() == lowered), None)
+    if match is None:
+        match = next((m for m in available if m["name"].lower() == lowered), None)
+    if match is None:
+        hits = [m for m in available
+                if lowered in m["name"].lower() or lowered in m["id"].lower()]
+        if len(hits) == 1:
+            match = hits[0]
+        elif len(hits) > 1:
+            return ToolResult.error(
+                f"'{wanted}' matches more than one: "
+                + ", ".join(described(m) for m in hits)
+                + ". Ask them which.",
+                "which one?")
+    if match is None:
+        return ToolResult.error(
+            f"There is no '{wanted}' to switch to. What there is: "
+            + ", ".join(described(m) for m in available),
+            "no such AI")
+
+    await db.set_setting("default_model", match["id"])
+    # The home session is pinned to a model of its own, so without this the
+    # change would apply to new projects and not to the conversation the user
+    # is having right now -- which reads as it not having worked.
+    await ensure_home_session()
+    return ToolResult(
+        output=f"Now using {described(match)}. New projects start on it too. "
+               f"Projects that are already open keep the model they were using; "
+               f"say so if they wanted those changed as well.",
+        title=f"switched to {match['name']}",
+    )
+
+
+async def set_dictation_quality(ctx: ToolContext, *, quality: str = "", **_) -> ToolResult:
+    """How well the Talk button listens, traded against how fast it answers."""
+    import asyncio
+
+    from agent_server import config
+    from agent_server import stt as stt_service
+
+    choices = config.WHISPER_MODEL_CHOICES
+    catalogue = ", ".join(f"{c['name']} ({c['note'].split('.')[0].lower()})"
+                          for c in choices)
+
+    wanted = (quality or "").strip().lower()
+    if not wanted:
+        now = next((c for c in choices if c["id"] == config.whisper_size()), None)
+        return ToolResult(
+            output=f"Dictation is set to {now['name'] if now else config.whisper_size()}. "
+                   f"The choices are: {catalogue}.",
+            title="dictation quality")
+
+    match = next((c for c in choices
+                  if wanted in (c["id"].lower(), c["name"].lower())), None)
+    if match is None:
+        for word, target in (("accurate", "small.en"), ("best", "small.en"),
+                             ("slow", "base.en"), ("faster", "base.en"),
+                             ("fast", "base.en"), ("quick", "base.en"),
+                             ("fastest", "tiny.en"), ("old", "tiny.en")):
+            if word in wanted:
+                match = next(c for c in choices if c["id"] == target)
+                break
+    if match is None:
+        return ToolResult.error(
+            f"'{quality}' is not one of them. The choices are: {catalogue}.",
+            "no such setting")
+
+    if not config.set_whisper_size(match["id"]):
+        return ToolResult(
+            output=f"Dictation is already set to {match['name']}. Nothing to do.",
+            title="already set")
+    await db.set_setting("whisper_size", match["id"])
+    # Drop the loaded model so the next sentence uses the new one. It reloads
+    # in the background rather than making this reply wait on a download.
+    await stt_service.reload_model()
+    _background.add(task := asyncio.create_task(stt_service.warmup()))
+    task.add_done_callback(_background.discard)
+    return ToolResult(
+        output=f"Dictation set to {match['name']} ({match['size']}). "
+               f"{match['note']} The first sentence after this may take a moment "
+               f"while it loads.",
+        title=f"dictation: {match['name']}",
+    )
+
+
+# Background reloads, held so they are not garbage-collected mid-flight.
+_background: set = set()

@@ -1,8 +1,27 @@
-"""Subagent tool: run a focused, read-only agent loop and return its answer.
+"""Subagent tool: run one agent loop inside another and return its answer.
 
-One level of subagents, no hierarchy to configure. The subagent keeps its
-conversation in memory and runs on the parent's model at low effort, with a
-read-only tool set.
+There is one kind of subagent, and it can do what the agent that called it can
+do. It is not a research agent, a reviewer, or any other named role: what it
+does is decided entirely by the prompt it is given, the way an instruction to a
+person is. A second kind, with a smaller tool set and a role baked into its
+system prompt, would be a second thing to keep in step with the first, and the
+parent would have to know which one it was talking to before it could ask for
+anything.
+
+It was read-only, which sounds cautious and mostly is not. An agent that can
+find the three files that need the same change and cannot make it hands back a
+description of the work instead of the work, and the parent then does it again
+from scratch off a summary. The one real boundary is kept -- it writes inside
+the project and nowhere else -- because that is a safety rule rather than a
+preference about how it should work.
+
+`browser` is the exception, and the only one. It is a live Chromium keyed by
+session id, so a subagent driving it is driving the *parent's* browser: the
+same page, the same history, the same login, halfway through whatever the
+parent was doing with it.
+
+The subagent keeps its conversation in memory and runs on the parent's model at
+low effort.
 """
 
 import asyncio
@@ -16,13 +35,42 @@ from agent_server.config import (
 from agent_server.conversation import normalize_tool_calls, parse_arguments, tool_call_name
 from agent_server.tools.base import ToolContext, ToolResult, truncate
 
-SUBAGENT_PROMPT = """You are a research subagent. Investigate and report back. \
-Your tools are read-only. Work autonomously until you can fully answer the task, \
-then reply with your findings. Include concrete file paths with line numbers and \
-relevant code snippets. Do not ask questions or describe your plan."""
+SUBAGENT_PROMPT = """You are a subagent. Another assistant has handed you a \
+piece of work and is waiting on your answer.
 
-# A subagent may read, search, and run read-only shell commands.
-SUBAGENT_TOOLS = ("read", "glob", "grep", "webfetch", "websearch", "bash")
+You can read, change and run things in this project, exactly as the assistant \
+that called you can. Do the work it asked for -- do not describe how you would \
+do it and hand that back instead.
+
+Two things are yours to respect:
+
+* Change only what the task told you to change. You are working in a project \
+somebody else is also working in, and edits you were not asked for will be a \
+surprise to them and to the user.
+* `preview` puts something on the user's screen, and there is one window per \
+project. Starting it replaces whatever the assistant that called you had \
+running there, in front of somebody who is watching. Use it only if the task \
+you were given asked you to.
+* You cannot write outside this project, and you cannot ask anybody anything. \
+Nobody is reading your messages until you finish, so decide and carry on.
+
+Work until the task is done, then reply with what you did and what you found. \
+Name files with line numbers. Do not describe your plan."""
+
+
+def subagent_tools() -> tuple[str, ...]:
+    """Everything the calling agent has, less the browser and this tool itself.
+
+    Derived rather than listed, so a tool added to the app reaches subagents
+    too. A hand-written list is a list that silently falls behind -- which is
+    how this one ended up with six entries and no `edit`.
+    """
+    from agent_server.tools.registry import MANAGER_TOOLS, TOOLS
+
+    return tuple(
+        name for name in TOOLS
+        if name not in MANAGER_TOOLS and name not in ("browser", "task")
+    )
 
 
 async def run_task(ctx: ToolContext, *, description: str, prompt: str, count: int = 1, **_) -> ToolResult:
@@ -42,7 +90,8 @@ async def _run(ctx: ToolContext, prompt: str, title: str) -> ToolResult:
     from agent_server.tools.registry import execute_tool, tool_schemas
 
     provider = get_provider(ctx.provider)
-    tools = tool_schemas(SUBAGENT_TOOLS)
+    allowed = subagent_tools()
+    tools = tool_schemas(allowed)
 
     messages: list[dict] = [
         {"role": "system", "content": f"{SUBAGENT_PROMPT}\n\nWorking directory: {ctx.project_dir}"},
@@ -98,7 +147,7 @@ async def _run(ctx: ToolContext, prompt: str, title: str) -> ToolResult:
         for call in calls:
             name = tool_call_name(call)
             args = parse_arguments(call)
-            result = await execute_tool(name, args, ctx, allowed=SUBAGENT_TOOLS)
+            result = await execute_tool(name, args, ctx, allowed=allowed)
             messages.append({
                 "role": "tool",
                 "tool_call_id": call["id"],
