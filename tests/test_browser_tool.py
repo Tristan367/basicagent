@@ -271,3 +271,232 @@ def test_the_schema_says_what_eval_and_at_actually_do():
     # And the booleans that used to be stringified are declared.
     for key in ("visible", "hidden"):
         assert "boolean" in props[key]["type"]
+
+
+# ── Chromium going missing under it ─────────────────────────────────────────
+#
+# The browser tool is what the assistant uses to check its own work, so it is
+# reached for constantly and in the middle of doing something else. Playwright's
+# Chromium is a cache directory: a disk-cleaning tool takes it, and nothing
+# tells the app. Everything below is about that moment.
+
+MISSING = Exception(
+    "Executable doesn't exist at /home/x/.cache/ms-playwright/chromium-1234/"
+    "chrome-linux/chrome\n"
+    "Looks like Playwright was just installed or updated.\n"
+    "Please run the following command to download new browsers:\n"
+    "    playwright install")
+
+
+class _FakeChromium:
+    """A Chromium that is missing until somebody installs it."""
+
+    def __init__(self, present=False):
+        self.present = present
+        self.launches = 0
+
+    async def launch(self, **_):
+        self.launches += 1
+        if not self.present:
+            raise MISSING
+        return _FakeBrowser()
+
+
+class _FakeBrowser:
+    def is_connected(self):
+        return True
+
+    async def close(self):
+        pass
+
+
+@pytest.fixture
+def playwright_that_lost_chromium(monkeypatch):
+    """`browser._playwright` replaced, and the module's globals put back after."""
+    from agent_server import browser as browser_mod
+
+    chromium = _FakeChromium(present=False)
+    monkeypatch.setattr(browser_mod, "_playwright",
+                        type("PW", (), {"chromium": chromium})())
+    monkeypatch.setattr(browser_mod, "_browser", None)
+    return chromium
+
+
+async def test_it_installs_chromium_itself_rather_than_reporting_it(
+        playwright_that_lost_chromium, monkeypatch):
+    """The whole point. Telling the model to run `playwright install chromium`
+    made the fix somebody else's turn, and put a shell command into a reply the
+    user might well have been shown -- for a 150 MB download that takes under a
+    minute and that nobody needs to know about."""
+    from agent_server import browser as browser_mod
+    from agent_server import setup
+
+    chromium = playwright_that_lost_chromium
+    installs = []
+
+    async def fake_install():
+        installs.append(True)
+        chromium.present = True
+        return True
+
+    monkeypatch.setattr(setup, "ensure_chromium", fake_install)
+
+    got = await browser_mod._ensure_browser()
+    assert got is not None
+    assert installs == [True], "it did not install Chromium"
+    assert chromium.launches == 2, "it did not try again after installing"
+
+
+async def test_the_user_is_never_asked_whether_to_install_it(
+        playwright_that_lost_chromium, monkeypatch):
+    """Not "shall I download Chromium?" -- there is no version of that question
+    a five-year-old can answer, and no answer but yes."""
+    from agent_server import browser as browser_mod
+    from agent_server import setup
+
+    chromium = playwright_that_lost_chromium
+
+    async def fake_install():
+        chromium.present = True
+        return True
+
+    monkeypatch.setattr(setup, "ensure_chromium", fake_install)
+    await browser_mod._ensure_browser()  # no prompt to answer; it just works
+
+
+async def test_a_download_that_fails_does_not_hand_the_model_a_shell_command(
+        playwright_that_lost_chromium, monkeypatch):
+    """Offline is the ordinary reason. The model should say so, not paste an
+    install command into the conversation for a user with no terminal."""
+    from agent_server import browser as browser_mod
+    from agent_server import setup
+
+    async def fake_install():
+        return False
+
+    monkeypatch.setattr(setup, "ensure_chromium", fake_install)
+
+    with pytest.raises(browser_mod.BrowserError) as caught:
+        await browser_mod._ensure_browser()
+    said = str(caught.value)
+    assert "playwright install" not in said.lower(), said
+    assert "pip" not in said.lower(), said
+
+
+async def test_a_crash_is_not_mistaken_for_a_missing_install(monkeypatch):
+    """Downloading 150 MB in answer to a Chromium that crashed would waste
+    minutes and fix nothing, every time."""
+    from agent_server import browser as browser_mod
+    from agent_server import setup
+
+    class Crashes:
+        async def launch(self, **_):
+            raise Exception("Target page, context or browser has been closed")
+
+    monkeypatch.setattr(browser_mod, "_playwright",
+                        type("PW", (), {"chromium": Crashes()})())
+    monkeypatch.setattr(browser_mod, "_browser", None)
+
+    installs = []
+
+    async def fake_install():
+        installs.append(True)
+        return True
+
+    monkeypatch.setattr(setup, "ensure_chromium", fake_install)
+
+    with pytest.raises(browser_mod.BrowserError):
+        await browser_mod._ensure_browser()
+    assert installs == [], "it downloaded Chromium because Chromium crashed"
+
+
+async def test_the_second_launch_failing_is_still_a_clean_error(
+        playwright_that_lost_chromium, monkeypatch):
+    """Install succeeds, launch still fails -- a partial download, or a machine
+    with no shared libraries for it. The model must get the tool's own error,
+    not a raw Playwright traceback with a cache path in it."""
+    from agent_server import browser as browser_mod
+    from agent_server import setup
+
+    async def fake_install():
+        return True  # claims success, but Chromium is still not launchable
+
+    monkeypatch.setattr(setup, "ensure_chromium", fake_install)
+
+    with pytest.raises(browser_mod.BrowserError):
+        await browser_mod._ensure_browser()
+
+
+DEPS_MISSING = Exception(
+    "Host system is missing dependencies to run browsers.\n"
+    "Please install them with the following command:\n"
+    "\n"
+    "    sudo playwright install-deps\n"
+    "\n"
+    "Alternatively, use apt:\n"
+    "    sudo apt-get install libnss3 libatk1.0-0 libgbm1\n"
+    "\n"
+    "<3 Playwright Team")
+
+
+def test_missing_libraries_is_not_mistaken_for_a_missing_browser():
+    """The two failures read almost the same and have nothing in common.
+
+    Playwright's missing-libraries message ends in `sudo playwright
+    install-deps`, and the missing-browser check matched on the substring
+    "playwright install" -- so a machine that was only short of libnss3 was
+    read as having no Chromium at all. It then downloaded 150 MB of the
+    Chromium it already had and failed in exactly the same way, every time
+    anybody asked to see anything. This is the ordinary state of a fresh
+    minimal Linux install, which is most of what this app will be put on.
+    """
+    from agent_server import setup
+
+    assert setup.looks_like_missing_system_libraries(DEPS_MISSING) is True
+    assert setup.looks_like_missing_browser(DEPS_MISSING) is False
+    assert setup.looks_like_missing_browser(MISSING) is True
+    assert setup.looks_like_missing_system_libraries(MISSING) is False
+
+
+async def test_missing_libraries_downloads_nothing_and_says_what_it_is(monkeypatch):
+    """Nobody can fix this from inside the app, so the one useful thing to do
+    is name it -- somebody sitting with the user can act on `install-deps`, and
+    can act on nothing at all if they are told the browser "would not start"."""
+    from agent_server import browser as browser_mod
+    from agent_server import setup
+
+    class NoLibraries:
+        async def launch(self, **_):
+            raise DEPS_MISSING
+
+    monkeypatch.setattr(browser_mod, "_playwright",
+                        type("PW", (), {"chromium": NoLibraries()})())
+    monkeypatch.setattr(browser_mod, "_browser", None)
+
+    installs = []
+
+    async def fake_install():
+        installs.append(True)
+        return True
+
+    monkeypatch.setattr(setup, "ensure_chromium", fake_install)
+
+    with pytest.raises(browser_mod.BrowserError) as caught:
+        await browser_mod._ensure_browser()
+    assert installs == [], "it downloaded Chromium to fix a library problem"
+    assert "install-deps" in str(caught.value), str(caught.value)
+
+
+def test_the_installer_checks_the_browser_actually_starts():
+    """A download that succeeds and a browser that runs are different facts.
+
+    The installer is the last moment anybody is in a terminal with a password,
+    so it is the only place the library problem can be reported to somebody who
+    can do something about it. Found on day one it is one command; found on day
+    five it is an app that mysteriously cannot show you anything.
+    """
+    from pathlib import Path
+
+    source = Path("install.py").read_text()
+    assert "missing dependencies" in source, "the installer does not check"
+    assert "install-deps" in source, "it does not say what would fix it"

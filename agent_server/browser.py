@@ -113,6 +113,33 @@ _browser: Any = None
 _launch_lock = asyncio.Lock()
 
 
+def _cannot_start(e: Exception) -> str:
+    """Why the browser would not start, in words the model can pass on.
+
+    Only two of these are worth telling apart. Missing libraries is the one
+    thing here nobody can fix without a password, so it has to be named rather
+    than described -- the user cannot act on it themselves, but somebody
+    sitting with them can, and only if they are told what it is.
+    """
+    from agent_server import setup
+
+    if setup.looks_like_missing_system_libraries(e):
+        return (
+            "Chromium is installed on this computer but cannot run: the "
+            "system is missing libraries it needs. This one cannot be fixed "
+            "from inside the app -- it needs an administrator to run "
+            "`playwright install-deps`. Say that plainly, once, and carry on "
+            "without checking pages yourself."
+        )
+    if setup.looks_like_missing_browser(e):
+        return (
+            "Chromium is missing and downloading it did not work either -- "
+            "most likely this computer is offline. Say so plainly and carry "
+            "on without checking pages yourself."
+        )
+    return f"could not start Chromium: {_brief(e)}"
+
+
 async def _ensure_browser():
     """One Chromium process, shared by every session's context.
 
@@ -141,11 +168,18 @@ async def _ensure_browser():
             from agent_server import setup
 
             if setup.looks_like_missing_browser(e) and await setup.ensure_chromium():
-                _browser = await _playwright.chromium.launch(headless=True, args=args)
-                return _browser
-            raise BrowserError(
-                f"could not start Chromium, and installing it did not help: {_brief(e)}"
-            ) from e
+                # Guarded: an install can report success and still leave a
+                # browser that will not start -- a truncated download, or a
+                # machine short of the libraries Chromium links against. Raw,
+                # that came back to the model as a Playwright traceback with a
+                # cache path in it, which is nothing it can act on.
+                try:
+                    _browser = await _playwright.chromium.launch(
+                        headless=True, args=args)
+                    return _browser
+                except Exception as second:
+                    raise BrowserError(_cannot_start(second)) from second
+            raise BrowserError(_cannot_start(e)) from e
         return _browser
 
 

@@ -382,6 +382,17 @@ def _no_window(e: Exception) -> str:
     from agent_server import setup
 
     detail = _brief(e)
+    if setup.looks_like_missing_system_libraries(e):
+        # A fresh Linux machine with a minimal install. Chromium is there and
+        # will not start, and no amount of downloading changes that.
+        return (
+            "the project is running, but the window cannot open: Chromium is "
+            "installed and this computer is missing system libraries it needs. "
+            "That takes an administrator to fix -- `playwright install-deps` -- "
+            "and cannot be done from in here. Say that once, and tell them they "
+            "can see their work meanwhile at the address above in their own "
+            "browser."
+        )
     if setup.looks_like_missing_browser(e):
         # Reached only when putting it back has already been tried and failed,
         # which in practice means there is no way onto the internet from here.

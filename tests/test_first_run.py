@@ -133,6 +133,26 @@ def test_the_first_run_note_names_what_is_missing_in_words_a_user_knows():
             assert jargon not in component["name"].lower(), component["name"]
 
 
+def test_nothing_that_installs_itself_is_reported_as_missing():
+    """The first thing a new user reads must not be a list of problems.
+
+    Chromium and the game engine both fetch themselves the moment something
+    needs them -- the browser tool, the preview window, the `game` tool. A
+    fresh install has neither, so listing them here would open the app with
+    "you cannot make games yet" and "you cannot be shown websites yet": two
+    worries, about two things that fix themselves, for a user who has not yet
+    typed a word. Read-aloud and dictation stay, because those genuinely wait
+    on somebody saying yes.
+    """
+    from agent_server import setup
+
+    names = " ".join(c["name"] for c in setup.detect()).lower()
+    for self_healing in ("game", "website", "browser", "show"):
+        assert self_healing not in names, (
+            f"{self_healing!r} is in the first-run note, and that component "
+            "installs itself on demand")
+
+
 def test_the_read_aloud_voices_can_actually_be_installed():
     """The first-run note used to promise the assistant could set read-aloud up,
     and the only instruction anywhere was "put two files in ~/models/tts" --

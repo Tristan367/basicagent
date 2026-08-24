@@ -1,8 +1,13 @@
 """Detect which optional pieces are installed, for the first-run setup flow.
 
 The app's Python dependencies are installed by the installer; the components
-below are the heavier, optional ones (speech, browser). On first run the manager
-AI is told what is missing so it can install the rest for the user.
+below are the heavier, optional ones. On first run the manager AI is told what
+is missing so it can install the rest for the user.
+
+Only what a person has to ask for belongs in that list. Chromium and the game
+engine are here too, but as repair -- `ensure_chromium` puts Chromium back
+without anybody being told it went, and the `game` tool fetches the engine the
+first time a game is asked for. Neither is ever reported as missing.
 """
 
 import asyncio
@@ -66,13 +71,34 @@ def chromium_installed() -> bool:
                for p in cache.iterdir() if p.is_dir())
 
 
+def looks_like_missing_system_libraries(e: Exception | str) -> bool:
+    """Whether a launch failure was "Chromium is here, but Linux cannot run it".
+
+    A different failure with a different fix, and the one a genuinely fresh
+    Linux machine hits: `playwright install chromium` downloads the browser and
+    nothing else, and Chromium needs a dozen system libraries -- libnss3,
+    libatk, libgbm -- that a minimal install does not have. Putting them there
+    needs a package manager and a password, which is the one thing this app
+    cannot do for anybody.
+    """
+    return "missing dependencies" in str(e)
+
+
 def looks_like_missing_browser(e: Exception | str) -> bool:
     """Whether a launch failure was "there is no Chromium here".
 
     Matched on Playwright's own wording because Playwright does not give this
     a type of its own. Both phrases are checked: the first is what a missing
     executable says, the second is the line it prints telling you the fix.
+
+    The system-libraries case is excluded deliberately. Its message ends in
+    `sudo playwright install-deps`, which contains "playwright install" -- so
+    without this it read as a missing browser, and a machine that was only
+    short of libnss3 downloaded 150 MB of the Chromium it already had, then
+    failed in exactly the same way. Every time.
     """
+    if looks_like_missing_system_libraries(e):
+        return False
     text = str(e)
     return "Executable doesn't exist" in text or "playwright install" in text
 
@@ -115,16 +141,16 @@ async def ensure_chromium() -> bool:
         return chromium_installed()
 
 
-def godot_installed() -> bool:
-    """Imported lazily: `godot` reaches for the data directory, and this module
-    is imported by the installer's own checks before there is one."""
-    from agent_server import godot
-
-    return godot.installed()
-
-
 def detect() -> list[dict]:
-    """One entry per optional component: ``{name, ok, hint}``."""
+    """One entry per optional component: ``{name, ok, hint}``.
+
+    Only the pieces that genuinely need somebody to ask for them. Chromium and
+    the game engine both fetch themselves the moment something needs them, so
+    listing them here would put "you cannot make games yet" in the first
+    message a new user ever reads -- a problem to worry about, in an app whose
+    whole argument is that there is nothing to worry about, about a thing that
+    fixes itself in under a minute on the day it is first wanted.
+    """
     tts_ok = bool(TTS_MODEL and TTS_VOICES)
     python = sys.executable
     return [
@@ -140,22 +166,6 @@ def detect() -> list[dict]:
             "hint": (
                 f"install with: {python} -m agent_server.downloads read-aloud "
                 "(about 350 MB, takes a few minutes)"
-            ),
-        },
-        {
-            "name": "Showing you websites and apps you build",
-            "ok": chromium_installed(),
-            "hint": f"install with: {python} -m playwright install chromium",
-        },
-        {
-            # Named for what it lets them do, not for the engine. "Godot is not
-            # installed" means nothing to somebody who has never made a game;
-            # "you cannot make games yet" is the same fact and is actionable.
-            "name": "Making games",
-            "ok": godot_installed(),
-            "hint": (
-                f"install with: {python} -m agent_server.godot install web "
-                "(about 90 MB)"
             ),
         },
     ]

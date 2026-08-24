@@ -5,7 +5,7 @@ One command, no questions, and at the end an icon the user can click. That last
 part is the point: the person this app is built for cannot open a terminal, so
 an install that ends with "now type this" has not finished.
 
-    python3 install.py              everything, including speech and the game engine
+    python3 install.py              everything, including the speech downloads
     python3 install.py --minimal    skip the big optional downloads (about 900 MB)
     python3 install.py --no-shortcut   do not add a desktop icon or a menu entry
 
@@ -183,6 +183,21 @@ def install_dependencies() -> None:
     run([VENV_PY, "-m", "pip", "install", "--quiet", "-r", "requirements.txt"])
 
 
+# Downloading Chromium and being able to start Chromium are two different
+# things, and the gap between them is where a fresh Linux machine lands:
+# `playwright install` fetches the browser and none of the system libraries it
+# links against, so a minimal Debian or a slim container downloads 150 MB
+# successfully and then cannot open a window. Fixing that needs a package
+# manager and a password -- which the app has neither of, and which the person
+# running this installer has both of, right now, in a terminal they already
+# have open. So it is checked here, once, while somebody can still act on it.
+CHROMIUM_STARTS = (
+    "from playwright.sync_api import sync_playwright\n"
+    "with sync_playwright() as p:\n"
+    "    p.chromium.launch(headless=True).close()\n"
+)
+
+
 def install_browser() -> bool:
     """Chromium, used both for the app's own window and for showing the user
     whatever they have built. Optional in the sense that the app starts without
@@ -192,26 +207,40 @@ def install_browser() -> bool:
     say("Installing the browser it uses to show you your work (a 150 MB download)...")
     try:
         run([VENV_PY, "-m", "playwright", "install", "chromium"])
-        return True
     except subprocess.CalledProcessError:
         say("  That did not work. The app still runs; it will open in your own")
         say("  browser instead, and building websites will be limited.")
         return False
 
-
-def install_games() -> None:
-    """The Godot engine, so a game is something this app can actually make.
-
-    90 MB against an install that is already about 3 GB, and the difference it
-    makes is the difference between "let's make a game" working and the
-    assistant having to explain that it cannot. Games are what most children
-    reach for first, and finding out on the day is a bad way to find out.
-    """
-    say()
-    subprocess.run(
-        [str(VENV_PY), "-m", "agent_server.godot", "install", "web"],
-        cwd=str(ROOT), check=False,
+    check = subprocess.run(
+        [str(VENV_PY), "-c", CHROMIUM_STARTS],
+        cwd=str(ROOT), capture_output=True, text=True,
     )
+    if check.returncode == 0:
+        return True
+
+    if "missing dependencies" in (check.stderr or ""):
+        say()
+        say("  The browser downloaded, but this computer is missing some system")
+        say("  libraries it needs to run. One command fixes it, and it needs an")
+        say("  administrator password:")
+        say()
+        say(f"      sudo {VENV_PY} -m playwright install-deps chromium")
+        say()
+        say("  Run that, and everything works. Without it the app still runs and")
+        say("  still writes code, but it cannot show you a window of your work.")
+    else:
+        say("  The browser downloaded but would not start here. The app still")
+        say("  runs; it will open in your own browser instead.")
+    return False
+
+
+# Godot is deliberately *not* installed here. Most people who install this app
+# will never make a game, and 90 MB downloaded on their behalf on the chance
+# that they might is 90 MB spent on nothing. The `game` tool fetches it the
+# first time somebody actually asks for a game, which is the only moment it is
+# known to be wanted -- and by then the person is already waiting for a game to
+# appear, so the download is time they were spending anyway.
 
 
 def install_speech() -> None:
@@ -347,17 +376,16 @@ def main() -> None:
     say()
     check_python()
     check_venv_module()
-    check_space(1.0 if minimal else 3.0)
+    check_space(1.0 if minimal else 2.5)
 
     make_venv()
     install_dependencies()
     install_browser()
     if minimal:
         say()
-        say("Skipping the speech and game downloads. Ask the assistant to install")
-        say("them later if you want them -- it knows how.")
+        say("Skipping the speech downloads. Ask the assistant to install them")
+        say("later if you want them -- it knows how.")
     else:
-        install_games()
         install_speech()
 
     shortcut = "" if no_shortcut else make_shortcut()

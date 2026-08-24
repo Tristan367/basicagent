@@ -186,6 +186,22 @@ def ctx(tmp_path):
     return ToolContext(session_id="s", project_dir=str(tmp_path), abort=asyncio.Event())
 
 
+def test_the_installer_does_not_fetch_godot():
+    """Most people who install this app will never make a game.
+
+    90 MB downloaded on their behalf, on the chance that they might, is 90 MB
+    spent on nothing -- and it is the slowest part of an install where every
+    minute is a minute somebody is watching a terminal wondering if it broke.
+    The `game` tool fetches it on the first game instead, which is the only
+    moment it is known to be wanted.
+    """
+    from pathlib import Path
+
+    source = Path("install.py").read_text()
+    assert "agent_server.godot" not in source, (
+        "install.py fetches Godot again; it belongs in the game tool, on demand")
+
+
 async def test_without_godot_it_fetches_it_rather_than_explaining(ctx, monkeypatch):
     """"Ask the Project Manager to install a 90 MB download" is four things to
     understand and a conversation with a different assistant, in answer to
