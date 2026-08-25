@@ -13,6 +13,7 @@ Standard library only. It runs before the virtual environment exists, so it
 cannot import anything the app depends on.
 """
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -330,45 +331,135 @@ def _shortcut_linux() -> str:
     if link.is_symlink() or link.exists():
         link.unlink()
     link.symlink_to(ROOT / "bin" / "basicagent")
-    return f"added it to your applications menu as \"{APP_NAME}\""
+
+    # And on the desktop, because that is where the download page says it will
+    # be and because a menu is not somewhere everybody looks. Marked executable
+    # and trusted: without both, GNOME shows it as a text file and KDE asks
+    # whether you are sure -- which is not what an icon you were promised
+    # should do the first time you click it.
+    where = "your applications menu"
+    desktop = Path.home() / "Desktop"
+    if desktop.is_dir():
+        copy = desktop / "basicagent.desktop"
+        with contextlib.suppress(OSError):
+            copy.write_text(entry.read_text(encoding="utf-8"), encoding="utf-8")
+            copy.chmod(0o755)
+            subprocess.run(["gio", "set", str(copy), "metadata::trusted", "true"],
+                           capture_output=True, check=False)
+            where = "your desktop and your applications menu"
+    return f"put \"{APP_NAME}\" on {where}"
 
 
 def _shortcut_mac() -> str:
-    """A .command file: double-clicking one runs it, with no bundle to sign."""
+    """A real .app bundle, not a script that opens a Terminal window.
+
+    A .command works and looks like homework: double-clicking one opens
+    Terminal, prints things, and leaves the window sitting there afterwards.
+    An .app is what a Mac user expects -- it appears in Launchpad, it can be
+    dragged to the Dock, and nothing about it says "script".
+
+    A bundle built on the machine it runs on needs no signing and no notarising:
+    Gatekeeper quarantines what was downloaded, not what was made here.
+    """
     apps = Path.home() / "Applications"
-    apps.mkdir(parents=True, exist_ok=True)
-    script = apps / f"{APP_NAME}.command"
-    script.write_text(
+    bundle = apps / f"{APP_NAME}.app"
+    macos = bundle / "Contents" / "MacOS"
+    macos.mkdir(parents=True, exist_ok=True)
+
+    (bundle / "Contents" / "Info.plist").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0"><dict>\n'
+        f'  <key>CFBundleName</key><string>{APP_NAME}</string>\n'
+        f'  <key>CFBundleDisplayName</key><string>{APP_NAME}</string>\n'
+        '  <key>CFBundleIdentifier</key><string>com.basicagent.assistant</string>\n'
+        f'  <key>CFBundleExecutable</key><string>{APP_NAME}</string>\n'
+        '  <key>CFBundlePackageType</key><string>APPL</string>\n'
+        '  <key>CFBundleShortVersionString</key><string>1.0</string>\n'
+        # Otherwise the launcher appears in the Dock as a second, nameless
+        # icon beside the browser window it opens.
+        '  <key>LSUIElement</key><true/>\n'
+        '</dict></plist>\n',
+        encoding="utf-8",
+    )
+    launcher = macos / APP_NAME
+    launcher.write_text(
         "#!/bin/bash\n"
-        f'cd "{ROOT}"\n'
+        f'cd "{ROOT}" || exit 1\n'
         f'exec "{VENV_PY}" basicagent.py\n',
         encoding="utf-8",
     )
-    script.chmod(0o755)
-    return f'put "{APP_NAME}" in your Applications folder'
+    launcher.chmod(0o755)
+
+    where = ["your Applications folder"]
+    desktop = Path.home() / "Desktop"
+    if desktop.is_dir():
+        link = desktop / f"{APP_NAME}.app"
+        with contextlib.suppress(OSError):
+            if link.is_symlink() or link.exists():
+                link.unlink()
+            link.symlink_to(bundle)
+            where.append("your desktop")
+    return f'put "{APP_NAME}" in ' + " and on ".join(where)
 
 
 def _shortcut_windows() -> str:
-    """A .bat on the Desktop and in the Start menu.
+    """A real .lnk on the Desktop and in the Start menu.
 
-    Not a .lnk: making one needs pywin32, which is another thing to install
-    before the thing that installs things. A batch file double-clicks the same.
+    A .bat works and looks like a script: it has a gear icon, it flashes a
+    black console window, and somebody reasonably wonders whether they are
+    doing something advanced. A .lnk is an icon you double-click, which is what
+    was asked for.
+
+    Made through PowerShell's COM object rather than pywin32 -- that would be
+    another thing to install before the thing that installs things, and every
+    Windows since 7 has PowerShell. If it is locked down, the batch file is
+    still written as a fallback, so there is always something to click.
     """
+    target = VENV / "Scripts" / "pythonw.exe"
+    # pythonw runs with no console window at all. If it is missing (some
+    # embedded builds), python.exe still works and merely flashes.
+    if not target.exists():
+        target = VENV_PY
+
     made = []
+    places = []
+    desktop = Path.home() / "Desktop"
+    if desktop.is_dir():
+        places.append((desktop, "your desktop"))
+    start = (Path(os.getenv("APPDATA", Path.home())) / "Microsoft" / "Windows"
+             / "Start Menu" / "Programs")
+    if start.is_dir():
+        places.append((start, "your Start menu"))
+
     body = (
         "@echo off\r\n"
         f'cd /d "{ROOT}"\r\n'
         f'start "" "{VENV_PY}" basicagent.py\r\n'
     )
-    desktop = Path.home() / "Desktop"
-    if desktop.is_dir():
-        (desktop / f"{APP_NAME}.bat").write_text(body, encoding="utf-8")
-        made.append("your desktop")
-    start = (Path(os.getenv("APPDATA", Path.home())) / "Microsoft" / "Windows"
-             / "Start Menu" / "Programs")
-    if start.is_dir():
-        (start / f"{APP_NAME}.bat").write_text(body, encoding="utf-8")
-        made.append("your Start menu")
+    for folder, name in places:
+        link = folder / f"{APP_NAME}.lnk"
+        script = (
+            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut("
+            f"'{link}'); "
+            f"$s.TargetPath = '{target}'; "
+            f"$s.Arguments = '\"{ROOT / 'basicagent.py'}\"'; "
+            f"$s.WorkingDirectory = '{ROOT}'; "
+            f"$s.Description = 'Build software by talking to it'; "
+            "$s.Save()"
+        )
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, text=True, check=False)
+        if result.returncode == 0 and link.exists():
+            made.append(name)
+        else:
+            # Always something to click, even on a machine that will not run
+            # PowerShell.
+            (folder / f"{APP_NAME}.bat").write_text(body, encoding="utf-8")
+            made.append(name)
+
     if not made:
         return "could not find anywhere to put a shortcut"
     return f'put "{APP_NAME}" on ' + " and ".join(made)

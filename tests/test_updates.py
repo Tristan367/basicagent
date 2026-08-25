@@ -235,9 +235,19 @@ def test_the_download_page_points_at_the_newest_release():
 
 def test_the_page_tells_each_platform_what_to_double_click():
     page = (APP / "docs" / "index.html").read_text()
-    for named in ("install.bat", "Assistant.bat", "install.command",
-                  "Assistant.command", "install.py"):
+    for named in ("install.bat", "install.command", "install.py"):
         assert named in page, named
+
+
+def test_the_page_says_a_shortcut_appears():
+    """The complaint that started this: it read as though you double-click a
+    batch file every single time you want the app. You do not -- the installer
+    puts an icon on the desktop -- but nothing said so, and an instruction that
+    ends at the installer is one somebody will follow forever."""
+    said = " ".join((APP / "docs" / "index.html").read_text().split())
+    assert "Once, and then never again" in said
+    assert "you will have an Assistant icon on your desktop" in said
+    assert "You do not need the installer, the folder, or this page ever again" in said
 
 
 def test_everything_the_page_promises_actually_exists():
@@ -333,3 +343,39 @@ def test_a_failure_at_the_last_step_says_the_code_is_already_in_place():
     source = inspect.getsource(updates._refresh_dependencies)
     assert "The new version is in place" in source
     assert "Restart the app" in source
+
+
+# ── something to click, on each of the three ───────────────────────────────
+
+
+def test_windows_gets_a_real_shortcut_not_a_batch_file():
+    """A .bat has a gear icon and flashes a black console window, and somebody
+    reasonably wonders whether they are doing something advanced. A .lnk is an
+    icon you double-click. The batch file stays as a fallback for a machine
+    that will not run PowerShell, so there is always something to click."""
+    src = (APP / "install.py").read_text()
+    at = src.index("def _shortcut_windows()")
+    body = src[at:src.index("\n\n\n", at)]
+    assert "WScript.Shell" in body and ".lnk" in body
+    assert "pythonw.exe" in body, "it would flash a console window"
+    assert '.bat"' in body, "nothing to fall back on"
+
+
+def test_mac_gets_an_app_not_a_terminal_script():
+    """A .command opens Terminal, prints things, and leaves the window sitting
+    there. An .app appears in Launchpad and can be dragged to the Dock, and a
+    bundle built on the machine it runs on needs no signing."""
+    src = (APP / "install.py").read_text()
+    at = src.index("def _shortcut_mac()")
+    body = src[at:src.index("\n\n\n", at)]
+    assert ".app" in body and "Info.plist" in body
+    assert "CFBundleExecutable" in body
+    assert "LSUIElement" in body, "it would sit in the Dock as a nameless second icon"
+
+
+def test_every_platform_gets_something_on_the_desktop():
+    src = (APP / "install.py").read_text()
+    for func in ("_shortcut_windows", "_shortcut_mac", "_shortcut_linux"):
+        at = src.index(f"def {func}()")
+        body = src[at:src.index("\n\n\n", at)]
+        assert "Desktop" in body or "applications" in body, func

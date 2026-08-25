@@ -4825,20 +4825,25 @@
   if (micBtn && sttAvailable) {
     setMicUI();
     micBtn.addEventListener('click', toggleDictation);
-    /* Enter sends, from the Talk button as much as from the message box.
+    /* Enter on Talk: start talking, or -- if already talking -- stop and send.
      *
-     * You press Talk, you say your piece, and then the obvious key does the
-     * obvious thing -- except it did not: focus was still on Talk, so Enter
-     * activated the button and toggled the microphone back on. The only way
-     * out was to find Send, which for somebody navigating by keyboard means
-     * tabbing past every control on the row, and for somebody who cannot see
-     * the screen means knowing it is there at all.
+     * The second half was right and the first half was backwards. Enter on a
+     * button that has not started yet submitted the form, so tabbing to Talk
+     * and pressing the obvious key sent an empty message and did not turn the
+     * microphone on. It looked exactly like a dead button, which for somebody
+     * working by keyboard is the end of the road: Talk is how they use this
+     * app at all.
+     *
+     * Once it *is* listening, Enter is the obvious way to finish -- you have
+     * said your piece and the alternative is tabbing past every control on the
+     * row to find Send, which somebody who cannot see the screen has to know
+     * is there in the first place.
      *
      * Space still toggles, which is what Space does to a button everywhere. */
     micBtn.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
-      if (!listening) { form.requestSubmit(); return; }
+      if (!listening) { toggleDictation(); return; }
       // Stop first, and send once the last words have actually arrived --
       // sending here would cut off the end of the sentence.
       sendWhenDictationEnds = true;

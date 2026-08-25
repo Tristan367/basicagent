@@ -110,3 +110,25 @@ async def test_nothing_is_queued_when_nothing_is_running(db):
     """It would wait for a turn that is not coming."""
     session = await db.create_session("q", "/tmp", "gemini", "m")
     assert agent.queue_message(session["id"], "hello") is None
+
+
+def test_enter_on_talk_starts_talking():
+    """It submitted the form instead, so tabbing to Talk and pressing the
+    obvious key sent an empty message and did not turn the microphone on. It
+    looked exactly like a dead button -- and for somebody working by keyboard,
+    Talk is how they use this app at all."""
+    at = JS.index("micBtn.addEventListener('keydown'")
+    handler = JS[at:JS.index("});", at)]
+    assert "if (!listening) { toggleDictation(); return; }" in handler
+    assert "form.requestSubmit()" not in handler
+
+
+def test_enter_while_talking_stops_and_sends():
+    """The half that was already right. You have said your piece, and the
+    alternative is tabbing past every control on the row to find Send -- which
+    somebody who cannot see the screen has to know is there in the first
+    place."""
+    at = JS.index("micBtn.addEventListener('keydown'")
+    handler = JS[at:JS.index("});", at)]
+    assert "sendWhenDictationEnds = true" in handler
+    assert "stopDictation()" in handler
