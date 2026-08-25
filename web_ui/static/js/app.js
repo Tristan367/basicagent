@@ -1780,22 +1780,52 @@
       + 'asking again. Best if it is going to need several files from there — '
       + 'being asked twenty times is how people stop reading the question.';
 
-    const send = async (answer) => {
+    const send = async (answer, password) => {
       window.__closeModal();
       permissionAsked = '';
       try {
-        await fetch('/api/sessions/' + sessionId + '/permission', {
+        const resp = await fetch('/api/sessions/' + sessionId + '/permission', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: request.id, answer }),
+          body: JSON.stringify({ id: request.id, answer,
+                                 parent_password: password || '' }),
         });
+        if (!resp.ok) throw new Error('refused');
       } catch (e) {
         showError('That answer did not reach the app. It has carried on without '
           + 'opening the file.');
       }
     };
-    document.getElementById('permission-once').onclick = () => send('once');
-    document.getElementById('permission-always').onclick = () => send('always');
+
+    /* In child mode, yes is the grown-up's to give. The dialog says so on the
+     * buttons before either is pressed -- a child who presses "yes" and only
+     * then meets a password box has been told no in the most annoying way
+     * available. Saying no costs nothing and never asks: stopping something
+     * has to be the cheap answer, or a child has effectively been told they
+     * may not refuse. */
+    const locked = !!request.locked;
+    document.querySelectorAll('#permission-modal .permission-lock')
+      .forEach((el) => { el.hidden = !locked; });
+
+    const allow = (answer) => {
+      if (!locked) { send(answer); return; }
+      window.__closeModal();
+      if (!window.__passwordPrompt) return;
+      window.__passwordPrompt('A grown-up, please',
+        'Opening a file outside this project needs the parent password.',
+        false, async (password) => {
+          const check = await fetch('/api/child/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password }),
+          }).then((r) => r.json()).catch(() => ({ ok: false }));
+          if (!check.ok) return { ok: false, reason: 'password' };
+          await send(answer, password);
+          return { ok: true };
+        });
+    };
+    document.getElementById('permission-once').onclick = () => allow('once');
+    document.getElementById('permission-always').onclick = () => allow('always');
     document.getElementById('permission-no').onclick = () => send('no');
 
     /* Focus lands on "just this once" rather than on the recommendation. The

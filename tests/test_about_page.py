@@ -60,7 +60,11 @@ def test_it_says_where_the_permission_line_actually_falls():
     assert "Files outside your project need your say-so" in SAID
     assert "allow everything in that folder from then on" in SAID
     assert "It does not cover every shell command" in SAID
-    assert "In child mode it does not even ask" in SAID
+    assert "In child mode the question is the same one" in SAID
+    assert "Saying no never does" in SAID
+    # And the short list of places it never asks about, which is the other half
+    # of not training people to click past it.
+    assert "temporary folder" in SAID
 
 
 def test_it_says_plainly_that_nothing_asks_permission():

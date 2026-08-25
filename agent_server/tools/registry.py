@@ -905,14 +905,19 @@ async def _outside_guard(name: str, args: dict, ctx: ToolContext) -> ToolResult 
     whole point of the app. Outside it the answer is a person's -- so the
     question goes on the screen with the file named, and the turn waits.
 
-    Three ways it never asks. In child mode it refuses: the person at the
-    keyboard is a child, the file is very often their parent's, and a dialog is
-    an invitation to press yes. A subagent refuses, because it runs on its own
-    and there is nobody there to ask. And a folder the user has already said
-    yes to does not come back a second time -- being asked about the same
-    folder forty times is how people learn to approve without reading.
+    In child mode the question is the same question, and the answer costs the
+    parent password. Not a flat refusal: a child with photos in their downloads
+    folder, or an old project they want to build on, is asking for something
+    entirely reasonable, and walling them into one folder would be teaching
+    them that the app is broken rather than that it is careful. Approving
+    access to files is a normal part of using these tools, and watching a
+    grown-up do it is the lesson.
+
+    Two cases still never ask. A subagent, because it runs on its own and there
+    is nobody there. And a folder already said yes to -- being asked about the
+    same folder forty times is how people learn to approve without reading.
     """
-    from agent_server import parental, permissions
+    from agent_server import permissions
 
     key = _PATH_ARG.get(name)
     if not key:
@@ -936,12 +941,6 @@ async def _outside_guard(name: str, args: dict, ctx: ToolContext) -> ToolResult 
             f"{path} is outside the project, and a subagent cannot ask "
             f"permission to go there. Report this back to whoever sent you "
             f"rather than trying another way.", name)
-    if await parental.child_mode_enabled():
-        return ToolResult.error(
-            f"{path} is outside this project, and while child mode is on that "
-            f"is not something they can allow. Tell them plainly that you can "
-            f"only work inside their own project, and that a grown-up can turn "
-            f"child mode off in Settings if the file is really needed.", name)
 
     reply = await permissions.ask(ctx.session_id, path, _VERB.get(name, "open"))
     if reply in ("once", "always"):

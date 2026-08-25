@@ -1,16 +1,16 @@
-"""The few paths no tool may ever write to.
+"""What the agent may reach, and the one question it stops to ask.
 
-This app has no permission prompts. The user should never have to answer "may I
-run this?" — the agent just does the work. What replaces the prompt is a small
-number of hard guards that refuse and explain, so the model can tell the user in
-plain words what it avoided and why:
+Work inside a project is never asked about -- the user should not have to
+answer "may I read your own file?" forty times a day, and one who is asked that
+learns only to press yes. What guards the rest is small and deliberate:
 
-* this deny-list, checked by the write tools and by the subagent guard, and
-* the destructive-command guard in `tools/bash.py` (`rm -rf /` and friends).
+* a deny-list of system paths nothing may ever write to,
+* the destructive-command guard in `tools/bash.py` (`rm -rf /` and friends),
+* and, below, the question that goes on the screen when a file tool reaches
+  outside the project.
 
-Deliberately short. A long list would start refusing ordinary work, and the
-thing it is actually protecting against is a confused model wrecking the
-machine, not a hostile one.
+All three are short on purpose. A long list starts refusing ordinary work, and
+what it protects against is a confused model rather than a hostile one.
 """
 
 import asyncio
@@ -50,9 +50,13 @@ def is_denied(path: Path) -> bool:
 # than the gap. What this buys is that the ordinary path is visible and the
 # user decides.
 #
-# Nobody is asked in child mode. The person at the keyboard is a child, the
-# thing being asked about is very often their parent's files, and a dialog is
-# an invitation to press yes. It is simply refused.
+# In child mode the question is the same and the yes costs the parent password.
+# Not a wall: a child with photos in their downloads folder, or an old project
+# to build on, is asking for something entirely reasonable, and walling them
+# into one folder would teach them the app is broken rather than careful.
+# Approving file access is a normal part of using these tools, and watching a
+# grown-up do it is the lesson. Saying *no* never costs anything -- stopping
+# something must always be the cheap answer.
 
 ALLOWED_KEY = "allowed_folders"
 
@@ -98,8 +102,45 @@ async def allow_folder(folder: Path) -> None:
         await db.set_setting(ALLOWED_KEY, json.dumps(folders))
 
 
+async def never_asked() -> list[Path]:
+    """Folders nobody is ever asked about, because asking would be noise.
+
+    Each of these is somewhere the user has either already said yes to or has
+    no idea exists, and a dialog about it teaches only that dialogs are things
+    you click past.
+
+    * The temporary folder. Every program on the computer uses it, this app
+      uses it constantly, and nobody who is not technical has ever put anything
+      private there -- most have never heard of it. "May I read /tmp/tmp8fz2?"
+      is a question with no useful answer.
+    * Where attachments land. Somebody who has just dropped a photo into the
+      chat has consented in the plainest way there is; asking again is asking
+      them to confirm what they just did.
+    * Their own projects. Reaching a game they made last month is not reaching
+      out of the app, and needing permission to look at your own earlier work
+      would be a nuisance with nothing on the other side of it. In child mode
+      this is the child's own projects folder and not the parent's, which is
+      the same line the project list already draws.
+    """
+    import tempfile
+
+    from agent_server import parental
+    from agent_server.config import ATTACH_DIR, PROJECTS_DIR
+
+    # Both, because they are not always the same thing: `gettempdir` follows
+    # TMPDIR, which macOS sets to a per-user folder under /var, while plenty of
+    # tools write to /tmp regardless.
+    folders = [Path(tempfile.gettempdir()), Path("/tmp"), ATTACH_DIR]  # noqa: S108
+    if await parental.child_mode_enabled():
+        folders.append(PROJECTS_DIR / "child")
+    else:
+        folders.append(PROJECTS_DIR)
+    return folders
+
+
 async def already_allowed(path: Path) -> bool:
-    for folder in await allowed_folders():
+    known = [str(f) for f in await never_asked()] + await allowed_folders()
+    for folder in known:
         try:
             if path.resolve().is_relative_to(Path(folder).resolve()):
                 return True
@@ -150,12 +191,19 @@ async def ask(session_id: str, path: Path, verb: str) -> str:
     """
     if _asker is None:
         return "no"
+    from agent_server import parental
+
     request = {
         "id": uuid.uuid4().hex[:8],
         "path": str(path),
         "folder": str(path.parent),
         "verb": verb,
         "name": path.name,
+        # Whether saying yes will cost the parent password. The dialog needs to
+        # know so it can say so before the button is pressed rather than after
+        # -- a child pressing "yes" and then meeting a password box has been
+        # told no in the most annoying way available.
+        "locked": await parental.child_mode_enabled(),
     }
     waiting: asyncio.Future = asyncio.get_running_loop().create_future()
     _pending[session_id] = request

@@ -112,10 +112,19 @@ async def answer_permission(session_id: str, payload: dict):
     without reading. "no" refuses, and the assistant is told plainly that a
     refusal is an answer rather than an obstacle.
     """
+    from agent_server import parental
+
     await _require_session(session_id)
     reply = str(payload.get("answer", "")).strip().lower()
     if reply not in ("once", "always", "no"):
         raise HTTPException(400, "Answer must be once, always or no.")
+    # Saying no costs nothing -- a child should always be able to stop
+    # something, and making refusal the expensive answer would be exactly the
+    # wrong way round. Saying yes is the parent's to give.
+    needs_grown_up = reply != "no" and await parental.child_mode_enabled()
+    if needs_grown_up and not await parental.parent_password_correct(
+            str(payload.get("parent_password", "")).strip()):
+        raise HTTPException(403, "Parent password required")
     heard = permissions.answer(session_id, str(payload.get("id", "")), reply)
     return {"ok": heard}
 

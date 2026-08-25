@@ -3149,3 +3149,7 @@ html.wide-gutter .app-bar-btn.icon-only#settings-btn { display: none; }
     font-weight: 600;
     vertical-align: middle;
 }
+/* "needs a grown-up", on the two answers that cost the parent password in
+   child mode. Saying no never carries it: refusing has to stay the cheap
+   answer, or a child has been told they may not refuse. */
+.permission-lock { color: var(--text-dim); font-weight: 400; }
