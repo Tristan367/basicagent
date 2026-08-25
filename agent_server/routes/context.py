@@ -327,6 +327,15 @@ async def _settings_context() -> dict:
         "has_parent_password": bool(settings.get("parent_password_hash", "")),
         "override_remaining": await parental.override_remaining(),
         "override_elapsed": await parental.override_elapsed(),
+        # Only ever handed to the page when child mode is off. While it is on,
+        # the template must not render it at all -- see the note there. This is
+        # the value it uses to say "a note is saved", never to show it.
+        "parent_note": ("" if settings.get("child_mode", "0") == "1"
+                        else settings.get(parental.NOTE_KEY, "")),
+        # Whether there is one, which is safe to say either way. "A note is
+        # saved" tells a child nothing they did not already know.
+        "has_parent_note": bool((settings.get(parental.NOTE_KEY, "") or "").strip()),
+        "note_max": parental.NOTE_MAX_CHARS,
         "walkthrough": walkthrough,
         "key_url": KEY_URL,
         "key_url_label": KEY_URL_LABEL,

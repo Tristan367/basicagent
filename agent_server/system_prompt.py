@@ -124,17 +124,40 @@ def build_system_prompt(kind: str, project_dir: str, session_id: str = "") -> st
 async def session_system_prompt(session: dict) -> str:
     """The system prompt for a session, frozen the first time it is needed."""
     stored = session.get("system_prompt")
-    if stored:
-        return stored
-    prompt = build_system_prompt(
-        session.get("kind") or "project", session["project_dir"], session["id"]
-    )
-    if session.get("profile") == "child":
-        from agent_server.parental import CHILD_MODE_BLOCK
+    if not stored:
+        stored = build_system_prompt(
+            session.get("kind") or "project", session["project_dir"], session["id"]
+        )
+        if session.get("profile") == "child":
+            from agent_server.parental import CHILD_MODE_BLOCK
 
-        prompt += "\n\n" + CHILD_MODE_BLOCK
-    await db.update_session(session["id"], system_prompt=prompt)
-    return prompt
+            stored += "\n\n" + CHILD_MODE_BLOCK
+        await db.update_session(session["id"], system_prompt=stored)
+    return stored + await _parent_note_block(session)
+
+
+async def _parent_note_block(session: dict) -> str:
+    """The parent's own instructions, added fresh every time.
+
+    Deliberately outside the frozen prompt, and deliberately last.
+
+    Outside, because a parent who writes "stop telling him the answers" expects
+    that to be true of the project he is working in right now. Frozen with the
+    rest, it would apply only to projects started afterwards -- and to a parent
+    watching their child carry on exactly as before, the box does not work.
+
+    Last, because it is the most specific layer and the one meant to win where
+    it does not conflict with the child-safety rules above it. It also means
+    the expensive, stable part of the prompt is unchanged until the note itself
+    changes, so editing it costs one cache miss rather than making every
+    request a fresh one.
+    """
+    if session.get("profile") != "child":
+        return ""
+    from agent_server import parental
+
+    block = parental.note_block(await parental.parent_note())
+    return "\n\n" + block if block else ""
 
 
 async def ensure_home_session() -> dict:

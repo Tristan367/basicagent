@@ -391,6 +391,37 @@ async def child_verify(request: Request):
     return {"ok": await parental.parent_password_correct(str(data.get("password", "")).strip())}
 
 
+@router.post("/api/child/note")
+async def child_note(request: Request):
+    """Read the parent's note back, which needs the password while child mode is on.
+
+    The note never reaches the page unasked. While child mode is on the panel
+    renders an empty box, so the text is not in the HTML, not in the DOM, and
+    not one View Source away from a curious ten-year-old. This is the only way
+    to get it, and it costs a password.
+    """
+    data = await _body(request)
+    if await parental.child_mode_enabled() and not await parental.parent_password_correct(
+        str(data.get("password", "")).strip()
+    ):
+        return {"ok": False, "reason": "password"}
+    return {"ok": True, "note": await parental.parent_note()}
+
+
+@router.post("/api/child/note/save")
+async def child_note_save(request: Request):
+    data = await _body(request)
+    if await parental.child_mode_enabled() and not await parental.parent_password_correct(
+        str(data.get("password", "")).strip()
+    ):
+        return {"ok": False, "reason": "password"}
+    note = str(data.get("note", ""))
+    if len(note) > parental.NOTE_MAX_CHARS:
+        return {"ok": False, "reason": "too_long"}
+    await parental.set_parent_note(note)
+    return {"ok": True, "saved": bool(note.strip())}
+
+
 @router.get("/api/theme")
 async def get_theme():
     """Everything the open page can change about itself without reloading.

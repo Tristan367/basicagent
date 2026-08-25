@@ -356,6 +356,68 @@ function initSettings() {
             });
         });
 
+        // ── House rules: the parent's own note to the AI ──────────────────
+        //
+        // While child mode is on the saved text is never rendered into the
+        // page, so there is nothing here for a child to find by scrolling,
+        // inspecting, or viewing source. It arrives only in the answer to a
+        // request that carried the parent password, and only after they asked
+        // for it. Saving spends a password of its own.
+        (function () {
+            const box = document.getElementById('house-rules-text');
+            if (!box) return;
+            const status = document.getElementById('house-rules-status');
+            const actions = document.querySelector('.house-rules-actions');
+            const unlock = document.getElementById('house-rules-unlock');
+            const hiddenNote = document.getElementById('house-rules-hidden');
+            const locked = box.dataset.lockedNote === '1';
+            // Held for one save and then forgotten, the same bargain the rest
+            // of the locked settings strike.
+            let password = '';
+
+            function say(text, bad) {
+                if (!status) return;
+                status.textContent = text;
+                status.hidden = !text;
+                status.classList.toggle('house-rules-bad', !!bad);
+            }
+
+            async function save() {
+                const r = await post('/api/child/note/save',
+                    { note: box.value, password });
+                if (r.ok) {
+                    say(r.saved ? 'Saved. The AI will follow this from its next reply.'
+                                : 'Cleared.');
+                } else if (r.reason === 'too_long') {
+                    say('That is longer than the box will take. Shorten it a little.', true);
+                } else if (r.reason === 'password') {
+                    say('That password is not right any more. Reload and try again.', true);
+                } else {
+                    say('It could not be saved. Try again.', true);
+                }
+            }
+
+            const saveBtn = document.getElementById('house-rules-save');
+            if (saveBtn) saveBtn.addEventListener('click', save);
+
+            if (locked && unlock) unlock.addEventListener('click', () => {
+                openPrompt('Parent password',
+                    'Enter the parent password to read and change your note.',
+                    false, async (typed) => {
+                        const r = await post('/api/child/note', { password: typed });
+                        if (!r.ok) return { ok: false, reason: 'password' };
+                        password = typed;
+                        box.value = r.note || '';
+                        box.disabled = false;
+                        if (actions) actions.hidden = false;
+                        if (hiddenNote) hiddenNote.hidden = true;
+                        unlock.hidden = true;
+                        box.focus();
+                        return { ok: true };
+                    });
+            });
+        })();
+
         // Locked settings: the password is asked for once per change, and buys
         // exactly that change.
         //

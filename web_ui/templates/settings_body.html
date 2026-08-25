@@ -57,6 +57,82 @@
         {% else %}
         <button type="button" class="btn-primary" id="child-enable">Turn on child mode</button>
         {% endif %}
+
+        {#
+          The thing parents actually ask is not "is it safe" but "what is it
+          going to teach my child". That is a question about values, it is
+          theirs to answer, and no set of opinions written here would be the
+          right one for every family. So there is a box.
+
+          While child mode is on the saved text is deliberately NOT rendered:
+          not in the HTML, not in the DOM, not one View Source away. Reading it
+          back costs the parent password. Parents write things in here about
+          their own children that they would never say to them.
+        #}
+        <div class="house-rules">
+            <h3>House rules</h3>
+            <p class="hint">
+                A private note telling the AI how you want it to talk to your child: what to
+                encourage, what to leave alone, and what your family believes. It is added to
+                the AI's instructions for everything your child does here, and it is the
+                strongest say you have over the way it speaks to them.
+            </p>
+            <p class="hint">
+                <strong>You do not need to list the obvious.</strong> In child mode the AI is
+                already told to keep everything safe, kind and age-appropriate, to refuse
+                anything adult, violent, frightening or unkind and suggest they ask you
+                instead, never to swear, and never to simply hand over homework answers. Your
+                child cannot reach the internet through the browser it uses, or open your
+                projects. Write here about the things that are particular to your family.
+            </p>
+            <details class="house-rules-examples">
+                <summary>Some things people write</summary>
+                <ul>
+                    <li>“We are a Christian family. Where a lesson naturally allows it, draw
+                        on scripture, and never tell her that God is not real.”</li>
+                    <li>“He is nine and reads well below his age. Short sentences, one idea at
+                        a time, and check he is following before moving on.”</li>
+                    <li>“Keep politics out of it entirely. If she asks, say it is something to
+                        talk to us about.”</li>
+                    <li>“She gives up the second something breaks. Make a fuss of her when she
+                        keeps going, and never let a bug sound like a failure.”</li>
+                    <li>“No war, no guns, no fighting in the games he makes, even cartoon
+                        ones.”</li>
+                </ul>
+            </details>
+            <p class="hint">
+                Your child will not see this. It is not shown on this page while child mode is
+                on, and the AI is told not to read it out or say what is in it. That said,
+                write it as though they might one day read it anyway — no instruction to an AI
+                is a locked drawer.
+            </p>
+            <p class="hint">
+                It steers the AI; it does not command it. It will not be used to make the AI
+                unkind or unsafe towards your child — those rules stay on underneath, whatever
+                is written here.
+            </p>
+            <label class="house-rules-label" for="house-rules-text">
+                Your note to the AI
+            </label>
+            <textarea id="house-rules-text" class="house-rules-text" rows="6"
+                      maxlength="{{ note_max }}"
+                      placeholder="Write anything you would tell a tutor before leaving them alone with your child."
+                      {% if child_mode %}data-locked-note="1" disabled{% endif %}
+            >{% if not child_mode %}{{ parent_note }}{% endif %}</textarea>
+            {% if child_mode %}
+            <p class="hint" id="house-rules-hidden">
+                {% if has_parent_note %}A note is saved. It is hidden while child mode is on.
+                {% else %}Nothing is saved yet.{% endif %}
+            </p>
+            <button type="button" class="btn-neutral" id="house-rules-unlock">
+                Show it (parent password)
+            </button>
+            {% endif %}
+            <div class="quit-actions house-rules-actions" {% if child_mode %}hidden{% endif %}>
+                <button type="button" class="btn-primary" id="house-rules-save">Save the note</button>
+            </div>
+            <p class="hint" id="house-rules-status" role="status" aria-live="polite" hidden></p>
+        </div>
     </section>
 
     {% if child_mode %}

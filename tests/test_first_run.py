@@ -249,7 +249,15 @@ def test_the_guide_opens_as_an_overlay_not_a_fold_in_the_column():
     assert 'id="walkthrough-modal"' in body
     # Comments stripped: they explain what the guide used to be, and that is not
     # what a user meets.
-    assert "<details" not in re.sub(r"\{#.*?#\}", "", body, flags=re.S), \
+    #
+    # Scoped to the guide rather than banning every fold on the page. The reason
+    # this one cannot be folded is that it is mostly full-width screenshots, and
+    # a fold in a 480px column shrinks them to nothing. A handful of example
+    # sentences has no such problem, and folding those is what keeps the panel
+    # readable.
+    plain = re.sub(r"\{#.*?#\}", "", body, flags=re.S)
+    folded = re.findall(r"<details.*?</details>", plain, flags=re.S)
+    assert not [f for f in folded if "walkthrough" in f], \
         "the guide is folded into the column again"
     # Outside `#settings-page`: that element carries `container-type`, which
     # makes it a containing block for `position: fixed`, so an overlay inside it
