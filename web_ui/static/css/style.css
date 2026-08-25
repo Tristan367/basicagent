@@ -283,6 +283,13 @@ body {
        one people notice. */
     padding: 0 calc(var(--bar-pad) + var(--seam));
 }
+/* ...and gone while the button is focused.
+   The ring is symmetric, but the seam sits just inside it on the right-hand
+   side only, so that edge reads as doubled and the whole ring looks pushed
+   right. Which it is not -- but "it is not, actually" is no use to somebody
+   looking at it. The seam exists to separate one button from the next, and a
+   ring drawn around this one is already doing that job. */
+.app-bar-side:first-child .app-bar-btn:focus-visible { box-shadow: none; }
 .app-bar-btn:hover { background: var(--accent-dim); }
 .app-bar-btn:disabled {
     color: var(--text-dim);
@@ -1400,7 +1407,16 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     opacity: 0;
 }
 .textarea-wrap:focus-within::before { opacity: 1; }
-.app-bar-btn:focus-visible, .quit-x:focus-visible { border-radius: 8px; }
+/* Flush against the button rather than a pixel out from it.
+   Everywhere else in the app a control has space around it and the offset
+   looks right. These sit shoulder to shoulder, so the one-pixel gap lands on
+   the *neighbour's* seam and shows it as a muddy line down one side only --
+   which is what made the ring look pushed sideways. Measured in the rendered
+   pixels, not guessed: with the offset gone, both edges come back identical. */
+.app-bar-btn:focus-visible, .quit-x:focus-visible {
+    border-radius: 8px;
+    outline-offset: 0;
+}
 
 /* ── Theme choice (first run + settings) ─────────────────────────────────── */
 

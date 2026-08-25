@@ -71,3 +71,14 @@ def test_the_bar_buttons_wear_their_focus_ring_straight():
     assert "border-right" not in rule, "the seam is back to being part of the box"
     assert "box-shadow: inset" in rule
     assert "padding: 0 calc(var(--bar-pad) + var(--seam))" in rule
+
+    # Two more things it took a pixel-by-pixel look to find. The focused
+    # button's own seam sits just inside the ring on the right, so that edge
+    # reads as doubled -- it goes while focused, and the ring does the seam's
+    # job. And the ring sits flush rather than a pixel out: these buttons are
+    # shoulder to shoulder, so the offset gap lands on the *neighbour's* seam
+    # and shows it as a muddy line down one side only.
+    assert ".app-bar-side:first-child .app-bar-btn:focus-visible { box-shadow: none; }" in css
+    at = css.index(".app-bar-btn:focus-visible, .quit-x:focus-visible {")
+    focus_rule = css[at:css.index("}", at)]
+    assert "outline-offset: 0" in focus_rule
