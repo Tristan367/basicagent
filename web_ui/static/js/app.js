@@ -1970,9 +1970,15 @@
     const rule = document.createElement('div');
     rule.className = 'broke-off';
     rule.setAttribute('role', 'separator');
-    rule.textContent = 'You stopped it here';
+    /* More than "interrupted", because the two questions somebody has at that
+     * moment are "did I break something?" and "what now?". Both get answered
+     * on the line itself, so it is still true when they scroll back to it
+     * tomorrow. People stop things by accident, and an accident should not
+     * come with a mystery attached. */
+    rule.textContent = 'You stopped it here. Anything it had already finished is kept, and it will not carry on unless you ask.';
     messages.appendChild(rule);
-    announce('Stopped. Say what you would like it to do next.');
+    announce('Stopped. Nothing it had finished was undone. '
+      + 'Say what you would like it to do next.');
     scrollToBottom();
   }
 
@@ -3247,6 +3253,8 @@
     running = false;
     sendBtn.hidden = false;
     stopBtn.hidden = true;
+    sendBtn.title = '';
+    sendBtn.removeAttribute('aria-describedby');
     clearLiveWork();
     refreshSettings();
     refreshPlay();
@@ -3258,8 +3266,12 @@
 
   function beginTurn() {
     running = true;
-    sendBtn.hidden = true;
+    // Send stays. Pressing it now queues the message rather than starting a
+    // second turn, which is what somebody who has not noticed the assistant is
+    // busy actually wants -- and it means the button their thumb goes to is
+    // never the one that stops the work.
     stopBtn.hidden = false;
+    sendBtn.title = 'It will go in as soon as the assistant has finished';
     refreshPlay();
     turnStartedAt = Date.now();
     startTicks();

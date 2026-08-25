@@ -335,6 +335,9 @@ async def _settings_context() -> dict:
         # Whether there is one, which is safe to say either way. "A note is
         # saved" tells a child nothing they did not already know.
         "has_parent_note": bool((settings.get(parental.NOTE_KEY, "") or "").strip()),
+        # The user's own standing instructions. Nothing to hide here: they
+        # apply to the sessions a grown-up runs, and a child never sees those.
+        "own_note": settings.get(parental.OWN_KEY, ""),
         "note_max": parental.NOTE_MAX_CHARS,
         "walkthrough": walkthrough,
         "key_url": KEY_URL,

@@ -3156,3 +3156,9 @@ html.wide-gutter .app-bar-btn.icon-only#settings-btn { display: none; }
 /* "If you are teaching:" and friends, inside the examples fold. */
 .house-rules-group { margin: 12px 0 2px; font-weight: 600; color: var(--text); }
 .house-rules-group:first-child { margin-top: 8px; }
+/* Stop, beside Send rather than in place of it. Deliberately the smaller of
+   the two: the button under somebody's thumb should be the harmless one. */
+.stop-beside {
+    padding: 11px 18px;
+    font-size: 0.95rem;
+}

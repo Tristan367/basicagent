@@ -362,8 +362,25 @@
                         </div>
                     </div>
                     <div class="status-bar" id="status-bar" role="status" aria-live="polite" hidden></div>
+                    {#
+                      Stop sits *beside* Send rather than replacing it, and
+                      that is the whole point of the arrangement.
+
+                      Send used to be swapped out for Stop while the assistant
+                      worked. Somebody who has not noticed that the AI is busy
+                      -- which is most people, most of the time -- reaches for
+                      where Send always is, presses a red square, and stops the
+                      thing they were about to talk to. Then their message does
+                      not send either, and they have no idea what they did.
+
+                      Now the button under their thumb is always Send, and
+                      pressing it while the assistant is working queues the
+                      message instead: it goes in the moment the turn ends,
+                      which is what they wanted. The accidental press is the
+                      harmless one, which is the way round it should be.
+                    #}
+                    <button type="button" id="stop-btn" class="btn-stop stop-beside" hidden>Stop</button>
                     <button type="submit" id="send-btn" class="btn-primary send">Send</button>
-                    <button type="button" id="stop-btn" class="btn-stop send" hidden>Stop</button>
                 </div>
             </div>
         </form>

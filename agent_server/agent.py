@@ -722,6 +722,20 @@ async def _loop(
                     return
                 continue
 
+            # Something typed while this turn was running. The user was told it
+            # would go in "as soon as the assistant has finished", and this is
+            # when it has finished -- so it is answered here rather than left
+            # sitting in the queue.
+            #
+            # It used to be left. The queue is only drained at the top of the
+            # loop, and a plain reply ends the loop, so a message typed
+            # mid-turn stayed on screen marked as waiting and was never
+            # answered at all -- it went in front of the model only when the
+            # user gave up and sent something else, out of order behind it.
+            # A dropped message is about the worst thing this app can do.
+            if _queued.get(session_id) and not abort.is_set():
+                continue
+
             yield {
                 "type": "done",
                 "reason": finish,

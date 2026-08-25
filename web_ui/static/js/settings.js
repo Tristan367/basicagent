@@ -380,6 +380,32 @@ function initSettings() {
             });
         })();
 
+        // ── The user's own house rules ────────────────────────────────────
+        //
+        // The same box without the child part: no password, nothing hidden,
+        // nobody to keep it from.
+        (function () {
+            const box = document.getElementById('own-rules-text');
+            const saveBtn = document.getElementById('own-rules-save');
+            if (!box || !saveBtn) return;
+            const status = document.getElementById('own-rules-status');
+            saveBtn.addEventListener('click', async () => {
+                const r = await post('/api/house-rules', { note: box.value });
+                if (!status) return;
+                status.hidden = false;
+                status.classList.toggle('house-rules-bad', !r.ok);
+                if (r.ok) {
+                    status.textContent = r.saved
+                        ? 'Saved. The AI follows this from its next reply.' : 'Cleared.';
+                } else if (r.reason === 'too_long') {
+                    status.textContent = 'That is longer than the box will take. '
+                        + 'Shorten it a little.';
+                } else {
+                    status.textContent = 'It could not be saved. Try again.';
+                }
+            });
+        })();
+
         // Locked settings: the password is asked for once per change, and buys
         // exactly that change.
         //

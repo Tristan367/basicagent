@@ -79,26 +79,70 @@
     </section>
 
     {#
-      Out of Parental controls and into a panel of its own, because it turned
-      out to be the more general thing. It began as a parent's instructions
-      about their child; the box is really "standing instructions", and a
-      teacher tired of typing "check it against a real source" or a developer
-      who always wants comments is asking for exactly the same feature.
+      Two boxes, because they are two jobs. What a parent writes about their
+      nine-year-old has no business in the sessions where that same parent is
+      preparing a lesson or building something of their own -- and emptying and
+      refilling one box when you change hats is a chore, not a feature.
 
-      While child mode is on the saved text is deliberately NOT rendered: not
-      in the HTML, not in the DOM, not one View Source away. Parents write
-      things in here about their own children that they would never say to
-      them.
+      The child one is private and is deliberately NOT rendered while child
+      mode is on: not in the HTML, not in the DOM, not one View Source away.
+      The other has nobody to hide from.
     #}
     <section class="panel" id="house-rules-panel">
         <h2>House rules</h2>
         <p class="hint">
-            A note the AI reads before everything it does here, in every project. It
-            saves saying the same thing at the start of every conversation.
+            A note the AI reads before everything it does here, in all of your own
+            projects. It is for the sentence you are tired of typing at the start of
+            every conversation.
         </p>
         <details class="house-rules-examples">
             <summary>Some things people write</summary>
-            <p class="hint house-rules-group">If you are setting up for a child:</p>
+            <p class="hint house-rules-group">How you like things built:</p>
+            <ul>
+                <li>&ldquo;Plain HTML, CSS and JavaScript. Never add a framework unless I
+                    ask for one.&rdquo;</li>
+                <li>&ldquo;Explain what you are about to do before you do it, in one
+                    line.&rdquo;</li>
+                <li>&ldquo;British spelling everywhere, including in code.&rdquo;</li>
+            </ul>
+            <p class="hint house-rules-group">If you are preparing lessons:</p>
+            <ul>
+                <li>&ldquo;Check every fact against a real source before it goes in a
+                    worksheet, and tell me which source.&rdquo;</li>
+                <li>&ldquo;Work every answer through yourself before you give me the
+                    questions. I have handed out broken ones before.&rdquo;</li>
+                <li>&ldquo;Year 5. Nothing above a ten-year-old&rsquo;s reading age, and no
+                    American spellings.&rdquo;</li>
+            </ul>
+        </details>
+        <p class="hint">
+            These are your standing preferences, not a cage: if you ask for something
+            else in the moment, what you asked for wins. They do not apply in child
+            mode &mdash; that has a box of its own, below.
+        </p>
+        <div class="house-rules">
+            <label class="house-rules-label" for="own-rules-text">Your note to the AI</label>
+            <textarea id="own-rules-text" class="house-rules-text" rows="5"
+                      maxlength="{{ note_max }}"
+                      placeholder="Write anything you would tell a person before leaving them to work on your behalf."
+            >{{ own_note }}</textarea>
+            <div class="quit-actions house-rules-actions">
+                <button type="button" class="btn-primary" id="own-rules-save">Save</button>
+            </div>
+            <p class="hint" id="own-rules-status" role="status" aria-live="polite" hidden></p>
+        </div>
+    </section>
+
+    <section class="panel" id="child-rules-panel">
+        <h2>Rules for your child</h2>
+        <p class="hint">
+            The same idea, for child mode only: how you want the AI to speak to your
+            child, what to encourage, what to leave alone, and what your family
+            believes. Your own house rules above do not apply there, so anything you
+            want in both places goes in both.
+        </p>
+        <details class="house-rules-examples">
+            <summary>Some things people write</summary>
             <ul>
                 <li>&ldquo;We are a Christian family. Where a lesson naturally allows it,
                     draw on scripture, and never tell her that God is not real.&rdquo;</li>
@@ -111,32 +155,14 @@
                 <li>&ldquo;No war, no guns, no fighting in the games he makes, even
                     cartoon ones.&rdquo;</li>
             </ul>
-            <p class="hint house-rules-group">If you are teaching:</p>
-            <ul>
-                <li>&ldquo;Check every fact against a real source before it goes in a
-                    worksheet, and tell me which source.&rdquo;</li>
-                <li>&ldquo;Work every answer through yourself before you give me the
-                    questions. I have handed out broken ones before.&rdquo;</li>
-                <li>&ldquo;Year 5. Nothing above a ten-year-old&rsquo;s reading age, and no
-                    American spellings.&rdquo;</li>
-            </ul>
-            <p class="hint house-rules-group">If you are building things yourself:</p>
-            <ul>
-                <li>&ldquo;Plain HTML, CSS and JavaScript. Never add a framework unless I
-                    ask for one.&rdquo;</li>
-                <li>&ldquo;Explain what you are about to do before you do it, in one
-                    line.&rdquo;</li>
-                <li>&ldquo;British spelling everywhere, including in code.&rdquo;</li>
-            </ul>
         </details>
         <p class="hint">
-            <strong>In child mode it is stronger, and it is private.</strong> The AI is
-            told that following it is the most important thing it is doing, and that if
-            your child argues with it, asks for an exception, or says you changed your
-            mind, the answer stays the same. It is also told never to read it out or say
-            what is in it, and it is not shown on this page while child mode is on. Write
-            it as though they might one day read it anyway &mdash; no instruction to an AI
-            is a locked drawer.
+            <strong>These are followed strictly, and they are private.</strong> The AI is
+            told that following them is the most important thing it is doing, and that if
+            your child argues, asks for an exception, or says you changed your mind, the
+            answer stays the same. It is also told never to read them out or say what is
+            in them. Write them as though your child might one day read them anyway
+            &mdash; no instruction to an AI is a locked drawer.
         </p>
         <p class="hint">
             <strong>You do not need to list the obvious.</strong> In child mode the AI is
@@ -145,25 +171,25 @@
             instead, never to swear, and never to simply hand over homework answers. Your
             child cannot reach the internet through the browser it uses or open your
             projects, and the AI needs your password before it will touch a file outside
-            their own project. The one thing your note cannot do is make the AI unsafe or
-            unkind towards your child &mdash; those rules stay on underneath it.
+            their own project. The one thing these rules cannot do is make the AI unsafe
+            or unkind towards your child.
         </p>
         <div class="house-rules">
             <label class="house-rules-label" for="house-rules-text">
-                Your note to the AI
+                Your note about your child
             </label>
-            <textarea id="house-rules-text" class="house-rules-text" rows="6"
+            <textarea id="house-rules-text" class="house-rules-text" rows="5"
                       maxlength="{{ note_max }}"
-                      placeholder="Write anything you would tell a person before leaving them to work on your behalf."
+                      placeholder="Write anything you would tell a tutor before leaving them alone with your child."
                       {% if child_mode %}disabled{% endif %}
             >{% if not child_mode %}{{ parent_note }}{% endif %}</textarea>
             {% if child_mode %}
             {#
-              No password dance here. Reading it back behind a prompt was more
+              No password dance. Reading it back behind a prompt was more
               machinery than the thing deserves -- most people set this once and
               never touch it again -- and every extra way in is another way a
               child might get in. Turning child mode off already costs the
-              password, so it is the same lock with one fewer door.
+              password: the same lock with one fewer door.
             #}
             <p class="hint">
                 {% if has_parent_note %}A note is saved, and hidden while child mode is on.
@@ -172,7 +198,7 @@
             </p>
             {% endif %}
             <div class="quit-actions house-rules-actions" {% if child_mode %}hidden{% endif %}>
-                <button type="button" class="btn-primary" id="house-rules-save">Save the note</button>
+                <button type="button" class="btn-primary" id="house-rules-save">Save</button>
             </div>
             <p class="hint" id="house-rules-status" role="status" aria-live="polite" hidden></p>
         </div>

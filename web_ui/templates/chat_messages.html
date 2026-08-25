@@ -43,7 +43,7 @@
        to it, and everything below the line is after the break. Without it a
        stopped turn looked exactly like a finished one, and the next thing
        anybody did was wait for a reply that was never coming. #}
-    {% if m.broke_off %}<div class="broke-off" role="separator">You stopped it here</div>{% endif %}
+    {% if m.broke_off %}<div class="broke-off" role="separator">You stopped it here. Anything it had already finished is kept, and it will not carry on unless you ask.</div>{% endif %}
   {% elif m.role == 'tool' %}
     {% if m.open_session %}
     <div class="message action" id="msg-{{ m.id }}">
@@ -66,7 +66,7 @@
        to it, and everything below the line is after the break. Without it a
        stopped turn looked exactly like a finished one, and the next thing
        anybody did was wait for a reply that was never coming. #}
-    {% if m.broke_off %}<div class="broke-off" role="separator">You stopped it here</div>{% endif %}
+    {% if m.broke_off %}<div class="broke-off" role="separator">You stopped it here. Anything it had already finished is kept, and it will not carry on unless you ask.</div>{% endif %}
   {% elif m.role == 'assistant' %}
     {#
       Thinking, kept but shut.
@@ -100,6 +100,6 @@
        to it, and everything below the line is after the break. Without it a
        stopped turn looked exactly like a finished one, and the next thing
        anybody did was wait for a reply that was never coming. #}
-    {% if m.broke_off %}<div class="broke-off" role="separator">You stopped it here</div>{% endif %}
+    {% if m.broke_off %}<div class="broke-off" role="separator">You stopped it here. Anything it had already finished is kept, and it will not carry on unless you ask.</div>{% endif %}
   {% endif %}
 {% endfor %}

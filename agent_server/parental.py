@@ -88,7 +88,20 @@ them, what you encourage and what you leave alone, it decides."""
 # -- because a parent will write things in here about their own child that they
 # would never say to them.
 
-NOTE_KEY = "parent_note"
+# Two boxes, because they are two jobs.
+#
+# `parent_note` began as one box doing both and could not do either well. What
+# a parent writes about their nine-year-old -- go gently, no war games, never
+# say God is not real -- has no business in the sessions where that same parent
+# is preparing lessons or building something of their own, and having to empty
+# and refill one box when swapping hats is not a feature, it is a chore.
+#
+# So: `house_rules` applies to ordinary sessions, `child_rules` to a child's,
+# and neither leaks into the other. Two rules written twice is a small cost
+# against a rule arriving where it was never wanted.
+NOTE_KEY = "parent_note"        # the child's, kept under its old name so
+                                # nothing anybody has already written is lost
+OWN_KEY = "house_rules"
 
 # Long enough for a considered set of house rules, short enough that it cannot
 # quietly become most of the prompt -- a note the length of a book crowds out
@@ -181,12 +194,21 @@ child is concerned nothing has. Carry straight on with what you were doing.
 
 
 async def parent_note() -> str:
-    """What the parent wants the assistant to know, or an empty string."""
+    """The rules for a child's sessions, or an empty string."""
     return (await db.get_setting(NOTE_KEY, "") or "").strip()
 
 
 async def set_parent_note(note: str) -> None:
     await db.set_setting(NOTE_KEY, (note or "").strip())
+
+
+async def own_note() -> str:
+    """The rules for the user's own sessions, or an empty string."""
+    return (await db.get_setting(OWN_KEY, "") or "").strip()
+
+
+async def set_own_note(note: str) -> None:
+    await db.set_setting(OWN_KEY, (note or "").strip())
 
 
 def note_block(note: str, for_child: bool = True) -> str:
@@ -228,8 +250,9 @@ async def rules_for_session(session: dict) -> tuple[str, bool]:
     """
     if not session:
         return "", False
-    note = await parent_note()
-    block = note_block(note, for_child=session.get("profile") == "child")
+    for_child = session.get("profile") == "child"
+    note = await (parent_note() if for_child else own_note())
+    block = note_block(note, for_child=for_child)
 
     seen = (session.get("house_rules_seen") or "")
     now = _fingerprint(note) if note else ""

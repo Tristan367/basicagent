@@ -385,6 +385,7 @@ async def child_verify(request: Request):
 
 @router.post("/api/child/note/save")
 async def child_note_save(request: Request):
+    """The rules for a child's sessions. Costs the password in child mode."""
     data = await _body(request)
     if await parental.child_mode_enabled() and not await parental.parent_password_correct(
         str(data.get("password", "")).strip()
@@ -394,6 +395,22 @@ async def child_note_save(request: Request):
     if len(note) > parental.NOTE_MAX_CHARS:
         return {"ok": False, "reason": "too_long"}
     await parental.set_parent_note(note)
+    return {"ok": True, "saved": bool(note.strip())}
+
+
+@router.post("/api/house-rules")
+async def house_rules_save(request: Request):
+    """The user's own standing instructions.
+
+    No password on this one, and deliberately not. It applies to the sessions a
+    grown-up runs; a child never sees those, and gating it would be gating
+    somebody out of their own preferences.
+    """
+    data = await _body(request)
+    note = str(data.get("note", ""))
+    if len(note) > parental.NOTE_MAX_CHARS:
+        return {"ok": False, "reason": "too_long"}
+    await parental.set_own_note(note)
     return {"ok": True, "saved": bool(note.strip())}
 
 

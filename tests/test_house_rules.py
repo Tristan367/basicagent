@@ -67,7 +67,7 @@ async def test_an_ordinary_session_gets_them_too_without_the_child_framing(db):
     the same sentence at the start of every conversation. A teacher who is
     tired of typing "check it against a real source before you put it in a
     worksheet" should type it once."""
-    await parental.set_parent_note("Always check a claim against a real source.")
+    await parental.set_own_note("Always check a claim against a real source.")
     said = await sent((await a_session("parent"))["id"])
 
     assert "Always check a claim against a real source." in said
@@ -306,9 +306,12 @@ def test_the_template_never_prints_it_in_child_mode():
     from pathlib import Path
 
     body = Path("web_ui/templates/settings_body.html").read_text()
-    at = body.index("house-rules-text")
+    at = body.index('id="house-rules-text"')
     printed = body[at:body.index("</textarea>", at)]
     assert "{% if not child_mode %}{{ parent_note }}{% endif %}" in printed
+    # The grown-up's own box has nobody to hide from and is printed plainly.
+    own = body.index('id="own-rules-text"')
+    assert "{{ own_note }}" in body[own:body.index("</textarea>", own)]
 
 
 async def test_saving_it_costs_the_parent_password(db):
@@ -348,22 +351,48 @@ class _Body:
         return self._data
 
 
+# ── two boxes, and neither leaks into the other ────────────────────────────
+
+
+async def test_a_childs_rules_stay_out_of_the_grown_ups_sessions(db):
+    """What a parent writes about their nine-year-old has no business in the
+    sessions where that same parent is preparing lessons or building something
+    of their own."""
+    await parental.set_parent_note(NOTE)
+    assert NOTE not in await sent((await a_session("parent"))["id"])
+
+
+async def test_the_grown_ups_rules_stay_out_of_a_childs_sessions(db):
+    """And the other way. "Never add a framework unless I ask" is not what a
+    nine-year-old's session needs, and swapping one box back and forth when you
+    change hats is a chore rather than a feature."""
+    await parental.set_own_note("Never add a framework unless I ask.")
+    assert "Never add a framework" not in await sent((await a_session("child"))["id"])
+
+
+async def test_each_reaches_its_own(db):
+    await parental.set_parent_note(NOTE)
+    await parental.set_own_note("British spelling everywhere.")
+    assert NOTE in await sent((await a_session("child"))["id"])
+    assert "British spelling everywhere." in await sent((await a_session("parent"))["id"])
+
+
 # ── it is not only a parental control ──────────────────────────────────────
 
 
-def test_the_panel_stands_on_its_own():
-    """It began inside Parental controls and outgrew it. Somebody who never
-    turns child mode on should still find it, because "always check a fact
-    against a real source" is the same feature."""
+def test_there_are_two_panels_and_they_say_they_are_separate():
+    """One box doing both jobs could do neither well. Each panel says the other
+    exists and that neither leaks, because a rule that quietly does not apply is
+    worse than one that was never written."""
     from pathlib import Path
 
     body = Path("web_ui/templates/settings_body.html").read_text()
     assert 'id="house-rules-panel"' in body
-    assert body.index('id="parental-panel"') < body.index('id="house-rules-panel"')
+    assert 'id="child-rules-panel"' in body
     said = " ".join(body.split())
-    assert "If you are teaching:" in said
-    assert "If you are building things yourself:" in said
-    assert "in every project" in said
+    assert "If you are preparing lessons:" in said
+    assert "They do not apply in child mode" in said
+    assert "Your own house rules above do not apply there" in said
 
 
 def test_the_child_wrapper_is_the_stronger_one():

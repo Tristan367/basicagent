@@ -1,21 +1,37 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-jinja2>=3.1.0
-openai>=1.50.0
-aiosqlite>=0.20.0
-python-dotenv>=1.0.0
-httpx>=0.27.0
-python-multipart>=0.0.9
-playwright>=1.45.0
-numpy>=1.26.0
-soundfile>=0.12.0
-pillow>=10.0.0
-kokoro-onnx>=0.5.0
+# Upper bounds on everything, and they matter more here than in most projects.
+#
+# This app is installed by people who cannot debug it. A dependency that
+# releases a breaking change does not produce a bug report from them -- it
+# produces somebody who installed the thing, saw a stack trace, and decided the
+# app is broken. There is no `pip install --upgrade` in their life and no
+# reason there should be.
+#
+# So every line is bounded at the next major above the version this was last
+# tested against, and the versions tested are written beside them. That is not
+# theoretical: `openai` was pinned at >=1.50 and the installed version here is
+# 3.1 -- two majors past what anybody checked, and working only by luck.
+#
+# Raising one of these is a small job: bump it, run the suite, update the
+# comment. Leaving them open is a large one, done by a stranger, badly.
+
+fastapi>=0.115.0,<1.0            # tested: 0.141.1
+uvicorn[standard]>=0.30.0,<1.0   # tested: 0.52.3
+jinja2>=3.1.0,<4.0               # tested: 3.1.6
+openai>=1.50.0,<4.0              # tested: 3.1.0
+aiosqlite>=0.20.0,<1.0           # tested: 0.22.1
+python-dotenv>=1.0.0,<2.0        # tested: 1.2.3
+httpx>=0.27.0,<1.0               # tested: 0.28.1
+python-multipart>=0.0.9,<1.0     # tested: 0.0.32
+playwright>=1.45.0,<2.0          # tested: 1.62.0
+numpy>=1.26.0,<3.0               # tested: 2.5.2
+soundfile>=0.12.0,<1.0           # tested: 0.14.0
+pillow>=10.0.0,<13.0             # tested: 12.3.0
+kokoro-onnx>=0.5.0,<1.0          # tested: 0.5.0
 
 # Dictation. Pure pip with wheels for Linux, macOS and Windows; decodes the
 # browser's audio itself, so no ffmpeg and no compiled binary are needed.
-faster-whisper>=1.1.0
+faster-whisper>=1.1.0,<2.0       # tested: 1.2.1
 
 # dev
-pytest>=8.0.0
-pytest-asyncio>=0.24.0
+pytest>=8.0.0,<10.0              # tested: 9.1.1
+pytest-asyncio>=0.24.0,<2.0      # tested: 1.4.0
