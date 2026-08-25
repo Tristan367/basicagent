@@ -105,6 +105,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     # would answer "you pointed at the canvas" every time. Stored rather than
     # worked out each run, so pressing Play tomorrow gets the same answer.
     ("sessions", "preview_pickable", "INTEGER DEFAULT 1"),
+    # A model the user has chosen but not paid to move to yet. Switching
+    # re-sends the whole conversation to the new model; the next compaction
+    # rebuilds the prefix anyway, so waiting for it makes the move free. Held
+    # here rather than in memory because "later" may be tomorrow.
+    ("sessions", "pending_model", "TEXT"),
     ("messages", "reasoning_content", "TEXT"),
     ("messages", "tool_name", "TEXT"),
     ("messages", "is_error", "INTEGER DEFAULT 0"),
@@ -273,6 +278,19 @@ async def update_session(session_id: str, **kwargs) -> dict | None:
         (*updates.values(), session_id),
     )
     return await get_session(session_id)
+
+
+async def set_pending_model(session_id: str, model: str) -> None:
+    """Queue a model switch for the next time this conversation is summarised.
+
+    Kept out of `SESSION_FIELDS` for the same reason `profile` is. That set is
+    reachable from a PATCH body, and a queued switch is still a switch -- in
+    child mode it is exactly the thing the parent password exists to gate, so
+    putting it in the generic set would have made the lock one PATCH away from
+    pointless.
+    """
+    await _execute("UPDATE sessions SET pending_model = ? WHERE id = ?",
+                   (model or None, session_id))
 
 
 async def set_session_profile(session_id: str, profile: str) -> dict | None:

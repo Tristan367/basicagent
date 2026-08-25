@@ -7,6 +7,8 @@ the session fails with a 400. The previous implementation sliced at a fixed
 offset and could split a group; this one only ever cuts on a group boundary.
 """
 
+import logging
+
 from agent_server import database as db
 from agent_server.config import model_info
 from agent_server.conversation import (
@@ -324,9 +326,17 @@ async def estimate_switch_costs(session_id: str, new_model_id: str) -> dict:
     target = model_info(new_model_id)
 
     usage = await db.get_session_usage(session_id)
-    context = usage["context"]
-
     rows = await db.get_messages(session_id)
+
+    # The measured context is the provider's own prompt size and the better
+    # number when there is one -- but there is not always one. It comes from the
+    # last assistant reply's usage, and a session that has messages in it and no
+    # reply yet (or whose rows predate usage being recorded) measures zero. A
+    # quote of zero reads as "free", which is the one wrong answer to give
+    # somebody about to spend money. So: never below what the messages
+    # themselves come to.
+    context = max(usage["context"], conversation_tokens(rows))
+
     to_compact, _kept = split_for_compaction(rows)
     head_tokens = sum(message_tokens(r) for r in to_compact)
     summary_est = max(int(head_tokens * SUMMARY_RATIO), MIN_SUMMARY_TOKENS) if head_tokens else 0
@@ -519,6 +529,8 @@ async def compact_session_events(
     # it does not need while the prefix is being rebuilt regardless.
     reasoning_freed = await drop_closed_reasoning(kept)
 
+    switched = await apply_pending_model(session_id)
+
     yield {
         "type": "compact_done",
         "result": {
@@ -529,5 +541,38 @@ async def compact_session_events(
             "original_tokens": original_tokens,
             "compressed_tokens": compressed_tokens,
             "summary": summary,
+            # The name of the model that has just taken over, if one was
+            # waiting. The user asked for this some time ago and needs telling
+            # it has happened -- a reply arriving from a different AI with no
+            # announcement is the sort of thing people notice and mistrust.
+            "switched_to": switched,
         },
     }
+
+
+async def apply_pending_model(session_id: str) -> str:
+    """Move a session onto the model it has been waiting to move to.
+
+    Called at the end of a compaction, which is the moment the move is free:
+    the whole prefix is being rebuilt and re-sent anyway, so the new model
+    reads it instead of the old one and nothing is paid twice.
+
+    Returns the name of the model that took over, or "" if none was waiting.
+    """
+    from agent_server.config import knows_model, provider_for_model
+
+    session = await db.get_session(session_id)
+    wanted = (session or {}).get("pending_model") or ""
+    if not wanted:
+        return ""
+    # Always cleared, even when it can no longer be honoured. A model that has
+    # been withdrawn since the user chose it would otherwise sit here failing
+    # quietly after every compaction, forever.
+    await db.set_pending_model(session_id, "")
+    if not knows_model(wanted) or wanted == session.get("model"):
+        return ""
+    await db.update_session(session_id, provider=provider_for_model(wanted),
+                            model=wanted)
+    logging.getLogger(__name__).info(
+        "session %s moved onto %s at compaction", session_id, wanted)
+    return model_info(wanted).get("name", wanted)

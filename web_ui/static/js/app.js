@@ -1726,6 +1726,24 @@
     }
   }
 
+  /* The AI changed, mid-conversation, because a queued switch came due. Said
+   * in the transcript rather than as a passing status line: it is a fact about
+   * the conversation from here on, and somebody scrolling back tomorrow to
+   * work out why the replies changed character should find it. */
+  function announceSwitch(name) {
+    const wrap = document.createElement('div');
+    wrap.className = 'message switched';
+    const note = document.createElement('div');
+    note.className = 'switched-note';
+    note.textContent = 'Now using ' + name + '.';
+    wrap.appendChild(note);
+    messages.appendChild(wrap);
+    const label = document.querySelector('#model-btn .model-label');
+    if (label) label.textContent = name;
+    announce('Now using ' + name + '.');
+    scrollToBottom();
+  }
+
   function appendSummary(summaryText) {
     const wrap = document.createElement('div');
     wrap.className = 'message summary';
@@ -2778,6 +2796,14 @@
         closeSegment();
         setLiveWork('Summarising our conversation\u2026');
         setWorkPhase('summarising');
+        break;
+      case 'compacted':
+        /* A switch the user queued some time ago has just happened, because
+         * summarising is the moment it costs nothing. They asked for it and
+         * then carried on working, possibly an hour ago -- a reply arriving
+         * from a different AI with nothing said is the sort of thing people
+         * notice and mistrust. */
+        if (ev.switched_to) announceSwitch(ev.switched_to);
         break;
       case 'done':
         finishAssistant(ev);
@@ -5038,9 +5064,35 @@
     } catch (e) {}
   }
 
+  /* Money, for somebody who is not counting in fractions of a cent. Four
+   * decimal places is what the arithmetic produces and not what anyone can
+   * read; below a penny the exact figure is noise, and saying so is the useful
+   * answer. */
+  function money(dollars) {
+    if (!(dollars > 0)) return 'Free';
+    if (dollars < 0.01) return 'under a cent';
+    if (dollars < 1) {
+      const cents = Math.round(dollars * 100);
+      return cents + (cents === 1 ? ' cent' : ' cents');
+    }
+    return '$' + dollars.toFixed(2);
+  }
+
   function renderModelMenu() {
     if (!modelData || !modelMenu) return;
     modelMenu.innerHTML = '';
+    /* Said before the click rather than after it. Changing AI part-way through
+     * a conversation is not free -- the new one has never seen any of it -- and
+     * a menu that looks like a free preference setting is a menu that teaches
+     * people it is one. */
+    const note = document.createElement('div');
+    note.className = 'model-menu-note';
+    note.textContent = modelData.pending_name
+      ? modelData.pending_name + ' takes over the next time this conversation '
+        + 'is shortened. Pick again to change that.'
+      : 'Changing AI mid-conversation costs something — the new one has to read '
+        + 'everything so far. You will be told how much before anything happens.';
+    modelMenu.appendChild(note);
     modelData.models.forEach((m) => {
       const b = document.createElement('button');
       b.type = 'button';
@@ -5065,13 +5117,65 @@
     });
   }
 
-  function chooseModel(m) {
+  /* What switching would cost, and the three ways to pay it.
+   *
+   * This used to be a yes/no, and the app quietly picked whichever of the two
+   * routes was cheaper without saying either number. That is a fine default and
+   * the wrong amount of information: on a long conversation the bill can be
+   * more than a day's ordinary use, and it turned up later on a statement
+   * nobody was reading. It also made "I would rather use the other one" cost
+   * money, when waiting for the next tidy-up costs nothing at all.
+   *
+   * The dialog opens before the quote arrives. Asking the server first would
+   * mean a click that appears to do nothing for a moment, which on a slow
+   * machine reads as a broken button. */
+  async function chooseModel(m) {
     if (!modelData || m.id === modelData.current_model) return;
     pendingModel = m;
-    document.getElementById('model-warning-text').textContent =
-      'Switch to "' + m.name + '"? If it is cheaper, the conversation will be ' +
-      'summarised first, then the new model takes over.';
+    const text = document.getElementById('model-warning-text');
+    const tidy = document.getElementById('model-choice-tidy');
+    const now = document.getElementById('model-choice-now');
+    document.getElementById('model-switch-title').textContent =
+      'Switch to ' + m.name + '?';
+    text.textContent = 'Working out what that would cost…';
+    tidy.hidden = true;
+    now.disabled = true;
+    document.getElementById('model-cost-now').textContent = '';
+    document.getElementById('model-cost-tidy').textContent = '';
     window.__openModal(modelWarning, document.getElementById('model-switch-cancel'));
+
+    let quote = null;
+    try {
+      quote = await fetch('/api/sessions/' + sessionId + '/model/quote?model='
+        + encodeURIComponent(m.id)).then((r) => (r.ok ? r.json() : null));
+    } catch (e) {}
+    if (!pendingModel || pendingModel.id !== m.id) return;  // cancelled meanwhile
+
+    now.disabled = false;
+    if (!quote) {
+      /* No numbers is not a reason to block the switch -- it is a reason to
+       * stop pretending to know. */
+      text.textContent = 'This conversation has to be read from the start by '
+        + m.name + ', and that costs something. I could not work out how much.';
+      document.getElementById('model-cost-now').textContent = '';
+      return;
+    }
+    /* In words, not tokens. "250,000 tokens" is a unit this app's users have
+     * no feel for, and the whole point of the sentence is to give them one.
+     * Roughly three words to four tokens, which is close enough to be honest
+     * and is why it says "about". */
+    const words = Math.round(quote.context_tokens * 0.75);
+    text.textContent = words < 2000
+      ? 'This conversation is still short, so ' + m.name + ' can read it from '
+        + 'the start for very little.'
+      : 'This conversation has grown to about '
+        + words.toLocaleString() + ' words, and ' + m.name
+        + ' has not seen any of it yet.';
+    document.getElementById('model-cost-now').textContent = money(quote.direct_cost);
+    if (quote.can_tidy) {
+      document.getElementById('model-cost-tidy').textContent = money(quote.compact_cost);
+      tidy.hidden = false;
+    }
   }
 
   if (modelBtn && modelMenu) {
@@ -5122,18 +5226,23 @@
 
   if (modelWarning) {
     const cancel = document.getElementById('model-switch-cancel');
-    const confirm = document.getElementById('model-switch-confirm');
     if (cancel) cancel.addEventListener('click', () => {
       pendingModel = null;
       parentPassword = null;
       window.__closeModal();
     });
-    if (confirm) confirm.addEventListener('click', async () => {
+    ['now', 'tidy', 'later'].forEach((how) => {
+      const button = document.getElementById('model-choice-' + how);
+      if (button) button.addEventListener('click', () => switchTo(how));
+    });
+    async function switchTo(how) {
       if (!pendingModel) return;
       const m = pendingModel;
       pendingModel = null;
       window.__closeModal();
-      setStatus('Switching to ' + m.name + '…');
+      setStatus(how === 'later'
+        ? 'Setting ' + m.name + ' to take over later…'
+        : 'Switching to ' + m.name + '…');
       // Spent on this one switch, whether or not it works. The next one asks
       // again, so a child cannot follow a parent's change with their own.
       const password = parentPassword;
@@ -5142,7 +5251,7 @@
         const resp = await fetch('/api/sessions/' + sessionId + '/model', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: m.id, parent_password: password || '' }),
+          body: JSON.stringify({ model: m.id, how, parent_password: password || '' }),
         });
         if (!resp.ok) {
           let msg = 'Could not switch model.';
@@ -5152,14 +5261,17 @@
           return;
         }
         let finished = false;
+        let queued = false;
         let failure = '';
         await readSSE(resp, (ev) => {
           if (ev.type === 'switch_status') {
             setStatus(ev.phase === 'compacting'
-              ? 'Compacting conversation…'
+              ? 'Shortening the conversation…'
               : 'Switching to ' + m.name + '…');
           } else if (ev.type === 'switch_done') {
             finished = true;
+          } else if (ev.type === 'switch_queued') {
+            queued = true;
           } else if (ev.type === 'error') {
             // The stream has already sent 200 by this point, so a failure can
             // only arrive as an event. Without this the real reason was
@@ -5167,7 +5279,20 @@
             failure = ev.message || '';
           }
         });
-        if (finished) {
+        if (queued) {
+          /* Nothing has changed yet, so no reload -- the conversation carries
+           * on with the AI it has. Said out loud because a choice whose whole
+           * point is that nothing happens now needs some sign that it landed,
+           * and the menu note carries it from here on. */
+          clearStatus();
+          if (modelData) {
+            modelData.pending_name = m.name;
+            renderModelMenu();
+          }
+          announce(m.name + ' will take over when the conversation is next shortened.');
+          setStatus(m.name + ' takes over when this conversation is next shortened.');
+          setTimeout(clearStatus, 8000);
+        } else if (finished) {
           location.reload();
         } else {
           clearStatus();
@@ -5178,7 +5303,7 @@
         showError('Could not switch model. Please try again.');
         return;
       }
-    });
+    }
   }
 
   // ── Welcome modal (first run, unless dismissed) ───────────────────────────

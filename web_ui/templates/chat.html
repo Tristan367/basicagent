@@ -369,12 +369,41 @@
         </form>
     </div>
 
+    {#
+      Changing AI part-way through a conversation is not free: the new one has
+      never seen any of it, so the whole thing goes up again at its own rate.
+      On a long conversation that can cost more than a day's ordinary use, and
+      it used to arrive as a surprise on a bill nobody was reading.
+
+      So: the number first, then three ways to pay it, and the cheapest of them
+      is free. Not a yes/no -- "switch or don't" makes somebody who wants the
+      other model either pay or give up, when waiting until the conversation is
+      next tidied up costs nothing at all.
+    #}
     <div class="modal-backdrop" id="model-warning" role="dialog" aria-modal="true" aria-label="Switch model" hidden>
-        <div class="welcome-card quit-card">
-            <h2>Switch model?</h2>
-            <p id="model-warning-text">Switching models will re-process your conversation.</p>
+        <div class="welcome-card quit-card model-switch-card">
+            <h2 id="model-switch-title">Switch to this AI?</h2>
+            <p id="model-warning-text"></p>
+            <div class="model-choices">
+                <button type="button" class="model-choice" id="model-choice-now">
+                    <span class="model-choice-what">Switch now</span>
+                    <span class="model-choice-why">It reads the whole conversation straight away.</span>
+                    <span class="model-choice-cost" id="model-cost-now"></span>
+                </button>
+                <button type="button" class="model-choice" id="model-choice-tidy" hidden>
+                    <span class="model-choice-what">Shorten the conversation first</span>
+                    <span class="model-choice-why">Sums up the older part, then switches. Cheaper, and
+                        the details of the early conversation are lost.</span>
+                    <span class="model-choice-cost" id="model-cost-tidy"></span>
+                </button>
+                <button type="button" class="model-choice" id="model-choice-later">
+                    <span class="model-choice-what">Carry on, and switch later</span>
+                    <span class="model-choice-why">Keeps working with the AI you have. The new one takes
+                        over when the conversation next gets shortened on its own.</span>
+                    <span class="model-choice-cost">Free</span>
+                </button>
+            </div>
             <div class="quit-actions">
-                <button type="button" class="btn-primary" id="model-switch-confirm">Switch</button>
                 <button type="button" class="btn-stop" id="model-switch-cancel">Cancel</button>
             </div>
         </div>

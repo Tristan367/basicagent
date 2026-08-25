@@ -185,7 +185,47 @@ async def session_models(session_id: str):
                           if session["provider"].startswith("custom:")
                           else session["model"]),
         "context_tokens": usage["context"],
+        # A switch the user has already chosen and not paid for yet, so the
+        # menu can say so. Without it, choosing "later" and coming back an hour
+        # later shows nothing at all -- and a choice that leaves no trace is a
+        # choice people reasonably assume did not happen.
+        "pending_model": session.get("pending_model") or "",
+        "pending_name": (model_info(session["pending_model"]).get(
+            "name", session["pending_model"]) if session.get("pending_model") else ""),
         "models": models,
+    }
+
+
+@router.get("/{session_id}/model/quote")
+async def quote_model_switch(session_id: str, model: str = ""):
+    """What moving this conversation to another AI would cost, before doing it.
+
+    The app used to decide this silently: cheaper of the two wins, no mention
+    of either number. That is the right default and the wrong amount of
+    information -- a switch part-way through a long conversation can cost more
+    than a day's ordinary use, and it arrived as a surprise on a bill nobody
+    was reading. So the numbers come out first, and the choice is the user's.
+    """
+    from agent_server.compaction import estimate_switch_costs
+
+    session = await _require(session_id)
+    if not knows_model(model):
+        raise HTTPException(400, "I do not recognise that model.")
+
+    plan = await estimate_switch_costs(session_id, model)
+    pending = session.get("pending_model") or ""
+    return {
+        "model": model,
+        "name": model_info(model).get("name", model),
+        "context_tokens": plan["context_tokens"],
+        "direct_cost": plan["direct_cost"],
+        "compact_cost": plan["compact_cost"],
+        # Whether tidying up is even on the table. A short conversation has
+        # nothing old enough to summarise, so offering it would be offering a
+        # button that does nothing.
+        "can_tidy": plan["head_tokens"] > 0 and plan["compact_cost"] < plan["direct_cost"],
+        "pending_model": pending,
+        "pending_name": model_info(pending).get("name", pending) if pending else "",
     }
 
 
@@ -237,16 +277,41 @@ async def switch_model(session_id: str, request: Request, payload: dict):
 
     display_name = model_info(model).get("name", model)
 
+    # How the user chose to pay for it. "now" moves immediately and re-sends
+    # the conversation; "tidy" summarises first and sends less; "later" queues
+    # it for the next compaction, which rebuilds the prefix anyway and so costs
+    # nothing extra. Anything else means the caller did not choose, and the app
+    # picks whichever of the first two is cheaper -- the behaviour before there
+    # was a choice to make.
+    how = str(payload.get("how", "")).strip().lower()
+
+    if how == "later":
+        await db.set_pending_model(session_id, model)
+        log.info("switch model queued session=%s model=%s", session_id, model)
+
+        async def queued():
+            yield agent.sse({"type": "switch_queued", "model": model,
+                             "name": display_name})
+
+        return StreamingResponse(queued(), media_type="text/event-stream",
+                                 headers=_SSE_HEADERS)
+
     async def generator():
         from agent_server.compaction import compact_session, estimate_switch_costs
 
         plan = await estimate_switch_costs(session_id, model)
         log.info(
-            "switch model session=%s model=%s compact=%s direct=$%.4f compact=$%.4f",
-            session_id, model, plan["compact"], plan["direct_cost"], plan["compact_cost"],
+            "switch model session=%s model=%s how=%s compact=%s direct=$%.4f compact=$%.4f",
+            session_id, model, how or "auto", plan["compact"],
+            plan["direct_cost"], plan["compact_cost"],
         )
+        tidy = plan["compact"] if how not in ("now", "tidy") else how == "tidy"
 
-        if plan["compact"]:
+        # A switch chosen now replaces one that was waiting, rather than
+        # leaving it to fire later and move the session a second time.
+        await db.set_pending_model(session_id, "")
+
+        if tidy:
             yield agent.sse({"type": "switch_status", "phase": "compacting"})
             try:
                 result = await compact_session(session_id)

@@ -2952,3 +2952,65 @@ html.wide-gutter .app-bar-btn.icon-only#settings-btn { display: none; }
 .house-rules-text:disabled { opacity: 0.55; }
 .house-rules-actions { margin-top: 12px; }
 .house-rules-bad { color: var(--danger); }
+
+/* Changing AI mid-conversation: the note above the list, and the three ways to
+   pay for it. Written as three choices rather than yes/no because the cheapest
+   one is free, and a yes/no hides that. */
+.model-menu-note {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    line-height: 1.45;
+    white-space: normal;
+}
+.model-switch-card { max-width: 560px; }
+.model-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0 4px;
+    text-align: left;
+}
+.model-choice {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 14px;
+    padding: 13px 16px;
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.model-choice:hover:not(:disabled) { border-color: var(--accent); }
+.model-choice:disabled { opacity: 0.5; cursor: default; }
+.model-choice-what { font-weight: 700; }
+.model-choice-why {
+    grid-column: 1;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+.model-choice-cost {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    font-weight: 700;
+    color: var(--accent);
+    white-space: nowrap;
+}
+
+/* "Now using Gemini 3.1 Pro." -- a queued switch coming due mid-conversation.
+   Quiet, and in the transcript, because it is a fact about everything below
+   it rather than a passing status. */
+.message.switched { justify-content: center; }
+.switched-note {
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+}
