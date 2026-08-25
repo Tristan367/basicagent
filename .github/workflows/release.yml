@@ -64,9 +64,19 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           staging="basicagent-$version"
           mkdir "$staging"
+          # The staging folder is inside the folder being copied, so it has to
+          # exclude itself or the zip contains a hollow copy of its own name --
+          # which is confusing to open and was in the first build of this.
           rsync -a --exclude '.git' --exclude '.github' --exclude '.venv' \
                 --exclude '__pycache__' --exclude '.pytest_cache' \
+                --exclude "/$staging" \
                 ./ "$staging/"
+          # What a stranger unzips is what they were promised.
+          for needed in install.py basicagent.py VERSION requirements.txt \
+                        install.bat Assistant.bat install.command Assistant.command; do
+            test -f "$staging/$needed" || { echo "missing from the zip: $needed"; exit 1; }
+          done
+          test ! -e "$staging/$staging" || { echo "the zip contains itself"; exit 1; }
           zip -qr "basicagent-$version.zip" "$staging"
           ls -la *.zip
 

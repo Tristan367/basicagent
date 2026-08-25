@@ -288,3 +288,24 @@ def test_settings_says_nothing_when_there_is_nothing_to_say():
     body = (APP / "web_ui" / "templates" / "settings_body.html").read_text()
     at = body.index('id="update-card"')
     assert "hidden" in body[at:at + 200]
+
+
+def test_the_download_does_not_contain_itself():
+    """The staging folder is inside the folder being copied, so rsync has to
+    exclude it -- the first build of this shipped a hollow copy of its own name
+    inside the zip, which is a strange first thing to meet."""
+    flow = (APP / ".github" / "workflows" / "release.yml").read_text()
+    assert '--exclude "/$staging"' in flow
+    assert 'test ! -e "$staging/$staging"' in flow
+
+
+def test_the_workflow_checks_the_zip_before_publishing_it():
+    """A download page promising `Assistant.command` and a zip without one is
+    the first thing somebody meets and the last thing they try. Checked where
+    the zip is made, not only where the page is written."""
+    flow = (APP / ".github" / "workflows" / "release.yml").read_text()
+    for named in ("install.py", "basicagent.py", "VERSION", "requirements.txt",
+                  "install.bat", "Assistant.bat", "install.command",
+                  "Assistant.command"):
+        assert named in flow, named
+    assert "missing from the zip" in flow
