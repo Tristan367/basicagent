@@ -396,10 +396,19 @@
                         the details of the early conversation are lost.</span>
                     <span class="model-choice-cost" id="model-cost-tidy"></span>
                 </button>
+                {#
+                  "Switch later" read as homework -- do I have to come back and
+                  do this myself? Nothing here is for the user to remember, so
+                  the label has to say what actually happens and when, and the
+                  line underneath says how far off that is.
+                #}
                 <button type="button" class="model-choice" id="model-choice-later">
-                    <span class="model-choice-what">Carry on, and switch later</span>
-                    <span class="model-choice-why">Keeps working with the AI you have. The new one takes
-                        over when the conversation next gets shortened on its own.</span>
+                    <span class="model-choice-what">Switch automatically, next time this
+                        conversation is shortened</span>
+                    <span class="model-choice-why" id="model-later-why">Nothing for you to
+                        remember — it happens on its own. The conversation gets re-read from
+                        the start at that point anyway, so the new AI reads it instead of the
+                        old one and the change costs nothing.</span>
                     <span class="model-choice-cost">Free</span>
                 </button>
             </div>

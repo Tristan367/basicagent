@@ -110,6 +110,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     # rebuilds the prefix anyway, so waiting for it makes the move free. Held
     # here rather than in memory because "later" may be tomorrow.
     ("sessions", "pending_model", "TEXT"),
+    # A fingerprint of the house rules this session has already been shown, so
+    # "the parent changed these" is said once per change rather than every turn
+    # afterwards. A fingerprint and not the text: the rules are private, and a
+    # second copy of them on the session row is a second place to find them.
+    ("sessions", "house_rules_seen", "TEXT"),
     ("messages", "reasoning_content", "TEXT"),
     ("messages", "tool_name", "TEXT"),
     ("messages", "is_error", "INTEGER DEFAULT 0"),
@@ -291,6 +296,13 @@ async def set_pending_model(session_id: str, model: str) -> None:
     """
     await _execute("UPDATE sessions SET pending_model = ? WHERE id = ?",
                    (model or None, session_id))
+
+
+async def set_house_rules_seen(session_id: str, fingerprint: str) -> None:
+    """Remember which house rules this session has been shown. Not in
+    `SESSION_FIELDS` for the same reason nothing else about child mode is."""
+    await _execute("UPDATE sessions SET house_rules_seen = ? WHERE id = ?",
+                   (fingerprint or None, session_id))
 
 
 async def set_session_profile(session_id: str, profile: str) -> dict | None:

@@ -5176,6 +5176,19 @@
       document.getElementById('model-cost-tidy').textContent = money(quote.compact_cost);
       tidy.hidden = false;
     }
+
+    /* How far off the free option is. "It'll switch later" is not something
+     * anybody can plan around; "about 40,000 words from now" is, and it is the
+     * difference between waiting deliberately and wondering whether you have
+     * to do something. */
+    const why = document.getElementById('model-later-why');
+    if (why && !why.dataset.base) why.dataset.base = why.textContent.trim();
+    if (why) {
+      const left = Math.round((quote.tokens_until_shortened || 0) * 0.75);
+      why.textContent = why.dataset.base + (left > 500
+        ? ' That is about ' + left.toLocaleString() + ' more words away.'
+        : ' That is due very soon.');
+    }
   }
 
   if (modelBtn && modelMenu) {

@@ -18,7 +18,7 @@ import uuid
 from collections.abc import AsyncIterator
 
 from agent_server import database as db
-from agent_server import image_support
+from agent_server import image_support, parental
 from agent_server.config import MAX_TOOL_RESULT_CHARS
 from agent_server.conversation import (
     build_messages,
@@ -506,10 +506,18 @@ async def _loop(
                     _compacted_this_run.add(session_id)
 
         rows = await db.get_messages(session_id)
+        house_rules, rules_changed = await parental.rules_for_session(
+            await db.get_session(session_id) or {})
         messages = build_messages(
             system_prompt, await db.get_compactions(session_id), rows,
-            sees_images, screen_reader,
+            sees_images, screen_reader, house_rules,
         )
+        if rules_changed:
+            # Last, so it is the freshest thing the model reads. The rules
+            # themselves are already current -- this exists only so the shift in
+            # behaviour does not arrive as an unexplained change of character
+            # the child then asks about.
+            messages.append({"role": "system", "content": parental.RULES_CHANGED})
 
         if not any(m["role"] != "system" for m in messages):
             yield {"type": "error", "message": "Nothing to send: the conversation is empty."}

@@ -239,3 +239,27 @@ def test_the_switch_is_announced_when_it_finally_happens():
     assert "messages.appendChild" in body
     # And the button in the composer stops naming the old one.
     assert "model-label" in body
+
+
+async def test_the_quote_says_how_far_off_the_free_option_is(long_session):
+    """"Switch later" read as homework -- do I have to come back and do this
+    myself? Saying how much further the conversation can run before it happens
+    is the difference between waiting deliberately and wondering."""
+    target = _a_model(long_session["model"])
+    quote = await routes.quote_model_switch(long_session["id"], model=target)
+    assert quote["tokens_until_shortened"] >= 0
+    usage = await db.get_session_usage(long_session["id"])
+    assert quote["tokens_until_shortened"] <= usage["threshold"]
+
+
+def test_the_free_option_says_what_happens_rather_than_when_to_come_back():
+    """Nothing here is for the user to remember."""
+    from pathlib import Path
+
+    html = Path("web_ui/templates/chat.html").read_text()
+    at = html.index('id="model-choice-later"')
+    block = html[at:at + 900]
+    assert "Switch automatically" in block
+    assert "Nothing for you to\n                        remember" in block \
+        or "Nothing for you to remember" in " ".join(block.split())
+    assert "costs nothing" in block

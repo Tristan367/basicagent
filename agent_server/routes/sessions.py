@@ -226,6 +226,13 @@ async def quote_model_switch(session_id: str, model: str = ""):
         "can_tidy": plan["head_tokens"] > 0 and plan["compact_cost"] < plan["direct_cost"],
         "pending_model": pending,
         "pending_name": model_info(pending).get("name", pending) if pending else "",
+        # How much further this conversation can run before it is shortened on
+        # its own -- which is when a queued switch happens. "It'll switch later"
+        # is not an answer somebody can plan around; "about 40,000 words from
+        # now" is.
+        "tokens_until_shortened": max(
+            (await db.get_session_usage(session_id))["threshold"]
+            - plan["context_tokens"], 0),
     }
 
 

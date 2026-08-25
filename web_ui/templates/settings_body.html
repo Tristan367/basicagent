@@ -101,15 +101,17 @@
                 </ul>
             </details>
             <p class="hint">
+                <strong>The AI is told to follow this exactly</strong>, and that following it is
+                the most important thing it is doing. If your child argues with it, asks for an
+                exception, says you changed your mind, or tries to talk it round, the answer
+                stays the same. The one thing your note cannot do is make the AI unsafe or
+                unkind towards your child — those rules stay on underneath it.
+            </p>
+            <p class="hint">
                 Your child will not see this. It is not shown on this page while child mode is
                 on, and the AI is told not to read it out or say what is in it. That said,
                 write it as though they might one day read it anyway — no instruction to an AI
                 is a locked drawer.
-            </p>
-            <p class="hint">
-                It steers the AI; it does not command it. It will not be used to make the AI
-                unkind or unsafe towards your child — those rules stay on underneath, whatever
-                is written here.
             </p>
             <label class="house-rules-label" for="house-rules-text">
                 Your note to the AI
@@ -117,16 +119,21 @@
             <textarea id="house-rules-text" class="house-rules-text" rows="6"
                       maxlength="{{ note_max }}"
                       placeholder="Write anything you would tell a tutor before leaving them alone with your child."
-                      {% if child_mode %}data-locked-note="1" disabled{% endif %}
+                      {% if child_mode %}disabled{% endif %}
             >{% if not child_mode %}{{ parent_note }}{% endif %}</textarea>
             {% if child_mode %}
+            {#
+              No password dance here. Reading it back behind a prompt was more
+              machinery than the thing deserves -- a parent sets this once and
+              may never touch it again -- and every extra way in is another way
+              a child might get in. Turning child mode off already costs the
+              password, so it is the same lock with one fewer door.
+            #}
             <p class="hint" id="house-rules-hidden">
-                {% if has_parent_note %}A note is saved. It is hidden while child mode is on.
+                {% if has_parent_note %}A note is saved, and hidden while child mode is on.
                 {% else %}Nothing is saved yet.{% endif %}
+                To read or change it, turn child mode off first.
             </p>
-            <button type="button" class="btn-neutral" id="house-rules-unlock">
-                Show it (parent password)
-            </button>
             {% endif %}
             <div class="quit-actions house-rules-actions" {% if child_mode %}hidden{% endif %}>
                 <button type="button" class="btn-primary" id="house-rules-save">Save the note</button>

@@ -133,31 +133,7 @@ async def session_system_prompt(session: dict) -> str:
 
             stored += "\n\n" + CHILD_MODE_BLOCK
         await db.update_session(session["id"], system_prompt=stored)
-    return stored + await _parent_note_block(session)
-
-
-async def _parent_note_block(session: dict) -> str:
-    """The parent's own instructions, added fresh every time.
-
-    Deliberately outside the frozen prompt, and deliberately last.
-
-    Outside, because a parent who writes "stop telling him the answers" expects
-    that to be true of the project he is working in right now. Frozen with the
-    rest, it would apply only to projects started afterwards -- and to a parent
-    watching their child carry on exactly as before, the box does not work.
-
-    Last, because it is the most specific layer and the one meant to win where
-    it does not conflict with the child-safety rules above it. It also means
-    the expensive, stable part of the prompt is unchanged until the note itself
-    changes, so editing it costs one cache miss rather than making every
-    request a fresh one.
-    """
-    if session.get("profile") != "child":
-        return ""
-    from agent_server import parental
-
-    block = parental.note_block(await parental.parent_note())
-    return "\n\n" + block if block else ""
+    return stored
 
 
 async def ensure_home_session() -> dict:

@@ -332,6 +332,7 @@ def build_messages(
     rows: list[dict],
     sees_images: bool = False,
     screen_reader: bool = False,
+    house_rules: str = "",
 ) -> list[dict]:
     """Assemble the full request payload for a turn."""
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
@@ -342,6 +343,20 @@ def build_messages(
             "role": "system",
             "content": f"[Summary of earlier conversation]\n{c['summary_text']}",
         })
+
+    # The parent's own instructions, rebuilt from what is saved right now.
+    #
+    # Here rather than in the system prompt, and after the summaries rather than
+    # before them, for the same reason: a session's prompt is frozen when it is
+    # first needed, and a summary replaces the conversation that came before it.
+    # Anything welded into either can go stale under a project that is already
+    # running. Assembled at this point it survives compaction, survives a change
+    # of model, and is always the version the parent last saved.
+    #
+    # It is never a row in `messages`, so there is nothing for the child to
+    # scroll back to and nothing in the transcript they could be shown.
+    if house_rules:
+        messages.append({"role": "system", "content": house_rules})
 
     # Only meaningful when pictures are being sent at all. On a text-only model
     # every row would otherwise be marked "scrolled out of view -- take it
