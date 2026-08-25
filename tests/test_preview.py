@@ -47,9 +47,26 @@ def free_port() -> int:
 
 
 def running_servers() -> int:
-    """Ask the operating system, not this module."""
+    """Ask the operating system, not this module.
+
+    Counting every line that mentions the script counted the shell wrapper as
+    well as the server on some machines -- `sh -c "python preview_server.py"`
+    and the python process it starts both say `preview_server.py`, and whether
+    the shell sticks around to be counted depends on which shell it is. It
+    passed here and failed on a build server, which is the worst way round.
+
+    So: only lines whose *first* word is an interpreter, which is the server
+    itself and never the shell that launched it.
+    """
     out = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True).stdout
-    return sum(1 for line in out.splitlines() if "preview_server.py" in line and "ps -eo" not in line)
+    count = 0
+    for line in out.splitlines():
+        if "preview_server.py" not in line or "ps -eo" in line:
+            continue
+        first = (line.split() or [""])[0].rsplit("/", 1)[-1]
+        if first.startswith("python"):
+            count += 1
+    return count
 
 
 @pytest.fixture

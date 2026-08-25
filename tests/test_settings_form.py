@@ -78,13 +78,26 @@ async def test_the_settings_body_renders_on_its_own(client):
 async def test_the_page_and_the_panel_show_the_same_controls(client):
     """Both render the one template. If they ever drift, somebody has edited a
     copy -- and the page is the fallback a user reaches for when the panel is
-    broken, so it cannot be the stale one."""
+    broken, so it cannot be the stale one.
+
+    Asserted against each other rather than against a list of control names.
+    The list quietly assumed a machine with the read-aloud voice installed, so
+    it passed on the one it was written on and failed on a build server -- a
+    test about two renderings agreeing had turned into a test about what was
+    downloaded, and it took a release being refused to notice."""
     page = (await client.get("/settings")).text
     body = (await client.get("/settings/body")).text
-    for control in ('name="tts_voice"', 'name="uses_screen_reader"', 'id="restart-btn"',
+
+    for control in ('name="uses_screen_reader"', 'id="restart-btn"',
                     'id="settings-page"', "Parental controls"):
         assert control in body, f"{control} missing from the panel"
         assert control in page, f"{control} missing from the page"
+
+    # Anything optional has to appear in both or neither, whichever this
+    # machine happens to be.
+    for optional in ('name="tts_voice"', 'name="whisper_model"'):
+        assert (optional in body) == (optional in page), (
+            f"{optional} is in one of them and not the other")
 
 
 async def test_the_settings_page_still_exists(client):
