@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block title %}How this works{% endblock %}
+{% block app_title %}How this works{% endblock %}
+{% block content %}
+{#
+  For the person who has never used one of these and is not sure whether they
+  should let their child near it. Written to be read straight through by
+  somebody with no technical background at all -- and read aloud, because a
+  fair number of the people this app is for will be listening to it.
+
+  The rule the whole page is written under: nothing here may be a comforting
+  thing that is not true. A parent who is reassured by something false is worse
+  off than one who was never reassured, because they stop looking. So the
+  honest limits are on the page next to the good parts, in the same voice.
+#}
+<div class="about-scroll">
+<div class="about" id="about-page">
+
+    <h1>How any of this works</h1>
+    <p class="about-lead">
+        No jargon, nothing assumed. If you have ever wondered what these things
+        actually are, this is the whole picture in about ten minutes.
+    </p>
+
+    <nav class="about-toc" aria-label="On this page">
+        <a href="#what">What this app is</a>
+        <a href="#brain">What the AI actually does</a>
+        <a href="#memory">Why it forgets</a>
+        <a href="#power">What it can do to your computer</a>
+        <a href="#wrong">When it is wrong</a>
+        <a href="#bad">The honest bad parts</a>
+        <a href="#skynet">Should you be frightened of it?</a>
+        <a href="#good">Why we think it is worth it</a>
+    </nav>
+
+    <!-- ── what this is ─────────────────────────────────────────────── -->
+    <section id="what">
+        <h2>What this app is</h2>
+        <p>
+            You describe something you want — a game, a website, a story, a tool
+            to sort out your photos — and an AI builds it on this computer while
+            you watch. You never have to type code, name a file, or open
+            anything technical. When it is done, you press <strong>Play</strong>
+            and it runs.
+        </p>
+        <p>
+            The app does not come with its own AI. It connects to one you have an
+            account with, using a key you paste into Settings once. That means
+            you pay the AI company directly, at their prices, with nothing added
+            on top. It also means you can change your mind and use a different
+            one whenever you like.
+        </p>
+    </section>
+
+    <!-- ── the model ────────────────────────────────────────────────── -->
+    <section id="brain">
+        <h2>What the AI actually does</h2>
+        <p class="about-big">It reads text, and it writes text. That is the whole of it.</p>
+        <p>
+            Everything else you have heard about these things is built on top of
+            that one ability. It has no body, no eyes on your room, no opinions
+            it is trying to spread, and nothing it wants when nobody is talking
+            to it. Between your messages it is not waiting, or thinking, or
+            planning. It is not doing anything at all.
+        </p>
+        <p>
+            What it knows, it learned once, in one enormous go, from an enormous
+            amount of writing. That took months and cost millions of pounds. At
+            the end of it the knowledge was set, the way a fired pot is set —
+            and then it stopped learning. Talking to it does not teach it
+            anything. Nothing you say here goes back into it. Tomorrow it will
+            know exactly what it knows today, and not a word more.
+        </p>
+        <p>
+            Two things follow from that, and both matter more than they sound.
+        </p>
+        <ul>
+            <li>
+                <strong>Its knowledge is old.</strong> Everything it learned
+                stopped at some point months or years ago. It often does not
+                realise this, and will tell you confidently about a tool that has
+                changed since. If something depends on being current, tell it to
+                <em>look it up on the web first</em> — it can, and it will,
+                but it frequently does not think to.
+            </li>
+            <li>
+                <strong>It is good at what it saw a lot of and bad at the
+                rest.</strong> Common things it handles beautifully. Something
+                genuinely unusual, it will attempt with exactly the same
+                confidence and get wrong.
+            </li>
+        </ul>
+    </section>
+
+    <!-- ── context and compaction ───────────────────────────────────── -->
+    <section id="memory">
+        <h2>Why it forgets, and what happens when it does</h2>
+        <p>
+            Imagine someone who has read every book in the library and remembers
+            all of it — but can only hold a few pages on the desk in front of
+            them at a time. The library is what they learned during training.
+            The desk is your conversation.
+        </p>
+        <p>
+            Everything you have said, everything it has said, every file it has
+            read and every command it has run this session — all of that has to
+            sit on the desk, all at once, every single time it answers you. That
+            is not a metaphor for how it works. It is how it works: it re-reads
+            the entire conversation from the beginning before writing each reply.
+        </p>
+        <p>
+            The desk has an edge. When the conversation gets close to it, this
+            app does something you will occasionally see happen:
+            <strong>it writes a summary of the older part and clears that part
+            away</strong>. What it did, what it decided, which files it changed,
+            what is still to do — kept. The exact back-and-forth of two hours
+            ago — gone, replaced by a paragraph about it.
+        </p>
+        <p>
+            You will see <em>“Earlier conversation was summarized”</em> in the
+            transcript when this happens. Nothing has broken. It is the app
+            making room, and it is why a project can run all day.
+        </p>
+        <p class="about-aside">
+            It is worth knowing because of what it means for you: if something
+            matters and you mentioned it a long way back, say it again. And if
+            you are about to start something quite different, a fresh project is
+            cheaper and sharper than carrying an old conversation into it.
+        </p>
+    </section>
+
+    <!-- ── tools and permissions ────────────────────────────────────── -->
+    <section id="power">
+        <h2>What it can do to your computer</h2>
+        <p>
+            On its own, an AI can only produce text. It cannot open a file or
+            run anything. What changes that is an app like this one, which reads
+            what it wrote and <em>acts on it</em> — makes the file it described,
+            runs the command it asked for. That is where the power comes from.
+            Not from the AI. From us handing it the keys.
+        </p>
+        <p>
+            So it is worth being straight with you about which keys we hand over.
+        </p>
+        <h3>It does not stop to ask permission</h3>
+        <p>
+            Most tools like this interrupt you constantly: <em>may I read this?
+            may I run that?</em> This one does not. It gets on with the work.
+            That is a deliberate choice — this app is for people who would have
+            no way of judging those questions, and who in practice would press
+            “yes” to all of them anyway, which is a worse kind of safe.
+        </p>
+        <p>
+            What replaces the asking is a small number of things it simply cannot
+            do, whatever it decides: it cannot run the handful of commands that
+            wipe a machine, and it cannot write to the parts of the system that
+            would break it. Those refusals are absolute and it is told to explain
+            them to you rather than work around them.
+        </p>
+        <h3>It works in your project folder — but it is not fenced into it</h3>
+        <p>
+            Each project lives in its own folder, and that is where the AI works.
+            It is not locked in there, though. If it needs to install something
+            or look at a setting elsewhere on the machine, it can, exactly as any
+            program you run can. It cannot reach anything your own account
+            cannot.
+        </p>
+        <p>
+            In practice it is uninterested in your files. It looks at what is in
+            its project, and it opens things because a job needs them opened, not
+            to have a look around. But we would rather say plainly what is
+            possible than tell you it is fenced in when it is not.
+        </p>
+        <p class="about-aside">
+            If that matters to you, the simplest answer is the ordinary one for
+            any program: keep the genuinely private things in a separate account
+            on the computer, or off it.
+        </p>
+    </section>
+
+    <!-- ── being wrong ──────────────────────────────────────────────── -->
+    <section id="wrong">
+        <h2>When it is wrong — and it will be</h2>
+        <p>
+            It writes the wrong answer in exactly the same voice as the right
+            one. There is no wobble, no hedge, nothing in the tone to warn you.
+            This is the single most useful thing to understand about these
+            things, and it is the one people learn last.
+        </p>
+        <p>
+            The good news is that in this app, being wrong is usually loud. Code
+            that does not work does not work in front of you: you press Play and
+            the button does nothing. That is a far better place to be wrong than
+            an essay, where nobody can tell.
+        </p>
+        <p>
+            <strong>When it tells you something that actually matters</strong> —
+            that a thing is safe, that something costs what it says, that a
+            method is the right one — do not take it on trust. Ask it to
+            <em>prove it</em>. “How could we check that?” is the most valuable
+            sentence in this whole app. It will usually come up with a way, and
+            sometimes you will have to help it invent one. That habit is worth
+            more than any amount of caution.
+        </p>
+    </section>
+
+    <!-- ── the honest downsides ─────────────────────────────────────── -->
+    <section id="bad">
+        <h2>The honest bad parts</h2>
+        <p>
+            <strong>It uses real energy and real water.</strong> Every reply is
+            worked out in a building full of machines that need power and
+            cooling. One reply is small. Hundreds of millions of replies a day
+            are not, and the data centres behind them are being built at a pace
+            that has real consequences for real places. Using it thoughtfully
+            rather than idly is not nothing.
+        </p>
+        <p>
+            <strong>It can be used to do harm.</strong> Anything that writes
+            convincingly can write convincing lies, at a scale and a cheapness
+            that did not exist before. That is happening and it is not a
+            hypothetical.
+        </p>
+        <p>
+            <strong>It reflects what it was trained on.</strong> It learned from
+            an enormous amount of human writing, and human writing contains
+            every one of our habits, good and bad. When one of these behaves
+            badly it is usually showing us something about us. That is an
+            explanation, not an excuse.
+        </p>
+        <p>
+            <strong>The research is young and argued over.</strong> You will read
+            confident headlines in both directions — that these things are
+            dangerous, that they are useless, that they make people cleverer,
+            that they make people stupider. Some of that work is careful and some
+            of it is not, and the field is too new to have settled. Treat strong
+            claims about AI the way this page has just told you to treat strong
+            claims from AI.
+        </p>
+    </section>
+
+    <!-- ── risk, honestly ───────────────────────────────────────────── -->
+    <section id="skynet">
+        <h2>Should you be frightened of it?</h2>
+        <p>
+            Not of the film version, no. The machine that wakes up, decides
+            things on its own and turns on us is a different kind of thing from
+            what we have actually built, and the difference is not a detail.
+        </p>
+        <p>
+            What we have built cannot learn while it runs. It was trained once
+            and then frozen. It does not act unless something asks it to, and
+            when the answer is finished it stops. It has no ongoing existence in
+            between. Every serious version of the takeover story needs a system
+            that keeps learning, keeps running, and wants something. Nothing in
+            this app is any of those.
+        </p>
+        <p>
+            Where the real risk sits is duller and closer: <strong>it is about
+            who gets to tell one what to do.</strong> These things follow
+            instructions, and they are not very good at telling whose
+            instructions they are. Hide a message in a web page, and an AI
+            reading that page may treat it as an order from you. That is called
+            prompt injection, nobody has solved it, and it is the reason this app
+            keeps a child's browsing away from the open web.
+        </p>
+        <p>
+            So the thing to watch is not an AI deciding to do something dreadful.
+            It is a person aiming a capable, obedient system at something
+            dreadful — or slipping a note into its reading. That is a problem
+            about people, which is the sort of problem we have always had.
+        </p>
+        <p class="about-aside">
+            Thoughtful people do disagree about the long run, and this page is
+            not going to pretend that argument is over. But the near danger is
+            misuse and mistakes, not machines with plans.
+        </p>
+    </section>
+
+    <!-- ── the case for ─────────────────────────────────────────────── -->
+    <section id="good">
+        <h2>Why we think it is worth it</h2>
+        <p>
+            Until very recently, making software meant years of learning before
+            you could build the thing you actually wanted. Most people who had a
+            good idea simply never got to find out whether it was any good. The
+            barrier was never imagination. It was punctuation.
+        </p>
+        <p>
+            That barrier has gone. A ten-year-old with an idea can have it
+            running this afternoon. A parent with a small business can have the
+            tool they have wanted for five years. Whatever else is true about
+            all this, that part is an enormous, straightforwardly good thing, and
+            it is what this app exists to hand to your family.
+        </p>
+        <p>
+            It also gives you back the part of the day nobody misses. You say
+            what you want, and while it works you can get up, go outside, sit
+            with someone, eat. You come back, look at what it did, and say what
+            to change. That is a better shape for a life than sitting still and
+            typing for eight hours, and it is available now.
+        </p>
+        <p class="about-big">AI lets us be more human.</p>
+        <p>
+            Not because it does the thinking — because it takes the part that was
+            never really thinking. The boilerplate, the fiddly syntax, the
+            two-day hunt for a missing semicolon. What is left is the part that
+            was always the point: deciding what to make, judging whether it is
+            any good, and caring how it turns out.
+        </p>
+        <h3>Two futures, and the difference is how it is used</h3>
+        <p>
+            One is a world where people stop bothering. The machine does it, so
+            nobody learns to read closely or think a problem through, and a
+            generation grows up unable to check anything. That future is
+            available and it is not far-fetched.
+        </p>
+        <p>
+            The other is a world where the same tool is used to climb: where a
+            child learns because they wanted to build something and had to
+            understand it to finish, where being stuck is interesting instead of
+            humiliating, and where a person can go as far as their curiosity
+            carries them rather than as far as their schooling let them.
+        </p>
+        <p>
+            The difference is entirely in how it is used. That is why this app
+            keeps explaining what it is doing instead of just doing it, why it is
+            told never to hand a child a homework answer, and why you are reading
+            this page. We are trying very hard to build the second one.
+        </p>
+    </section>
+
+    <p class="about-foot">
+        Still unsure about something? Ask the assistant on the home page. It can
+        explain any of this in as much or as little detail as you like, and it
+        will not mind being asked twice.
+    </p>
+</div>
+</div>
+{% endblock %}

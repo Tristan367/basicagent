@@ -62,6 +62,24 @@ async def session_body(request: Request, session_id: str):
     )
 
 
+@router.get("/about")
+async def about(request: Request):
+    """What all this is, for somebody who has never used one before.
+
+    Reachable before the app has been set up at all, which is deliberate: the
+    question "should I let my child near this?" comes before "how do I get a
+    key?", and being answered in that order is the whole reason it exists.
+
+    It carries the settings context because every page in this app wears the
+    same bar -- the project list, the dictation state, child mode. A hand-built
+    context with only what the page itself needs was a 500 the first time it
+    was loaded, and would be a 500 again the next time the bar grew a field.
+    """
+    return templates.TemplateResponse(
+        request=request, name="about.html", context=await _settings_context()
+    )
+
+
 @router.get("/settings")
 async def settings_page(request: Request):
     return templates.TemplateResponse(

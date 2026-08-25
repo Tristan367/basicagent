@@ -3014,3 +3014,82 @@ html.wide-gutter .app-bar-btn.icon-only#settings-btn { display: none; }
     color: var(--text-dim);
     font-size: 0.85rem;
 }
+
+/* "How any of this works" -- the page for somebody who has never used one of
+   these and is not sure whether to let their child near it. Set at a reading
+   width and a reading size: it is prose, and it is meant to be read straight
+   through rather than scanned. */
+.about-scroll { overflow-y: auto; height: 100%; }
+.about {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 28px 24px 80px;
+    font-size: 1.06rem;
+    line-height: 1.65;
+}
+.about h1 { margin: 0 0 6px; font-size: 1.8rem; }
+.about h2 {
+    margin: 42px 0 10px;
+    font-size: 1.35rem;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+.about h3 { margin: 26px 0 8px; font-size: 1.1rem; }
+.about p { margin: 0 0 14px; }
+.about ul { margin: 0 0 16px; padding-left: 1.3em; }
+.about li { margin-bottom: 10px; }
+.about-lead { color: var(--text-dim); font-size: 1.12rem; }
+/* The three or four sentences the whole page is really for. */
+.about-big {
+    margin: 22px 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--accent);
+}
+/* A step back from the argument: what it means for the reader in practice. */
+.about-aside {
+    padding: 12px 16px;
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 0 10px 10px 0;
+    color: var(--text-dim);
+}
+.about-toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin: 22px 0 6px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+.about-toc a { color: var(--accent); text-decoration: none; }
+.about-toc a:hover { text-decoration: underline; }
+.about-foot {
+    margin-top: 40px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+}
+
+/* The way in to "How any of this works", at the top of Settings. */
+.about-card {
+    display: block;
+    margin-bottom: 18px;
+    padding: 16px 20px;
+    border: 2px solid var(--accent);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+}
+.about-card:hover { background: var(--accent-dim); }
+.about-card-title { display: block; font-weight: 700; font-size: 1.05rem; }
+.about-card-why {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-dim);
+    font-size: 0.92rem;
+    line-height: 1.5;
+}

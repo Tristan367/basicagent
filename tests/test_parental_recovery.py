@@ -1,0 +1,225 @@
+"""Getting back in when the parent has forgotten the password.
+
+The lock has to be real or it is not worth having, and it has to be escapable
+or the family loses their own app. Both halves matter and the second is the one
+nobody tests: a parent who set a password in March, turned child mode on, and
+cannot remember it in September is not a rare case, it is the ordinary end of a
+password nobody types.
+
+So there is a way out that takes a day. Long enough that a child who wants the
+lock gone has to want it for twenty-four hours, which in practice means they
+ask; short enough that a parent is never permanently shut out of the machine
+they own.
+
+Written after a long run of changes elsewhere, to check this still works.
+"""
+
+from __future__ import annotations
+
+import time
+
+import pytest
+
+from agent_server import database as db
+from agent_server import parental
+from agent_server.routes import settings as routes
+
+
+class _Body:
+    def __init__(self, data):
+        self._data = data
+
+    async def json(self):
+        return self._data
+
+
+@pytest.fixture
+async def keyed(db, monkeypatch):
+    """Child mode needs a working AI before it will turn on."""
+    monkeypatch.setattr(routes, "any_credentials", lambda: True)
+    return db
+
+
+async def enable(password="hunter2"):
+    return await routes.child_enable(_Body({"password": password}))
+
+
+# ── the lock itself ────────────────────────────────────────────────────────
+
+
+async def test_turning_it_on_sets_the_password(keyed):
+    assert (await enable())["ok"] is True
+    assert await parental.child_mode_enabled()
+    assert await parental.parent_password_set()
+    assert await parental.parent_password_correct("hunter2")
+
+
+async def test_it_will_not_turn_on_without_an_ai(db, monkeypatch):
+    """Child mode with no key is a locked door in front of an empty room: the
+    child cannot use the app and cannot be told why."""
+    monkeypatch.setattr(routes, "any_credentials", lambda: False)
+    assert (await enable())["ok"] is False
+    assert not await parental.child_mode_enabled()
+
+
+async def test_a_password_has_to_be_worth_something(keyed):
+    assert (await enable("x"))["ok"] is False
+    assert not await parental.child_mode_enabled()
+
+
+async def test_the_wrong_password_does_not_turn_it_off(keyed):
+    await enable()
+    assert (await routes.child_disable(_Body({"password": "guess"})))["ok"] is False
+    assert await parental.child_mode_enabled(), "child mode came off with a guess"
+
+
+async def test_the_right_password_turns_it_off_and_forgets_itself(keyed):
+    """Switching off clears the password, so turning it on again asks for a new
+    one rather than silently reusing one nobody remembers choosing."""
+    await enable()
+    assert (await routes.child_disable(_Body({"password": "hunter2"})))["ok"] is True
+    assert not await parental.child_mode_enabled()
+    assert not await parental.parent_password_set()
+
+
+# ── the way out ────────────────────────────────────────────────────────────
+
+
+async def test_asking_for_a_reset_starts_a_day_long_clock(keyed):
+    await enable()
+    result = await routes.child_forgot()
+    assert result["ok"] is True
+    assert result["override_remaining"] == parental.OVERRIDE_SECONDS
+    assert 23 * 3600 < await parental.override_remaining() <= 24 * 3600
+    assert not await parental.override_elapsed()
+
+
+async def test_the_reset_is_refused_until_the_clock_runs_out(keyed):
+    """Otherwise it is not a delay, it is a button that turns the lock off."""
+    await enable()
+    await routes.child_forgot()
+    refused = await routes.child_reset(_Body({"password": "newpass"}))
+    assert refused == {"ok": False, "reason": "waiting"}
+    assert await parental.parent_password_correct("hunter2"), "the old one was replaced"
+    assert not await parental.parent_password_correct("newpass")
+
+
+async def test_after_a_day_a_new_password_can_be_set(keyed):
+    await enable()
+    await routes.child_forgot()
+    # A day later.
+    await db.set_setting("child_override_until", str(int(time.time()) - 1))
+    assert await parental.override_elapsed()
+
+    assert (await routes.child_reset(_Body({"password": "newpass"})))["ok"] is True
+    assert await parental.parent_password_correct("newpass")
+    assert not await parental.parent_password_correct("hunter2")
+
+
+async def test_the_reset_leaves_child_mode_on(keyed):
+    """The parent takes back control; they do not have their child's setup
+    dismantled underneath them. Turning it off is then one more step, with the
+    password they have just chosen."""
+    await enable()
+    await routes.child_forgot()
+    await db.set_setting("child_override_until", str(int(time.time()) - 1))
+    await routes.child_reset(_Body({"password": "newpass"}))
+
+    assert await parental.child_mode_enabled()
+    assert (await routes.child_disable(_Body({"password": "newpass"})))["ok"] is True
+    assert not await parental.child_mode_enabled()
+
+
+async def test_the_clock_is_spent_once_it_is_used(keyed):
+    """A used override left lying around is a permanent skeleton key."""
+    await enable()
+    await routes.child_forgot()
+    await db.set_setting("child_override_until", str(int(time.time()) - 1))
+    await routes.child_reset(_Body({"password": "newpass"}))
+
+    assert await db.get_setting("child_override_until", "") == ""
+    assert not await parental.override_elapsed()
+    assert await parental.override_remaining() == 0
+    # And a second attempt with no fresh request is refused.
+    assert (await routes.child_reset(_Body({"password": "third"})))["ok"] is False
+    assert await parental.parent_password_correct("newpass")
+
+
+async def test_a_reset_still_needs_a_real_password(keyed):
+    await enable()
+    await db.set_setting("child_override_until", str(int(time.time()) - 1))
+    assert (await routes.child_reset(_Body({"password": "x"})))["ok"] is False
+    assert await parental.parent_password_correct("hunter2")
+
+
+async def test_turning_child_mode_on_again_clears_a_pending_clock(keyed):
+    """A parent who found the password and switched off should not have a timer
+    from last week quietly maturing behind them."""
+    await enable()
+    await routes.child_forgot()
+    await routes.child_disable(_Body({"password": "hunter2"}))
+    await enable("second")
+
+    assert await parental.override_remaining() == 0
+    assert not await parental.override_elapsed()
+
+
+async def test_switching_off_clears_it_too(keyed):
+    await enable()
+    await routes.child_forgot()
+    await routes.child_disable(_Body({"password": "hunter2"}))
+    assert await db.get_setting("child_override_until", "") == ""
+
+
+async def test_a_corrupt_clock_is_not_an_unlocked_door(keyed):
+    """Whatever ends up in that row, the answer to "may they reset now" has to
+    be no unless a real timer really has run out."""
+    await enable()
+    for rubbish in ("", "soon", "NaN", "9e99999", "-", "2026-01-01"):
+        await db.set_setting("child_override_until", rubbish)
+        assert await parental.override_remaining() == 0
+        assert await parental.override_elapsed() is False, rubbish
+        assert (await routes.child_reset(_Body({"password": "newpass"})))["ok"] is False
+    assert await parental.parent_password_correct("hunter2")
+
+
+# ── what the lock is actually guarding ─────────────────────────────────────
+
+
+async def test_the_locked_settings_stay_locked(keyed):
+    """Everything the password gates, checked in one place, because each of
+    these is a separate door and they have been added at different times."""
+    from agent_server.routes import sessions as session_routes
+
+    await enable()
+
+    # The house rules.
+    assert (await routes.child_note_save(_Body({"note": "anything"})))["ok"] is False
+    # A custom endpoint, which is a way to point the app at any AI at all.
+    response = await routes.save_custom_endpoint(
+        name="sneaky", base_url="http://example.test/v1", parent_password="")
+    assert "error=locked" in response.headers["location"]
+    # And the model, including one queued for later.
+    session = await db.create_session("p", "/tmp", "gemini", "m", profile="child")
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException):
+        await session_routes.switch_model(
+            session["id"], None, {"model": "gemini-3.5-flash-lite", "how": "later"})
+    assert not (await db.get_session(session["id"]))["pending_model"]
+
+
+async def test_a_child_cannot_reach_a_parents_project(keyed):
+    await enable()
+    theirs = await db.create_session("Parent's", "/tmp", "gemini", "m", profile="parent")
+    mine = await db.create_session("Mine", "/tmp", "gemini", "m", profile="child")
+    assert not await parental.may_reach(theirs)
+    assert await parental.may_reach(mine)
+
+
+async def test_a_parent_can_still_reach_a_childs_project(db):
+    """Deliberately not symmetric: a parent has to be able to open what their
+    child made, look through it, and set up a lesson in it."""
+    await db.set_setting("child_mode", "0")
+    theirs = await db.create_session("Theirs", "/tmp", "gemini", "m", profile="child")
+    assert await parental.may_reach(theirs)

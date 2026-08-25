@@ -4,6 +4,20 @@
    navigation. Nothing in here may assume it is the whole page. #}
 <div id="settings-page">
 
+    {#
+      First thing on the page, above every setting, because the question it
+      answers comes before all of them. Somebody deciding whether to let their
+      child near this needs "what is this and should I worry" answered before
+      "light or dark mode". A real link rather than a panel: the page is long,
+      it is prose, and it wants the whole window.
+    #}
+    <a class="about-card" href="/about">
+        <span class="about-card-title">How any of this works &rarr;</span>
+        <span class="about-card-why">What the AI actually is, why it forgets, what it
+            can do to this computer, what it gets wrong, and the honest bad parts.
+            No jargon, about ten minutes.</span>
+    </a>
+
     <section class="panel">
         <h2>Appearance</h2>
         <div class="appearance-row">
