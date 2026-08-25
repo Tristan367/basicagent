@@ -216,15 +216,6 @@ def curated() -> list[ImageModel]:
     return [m for m in IMAGE_MODELS if m.provider in reachable]
 
 
-def available() -> list[ImageModel]:
-    """Kept as the old name for the cheap, curated answer."""
-    return curated()
-
-
-def can_draw() -> bool:
-    return bool(curated())
-
-
 # Discovery costs a request or two, and what a provider serves does not change
 # between one question and the next. Cached against the set of keys in play, so
 # adding a key mid-conversation is noticed immediately rather than in a quarter

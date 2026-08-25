@@ -2927,11 +2927,16 @@
         setWorkPhase('running');
         break;
       case 'compacted':
-        /* A switch the user queued some time ago has just happened, because
+        /* The same marker the server renders when the page is loaded back.
+         * Live, summarising showed only as a status line that then vanished --
+         * so the conversation appeared to lose two hours of itself with
+         * nothing on screen to say why, until a reload put the note there. */
+        if (ev.ok && ev.summary) appendSummary(ev.summary);
+        /* And a switch the user queued some time ago has just happened, since
          * summarising is the moment it costs nothing. They asked for it and
-         * then carried on working, possibly an hour ago -- a reply arriving
-         * from a different AI with nothing said is the sort of thing people
-         * notice and mistrust. */
+         * carried on working, possibly an hour ago -- a reply arriving from a
+         * different AI with nothing said is the sort of thing people notice
+         * and mistrust. */
         if (ev.switched_to) announceSwitch(ev.switched_to);
         break;
       case 'done':

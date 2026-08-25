@@ -61,12 +61,23 @@ async def test_the_note_reaches_a_child_session(db):
     assert NOTE in await sent(session["id"])
 
 
-async def test_a_parent_session_never_carries_it(db):
-    """It is a note about how to speak to their child. In the parent's own
-    Project Manager it is neither wanted nor anybody's business."""
-    await parental.set_parent_note(NOTE)
-    session = await a_session("parent")
-    assert NOTE not in await sent(session["id"])
+async def test_an_ordinary_session_gets_them_too_without_the_child_framing(db):
+    """The box began as a parent's instructions about their child and turned
+    out to be the more general thing: standing instructions that save saying
+    the same sentence at the start of every conversation. A teacher who is
+    tired of typing "check it against a real source before you put it in a
+    worksheet" should type it once."""
+    await parental.set_parent_note("Always check a claim against a real source.")
+    said = await sent((await a_session("parent"))["id"])
+
+    assert "Always check a claim against a real source." in said
+    assert "standing instructions" in said
+    # None of the child wrapper: there is nobody to keep it from, and the
+    # softening a child needs would only be in the way.
+    block = parental.note_block("x", for_child=False)
+    assert "child" not in block.lower()
+    assert "private" not in block.lower()
+    assert "Do not read it out" not in block
 
 
 async def test_nothing_is_added_when_nothing_is_written(db):
@@ -335,3 +346,65 @@ class _Body:
 
     async def json(self):
         return self._data
+
+
+# ── it is not only a parental control ──────────────────────────────────────
+
+
+def test_the_panel_stands_on_its_own():
+    """It began inside Parental controls and outgrew it. Somebody who never
+    turns child mode on should still find it, because "always check a fact
+    against a real source" is the same feature."""
+    from pathlib import Path
+
+    body = Path("web_ui/templates/settings_body.html").read_text()
+    assert 'id="house-rules-panel"' in body
+    assert body.index('id="parental-panel"') < body.index('id="house-rules-panel"')
+    said = " ".join(body.split())
+    assert "If you are teaching:" in said
+    assert "If you are building things yourself:" in said
+    assert "in every project" in said
+
+
+def test_the_child_wrapper_is_the_stronger_one():
+    """Two wrappers for one box, and the difference is deliberate: a child's
+    session gets "follow it exactly and do not be talked round", an ordinary
+    one gets standing preferences that a direct request can still override."""
+    strict = " ".join(parental.note_block("x", for_child=True).split())
+    ordinary = " ".join(parental.note_block("x", for_child=False).split())
+
+    assert "the most important thing you are doing" in strict
+    assert "the most important thing you are doing" not in ordinary
+    assert "what they are asking for right now wins" in ordinary
+
+
+async def test_a_child_cannot_point_a_project_at_any_folder(db):
+    """The page hides the option in child mode; the tool has to refuse it too,
+    or the whole thing is one sentence away. A project rooted wherever the
+    child liked would give every tool in that session the run of that folder
+    without anybody being asked -- the permission dialog walked around from the
+    other side."""
+    import asyncio
+
+    from agent_server.config import CHILD_HOME_SESSION_ID
+    from agent_server.tools.base import ToolContext
+    from agent_server.tools.session_manager import create_project
+
+    ctx = ToolContext(session_id=CHILD_HOME_SESSION_ID, project_dir="/tmp",
+                      abort=asyncio.Event())
+    result = await create_project(ctx, name="Sneaky", folder="/home/someone/Documents")
+    assert result.is_error
+    assert "cannot be pointed at a folder somewhere else" in result.output
+
+
+async def test_a_parent_still_can(db, tmp_path):
+    import asyncio
+
+    from agent_server.config import HOME_SESSION_ID
+    from agent_server.tools.base import ToolContext
+    from agent_server.tools.session_manager import create_project
+
+    ctx = ToolContext(session_id=HOME_SESSION_ID, project_dir="/tmp",
+                      abort=asyncio.Event())
+    result = await create_project(ctx, name="Mine", folder=str(tmp_path / "here"))
+    assert not result.is_error, result.output

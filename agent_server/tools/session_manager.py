@@ -122,6 +122,18 @@ async def create_project(
         return ToolResult.error("a project name is required", title)
 
     owner = _owner(ctx, for_child)
+    if (folder or "").strip() and _profile(ctx) == "child":
+        # The page hides this option in child mode; the tool has to refuse it
+        # too, or the whole thing is one sentence away. A project rooted
+        # wherever the child liked would give every tool in that session the
+        # run of that folder without anybody being asked -- which is the exact
+        # thing the permission dialog exists to prevent, walked around from the
+        # other side.
+        return ToolResult.error(
+            "in child mode a project goes in the usual place and cannot be "
+            "pointed at a folder somewhere else. Make it normally. If they "
+            "really need to work on files that are already somewhere on this "
+            "computer, a grown-up can turn child mode off in Settings.", title)
     if (folder or "").strip():
         project_dir = str((folder or "").strip())
     else:

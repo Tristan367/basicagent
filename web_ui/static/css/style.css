@@ -2915,13 +2915,13 @@ html.wide-gutter .app-bar-btn.icon-only#settings-btn { display: none; }
        are long -- "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M (your own
        computer) - your own" -- so one dropdown was half a metre wide. */
     select { width: 100%; max-width: 100%; }
-    .inline-form, .stack, .form-row, .project-row, .quit-actions,
+    .inline-form, .stack, .form-row, .quit-actions,
     .session-row { flex-wrap: wrap; }
     .btn-sm { flex: 0 1 auto; }
 }
 
-/* The parent's own note to the AI. Set apart from the buttons above it: it is
-   the one control in Parental controls that is written rather than pressed. */
+/* The note the AI reads before everything. Its own panel now: it began inside
+   Parental controls and outgrew it. */
 .house-rules {
     margin-top: 22px;
     padding-top: 18px;
@@ -3153,3 +3153,6 @@ html.wide-gutter .app-bar-btn.icon-only#settings-btn { display: none; }
    child mode. Saying no never carries it: refusing has to stay the cheap
    answer, or a child has been told they may not refuse. */
 .permission-lock { color: var(--text-dim); font-weight: 400; }
+/* "If you are teaching:" and friends, inside the examples fold. */
+.house-rules-group { margin: 12px 0 2px; font-weight: 600; color: var(--text); }
+.house-rules-group:first-child { margin-top: 8px; }

@@ -776,3 +776,16 @@ def test_the_two_family_tables_agree():
         if name not in activity.TOOL_FAMILY:
             continue
         assert activity.TOOL_FAMILY[name] == family, name
+
+
+def test_summarising_leaves_its_mark_live_and_not_only_on_reload():
+    """The server renders "Earlier conversation was summarized" when a page is
+    loaded back. Live it showed only as a status line that then vanished -- so
+    the conversation appeared to lose two hours of itself with nothing on
+    screen to say why, until a reload put the note back."""
+    from pathlib import Path
+
+    js = Path("web_ui/static/js/app.js").read_text()
+    at = js.index("case 'compacted':")
+    block = js[at:at + 700]
+    assert "appendSummary(ev.summary)" in block

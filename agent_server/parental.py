@@ -139,6 +139,33 @@ Here is what they wrote:
 {note}
 </house_rules>"""
 
+# The same note, for a session that is not a child's.
+#
+# House rules started as a parent's instructions about their child and are
+# still mostly that, but the box turned out to be the more general thing:
+# standing instructions that save saying the same sentence at the start of
+# every conversation. "Always verify a claim against a real source before you
+# put it in a worksheet." "Comment as you go." "Never use a framework unless I
+# ask." A teacher preparing material and a parent setting values are the same
+# feature wearing different words.
+#
+# So this wrapper carries none of the child framing. There is nothing to keep
+# private -- they wrote it about themselves -- and the softening a child needs
+# would only be in the way.
+OWN_TEMPLATE = """\
+<house_rules>
+The person using this computer wrote these standing instructions for you. They
+apply to everything you do here, on top of anything they say in the
+conversation itself.
+
+Follow them closely. Where they conflict with a habit of yours, they win. Where
+they conflict with something they ask for right now, what they are asking for
+right now wins -- these are their standing preferences, not a cage they have
+built for themselves.
+
+{note}
+</house_rules>"""
+
 # Sent once, at the end of a turn's messages, when the saved rules have changed
 # since this session last saw them. The rules themselves are already current --
 # they are rebuilt every turn -- so this exists for one reason: without it the
@@ -162,10 +189,19 @@ async def set_parent_note(note: str) -> None:
     await db.set_setting(NOTE_KEY, (note or "").strip())
 
 
-def note_block(note: str) -> str:
-    """The parent's note, wrapped so the assistant knows what it is."""
+def note_block(note: str, for_child: bool = True) -> str:
+    """The note, wrapped so the assistant knows whose it is and who is reading.
+
+    Two wrappers for one box. A child's session gets the whole thing: follow it
+    exactly, do not be talked round, do not read it out. An ordinary session
+    gets standing instructions and nothing else -- there is nobody to keep it
+    from, and the child framing would only be in the way.
+    """
     note = (note or "").strip()
-    return NOTE_TEMPLATE.format(note=note) if note else ""
+    if not note:
+        return ""
+    template = NOTE_TEMPLATE if for_child else OWN_TEMPLATE
+    return template.format(note=note)
 
 
 def _fingerprint(note: str) -> str:
@@ -181,14 +217,19 @@ def _fingerprint(note: str) -> str:
 async def rules_for_session(session: dict) -> tuple[str, bool]:
     """The house-rules block for this turn, and whether they have just changed.
 
+    Every session, not only a child's. The box began as a parent's instructions
+    about their child and turned out to be the more general thing: standing
+    instructions that save saying the same sentence at the start of every
+    conversation. Which wrapper it gets depends on who is reading.
+
     Reading it marks them as seen, so the "these changed" note goes out exactly
     once per change per session rather than on every turn until the end of
     time.
     """
-    if (session or {}).get("profile") != "child":
+    if not session:
         return "", False
     note = await parent_note()
-    block = note_block(note)
+    block = note_block(note, for_child=session.get("profile") == "child")
 
     seen = (session.get("house_rules_seen") or "")
     now = _fingerprint(note) if note else ""
