@@ -1,5 +1,6 @@
 """Chat, streaming, and speech endpoints."""
 
+import asyncio
 import re as _re
 import uuid as _uuid
 from collections import OrderedDict
@@ -19,7 +20,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from agent_server import agent, whisper_streaming
+from agent_server import agent, jobs, whisper_streaming
 from agent_server import database as db
 from agent_server import stt as stt_service
 from agent_server.config import ATTACH_DIR, USER_AGENT
@@ -36,11 +37,37 @@ SSE_HEADERS = {
 
 
 def _stream(session_id: str) -> StreamingResponse:
-    """Watch the session's current run. Starting one is the caller's job."""
+    """Watch the session's current run. Starting one is the caller's job.
+
+    And keep watching, if a command was handed over and has not finished. The
+    assistant will be woken when it lands and will answer -- but the page has
+    stopped listening by then, so the reply goes into the database and the
+    person who was told "I'll tell you when it's done" is told nothing until
+    they reload. Polling could not close that gap: the woken turn is often over
+    in half a second, between two polls.
+
+    So the line is held instead. Nothing is sent while waiting; the connection
+    simply stays open until there is either another turn to relay or nothing
+    left to wait for.
+    """
 
     async def generator() -> AsyncIterator[str]:
-        async for event in agent.subscribe(session_id):
-            yield agent.sse(event)
+        while True:
+            ended = False
+            async for event in agent.subscribe(session_id):
+                if event["type"] == "stream_end" and jobs.waiting(session_id):
+                    # Held back: sending it tells the client the turn is over
+                    # and it stops reading.
+                    ended = True
+                    break
+                yield agent.sse(event)
+            if not ended:
+                return
+            while jobs.waiting(session_id) and agent.active_run(session_id) is None:
+                await asyncio.sleep(0.3)
+            if agent.active_run(session_id) is None:
+                yield agent.sse({"type": "stream_end"})
+                return
 
     return StreamingResponse(generator(), media_type="text/event-stream", headers=SSE_HEADERS)
 

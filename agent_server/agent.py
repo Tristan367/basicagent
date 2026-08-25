@@ -18,7 +18,7 @@ import uuid
 from collections.abc import AsyncIterator
 
 from agent_server import database as db
-from agent_server import image_support, parental
+from agent_server import image_support, jobs, parental
 from agent_server.config import MAX_TOOL_RESULT_CHARS
 from agent_server.conversation import (
     build_messages,
@@ -106,6 +106,10 @@ def _track(session_id: str, task: asyncio.Task):
 
 
 def request_abort(session_id: str) -> bool:
+    # Whatever was handed over goes with it. A command still running after the
+    # user has stopped the turn is one nobody asked for any more, and its output
+    # arriving later would wake a conversation they had walked away from.
+    jobs.cancel(session_id)
     event = _aborts.get(session_id)
     if event is None:
         return False
@@ -284,6 +288,42 @@ def release_turn(session_id: str, handle: _Run, abort: asyncio.Event):
         _publish(handle, {"type": "stream_end"})
         handle.done.set()
         _runs.pop(session_id, None)
+
+
+async def _collect_background(session_id: str) -> None:
+    """Write finished background commands into the conversation.
+
+    Stored as tool results with no call id, which is what they are: nothing
+    asked for them at this moment, they simply arrived. The transcript groups
+    them with everything else the assistant did, and `build_messages` turns a
+    result with nothing to answer into a plain note, because the wire format has
+    no place for an unanswered one.
+    """
+    for job, result in jobs.take_finished(session_id):
+        head = (f"`{job.command}` has finished (it took "
+                f"{job.seconds:.0f} seconds).")
+        await db.add_message(
+            session_id, "tool", f"{head}\n\n{result.output}",
+            tool_name="bash", tool_title=result.title, is_error=result.is_error,
+        )
+
+
+def wake(session_id: str) -> None:
+    """Something the session was waiting on has landed. Go and read it.
+
+    Called from a job's completion callback. A run already going will pick the
+    output up at the top of its next round, so this only has to start one when
+    the turn has already ended -- which is the whole point of handing the
+    command over: the assistant said "I will tell you when it is done" and now
+    has to be able to keep that promise.
+    """
+    if active_run(session_id) is not None:
+        return
+    log.info("waking %s: background work finished", session_id)
+    start_run(session_id)
+
+
+jobs.set_waker(wake)
 
 
 def start_claimed_run(session_id: str, handle: _Run, abort: asyncio.Event) -> _Run:
@@ -505,6 +545,13 @@ async def _loop(
                 else:
                     _compacted_this_run.add(session_id)
 
+        # Anything that was still running when the tool stopped waiting for it,
+        # and has since finished. Written into the conversation before the next
+        # request is built, so a download that landed mid-turn is read in the
+        # same breath as everything else -- and so the transcript shows it where
+        # it happened rather than not at all.
+        await _collect_background(session_id)
+
         rows = await db.get_messages(session_id)
         house_rules, rules_changed = await parental.rules_for_session(
             await db.get_session(session_id) or {})
@@ -633,6 +680,25 @@ async def _loop(
             return
 
         if not calls:
+            # A command handed over earlier is still going. The turn is not
+            # over: the assistant has just promised to say when it lands, and
+            # it can only keep that promise from inside a turn somebody is
+            # listening to.
+            #
+            # Waiting here rather than ending and being woken later is what
+            # makes it reach the screen. A woken turn is frequently over in
+            # half a second, so anything that has to notice one starting -- a
+            # poller, a reconnect -- loses the race and the reply arrives only
+            # on the next page load. One continuous run has no race in it.
+            if jobs.waiting(session_id) and not abort.is_set():
+                yield {"type": "waiting", "for": jobs.note(jobs.running(session_id))}
+                await jobs.wait_for_one(session_id, abort)
+                if abort.is_set():
+                    await db.mark_interrupted(session_id)
+                    yield {"type": "aborted"}
+                    return
+                continue
+
             yield {
                 "type": "done",
                 "reason": finish,

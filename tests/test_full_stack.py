@@ -48,7 +48,9 @@ def test_the_note_fires_at_the_moment_somebody_does_it_anyway():
     it can still be undone cheaply."""
     from agent_server.tools import bash
 
-    source = inspect.getsource(bash.run_bash)
+    # `_execute` is the half that waits for a command and formats what came
+    # back; `run_bash` is now the half that decides whether to wait at all.
+    source = inspect.getsource(bash._execute)
     assert "left a background process running" in source
     assert "preview" in source.split("left a background process running")[1][:600], (
         "the note does not say what to do instead")

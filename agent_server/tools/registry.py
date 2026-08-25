@@ -152,7 +152,13 @@ register(Tool(
         "start fails with 'address already in use' -- which reads as a bug in "
         "their project. `preview` owns what it starts and stops all of it.\n"
         "sudo does not work here and never will: there is no way to ask the user "
-        "for a password."
+        "for a password.\n"
+        "**A command still going after a few seconds is left to finish on its "
+        "own** and this returns straight away saying so. Its output comes back "
+        "to you the moment it lands -- you do not have to check, poll, or run it "
+        "again. When that happens, say in one line what is running and that you "
+        "will report back, then either get on with something that does not "
+        "depend on it or wait. Never go silent: somebody is watching a screen."
     ),
     parameters={
         "type": "object",

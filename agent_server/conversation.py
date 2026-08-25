@@ -132,6 +132,13 @@ def to_api_message(row: dict, sees_images: bool = False) -> dict:
     Claude the pictures it can now see.
     """
     role = row["role"]
+    # A tool result with no call id was never answering a call: it is something
+    # that finished on its own and came back. The wire format has nowhere to put
+    # one, and `sanitize` would rightly drop it as corruption -- so it becomes
+    # what it actually is, a note in the conversation.
+    if role == "tool" and not (row.get("tool_call_id") or ""):
+        return {"role": "system", "content": row.get("content") or ""}
+
     msg: dict[str, Any] = {"role": role, "content": row.get("content") or ""}
 
     pictures = stored_images(row)

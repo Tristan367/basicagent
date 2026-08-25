@@ -705,6 +705,21 @@
         }
       });
     }
+    /* A turn that started without this page asking for one.
+     *
+     * That happens when a command the assistant handed over finishes: the job
+     * wakes the session, the assistant reads the output and replies. Nothing
+     * on this page requested it, so nothing was listening -- the reply landed
+     * in the database and the user, who had been told "I'll tell you when it's
+     * done", was told nothing until they reloaded.
+     *
+     * The poller already knows which sessions are working. If this one is and
+     * we are not watching, start watching. */
+    const mine = data.find((s) => s.id === currentSessionId);
+    if (mine && mine.running && !running && typeof reattach === 'function') {
+      reattach();
+    }
+
     prevRunning = {};
     data.forEach((s) => { prevRunning[s.id] = s.running; });
   }
@@ -2796,6 +2811,23 @@
         closeSegment();
         setLiveWork('Summarising our conversation\u2026');
         setWorkPhase('summarising');
+        break;
+      case 'waiting':
+        /* The assistant has said its piece and is now sitting on a command
+         * that has not finished. Two things have to happen here.
+         *
+         * The stretch of words is closed, because what comes next is a
+         * separate message -- that is how it is stored, and a reload would
+         * otherwise show two bubbles where the live page showed one.
+         *
+         * And the strip says what is being waited for. The user has just been
+         * told "I'll say when it's done"; without this the app looks like it
+         * has finished and gone quiet, which is the exact impression the whole
+         * feature exists to prevent. */
+        finishThinking();
+        closeSegment();
+        setLiveWork(ev.for || 'Waiting for that to finish…');
+        setWorkPhase('running');
         break;
       case 'compacted':
         /* A switch the user queued some time ago has just happened, because

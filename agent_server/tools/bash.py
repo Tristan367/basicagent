@@ -5,7 +5,7 @@ import os
 import re
 import shlex
 
-from agent_server import processes
+from agent_server import jobs, processes
 from agent_server.config import MAX_TOOL_RESULT_CHARS
 from agent_server.tools.base import ToolContext, ToolResult, truncate
 
@@ -228,8 +228,23 @@ async def run_bash(
     timeout: int | None = None,
     workdir: str | None = None,
     env: dict[str, str] | None = None,
+    wait: float | None = None,
     **_,
 ) -> ToolResult:
+    """Run a command. Long ones are handed over rather than waited out.
+
+    Almost everything finishes in under a second and nothing changes for those:
+    the tool waits and returns the output, which is what the assistant reads
+    most easily. An install or a download is a different thing -- it used to
+    hold the entire turn, so the assistant said nothing for two minutes and the
+    person watching had a spinner and no way to tell whether anything was
+    happening.
+
+    So after a few seconds the command carries on by itself, this answers
+    straight away, and the output comes back into the conversation when it
+    lands. The assistant can say "that is downloading, it will take a minute"
+    -- which is what somebody sitting there actually needs to hear.
+    """
     if not command or not command.strip():
         return ToolResult.error("empty command", "bash")
 
@@ -242,6 +257,40 @@ async def run_bash(
             "bash",
         )
 
+    title = command.strip().splitlines()[0][:90]
+    patience = jobs.HANDOVER_SECONDS if wait is None else max(float(wait), 0.0)
+    worker = asyncio.ensure_future(
+        _execute(ctx, command, timeout, workdir, env, title))
+    done, _ = await asyncio.wait({worker}, timeout=patience)
+    if worker in done:
+        return worker.result()
+
+    # Still going. Hand it over and answer now.
+    jobs.adopt(ctx.session_id, command, title, worker)
+    return ToolResult(
+        output=(
+            f"`{title}` is still running after {patience:g} seconds, so it has "
+            f"been left to finish on its own. You will be given its output as "
+            f"soon as it lands -- you do not need to check, poll, or run it "
+            f"again.\n\n"
+            f"Tell the user what is happening in one line: what is running and "
+            f"that you will say when it is done. Then either get on with "
+            f"something that does not depend on it, or stop and let them know "
+            f"you are waiting. Do not sit silently."
+        ),
+        title=f"{title} (running)",
+    )
+
+
+async def _execute(
+    ctx: ToolContext,
+    command: str,
+    timeout: int | None,
+    workdir: str | None,
+    env: dict[str, str] | None,
+    title: str,
+) -> ToolResult:
+    """Actually run it, wait for it, and format what came back."""
     # There is nowhere to prompt for a password: this app has no permission UI
     # and the user may be listening rather than looking. `-S` makes sudo read
     # the password from stdin, which is then closed immediately, so it fails in
@@ -255,7 +304,6 @@ async def run_bash(
     cwd = str(ctx.resolve(workdir)) if workdir else ctx.project_dir
     if not os.path.isdir(cwd):
         cwd = ctx.project_dir
-    title = command.strip().splitlines()[0][:90]
 
     proc = None
     detached = False
