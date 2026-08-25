@@ -11,6 +11,23 @@
       "light or dark mode". A real link rather than a panel: the page is long,
       it is prose, and it wants the whole window.
     #}
+    {#
+      An update, when there is one. Nothing at all when there is not -- an app
+      that says "you are up to date!" every time you open Settings has taught
+      you to ignore the one time it matters.
+    #}
+    <div class="update-card" id="update-card" hidden>
+        <span class="update-what" id="update-what"></span>
+        <span class="update-why">Your projects, settings and keys are kept somewhere
+            else and are not touched.</span>
+        <div class="quit-actions">
+            <button type="button" class="btn-primary" id="update-go">Update now</button>
+            <a class="btn-neutral" id="update-notes" href="#" target="_blank"
+               rel="noopener">What changed</a>
+        </div>
+        <p class="hint" id="update-status" role="status" aria-live="polite" hidden></p>
+    </div>
+
     <a class="about-card" href="/about">
         <span class="about-card-title">How any of this works &rarr;</span>
         <span class="about-card-why">What the AI actually is, why it forgets, what it

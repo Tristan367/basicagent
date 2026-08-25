@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant — build things by asking</title>
+<meta name="description" content="Describe what you want and an AI builds it on your computer. Free to start, made for people who have never written code.">
+<style>
+  /* One file, no build step, nothing fetched from anywhere else. This page has
+     to work on a school laptop behind a filter and on a phone in a car park. */
+  :root {
+    --bg: #17191c; --card: #22252a; --text: #e8eaed; --dim: #a2a9b0;
+    --accent: #9cb24b; --edge: #3a3f46;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 20px 80px;
+    background: var(--bg); color: var(--text);
+    font: 17px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; }
+  header { padding: 60px 0 10px; text-align: center; }
+  h1 { margin: 0 0 6px; font-size: 2.4rem; letter-spacing: -0.5px; }
+  .tag { margin: 0 auto; max-width: 34rem; color: var(--dim); font-size: 1.15rem; }
+  h2 { margin: 44px 0 10px; font-size: 1.35rem; }
+  h3 { margin: 22px 0 6px; font-size: 1.05rem; }
+  p { margin: 0 0 14px; }
+  ol, ul { margin: 0 0 14px; padding-left: 1.3em; }
+  li { margin-bottom: 8px; }
+  a { color: var(--accent); }
+  .get {
+    display: block; margin: 28px auto 10px; max-width: 26rem;
+    padding: 18px 24px; border-radius: 14px;
+    background: var(--accent); color: #17191c;
+    font-size: 1.15rem; font-weight: 700; text-align: center; text-decoration: none;
+  }
+  .get:hover { filter: brightness(1.08); }
+  .under { text-align: center; color: var(--dim); font-size: 0.92rem; }
+  .card {
+    margin: 16px 0; padding: 18px 22px;
+    border: 1px solid var(--edge); border-radius: 14px; background: var(--card);
+  }
+  .card h3 { margin-top: 0; }
+  code {
+    padding: 2px 6px; border-radius: 6px;
+    background: #14161a; font-size: 0.92em;
+  }
+  .quiet { color: var(--dim); font-size: 0.94rem; }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--edge);
+           color: var(--dim); font-size: 0.9rem; text-align: center; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f6f8; --card: #fff; --text: #1a1d21; --dim: #5b6168;
+            --accent: #557030; --edge: #d7dbe0; }
+    .get { color: #fff; }
+    code { background: #eceef1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Assistant</h1>
+  <p class="tag">Say what you want, and it builds it on your computer while you
+  watch. No code, no jargon, nothing technical to learn first.</p>
+</header>
+
+<a class="get" href="https://github.com/Tristan367/basicagent/releases/latest">
+  Download it &nbsp;&rarr;
+</a>
+<p class="under">Free. Windows, Mac and Linux. Takes about five minutes to set up,
+once.</p>
+
+<h2>What it does</h2>
+<p>You describe something — a game, a website, a story, a tool to sort out your
+photos — and it makes it, explaining what it is doing as it goes. When it is
+finished you press <strong>Play</strong> and the thing runs. If something is
+wrong you say so in plain English and it fixes it.</p>
+<p>It is built for people who have never done any of this: a parent, a teacher,
+a child, somebody who has an idea and no way to build it. It works by voice if
+you would rather talk than type, and it reads its replies out loud if you would
+rather listen than read.</p>
+
+<h2>Setting it up</h2>
+<p>Two steps, both one-off. Download the file above and unzip it, then:</p>
+
+<div class="card">
+  <h3>Windows</h3>
+  <ol>
+    <li>Open the folder you unzipped.</li>
+    <li>Double-click <code>install.bat</code> and wait. If Windows asks whether
+      to allow it, say yes.</li>
+    <li>When it finishes, double-click <code>Assistant.bat</code> to start.</li>
+  </ol>
+  <p class="quiet">If it says Python is missing, it will tell you where to get
+  it. Install that, then run <code>install.bat</code> again.</p>
+</div>
+
+<div class="card">
+  <h3>Mac</h3>
+  <ol>
+    <li>Open the folder you unzipped.</li>
+    <li>Double-click <code>install.command</code>. The first time, macOS may
+      refuse: right-click it, choose <em>Open</em>, then <em>Open</em> again.</li>
+    <li>When it finishes, double-click <code>Assistant.command</code> to start.</li>
+  </ol>
+</div>
+
+<div class="card">
+  <h3>Linux</h3>
+  <ol>
+    <li>Open a terminal in the folder you unzipped.</li>
+    <li><code>python3 install.py</code></li>
+    <li><code>python3 basicagent.py</code></li>
+  </ol>
+</div>
+
+<h2>What it costs</h2>
+<p>The app is free and always will be. It has no AI of its own — it connects to
+one you have an account with, which is why it can be given away and why it costs
+so little to run.</p>
+<p><strong>Start with Google.</strong> Sign in, press one button, paste the code
+it gives you. No card, nothing to pay, a few hundred goes a day — enough to
+build something real. The app walks you through it with a picture of every
+click.</p>
+
+<h2>For parents</h2>
+<p>There is a child mode. It makes the assistant patient and age-appropriate,
+never hands over homework answers, keeps the browsing off the open web, and
+locks the settings behind a password. There is also a box where you write, in
+your own words, how you want it to speak to your child — what to encourage,
+what to leave alone, what your family believes. It follows that closely, and
+your child cannot see it.</p>
+<p>There is a page inside the app called <em>How any of this works</em> that
+explains what these things actually are, what they get wrong, and the honest
+bad parts. It is worth ten minutes before you hand this to anybody.</p>
+
+<h2>Updating</h2>
+<p>It checks once a day and tells you when there is a new version, with a button
+that does the whole thing. Your projects, settings and keys are kept somewhere
+separate and are never touched by an update.</p>
+
+<footer>
+  <p><a href="https://github.com/Tristan367/basicagent">Source code</a> ·
+     <a href="https://github.com/Tristan367/basicagent/issues">Report a problem</a></p>
+  <p>Built with AI, which is rather the point.</p>
+</footer>
+
+</div>
+</body>
+</html>

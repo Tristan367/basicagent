@@ -1,0 +1,78 @@
+# Cutting a release.
+#
+# Triggered by pushing a tag: `git tag v1.0.1 && git push origin v1.0.1`.
+# Nothing else. There is no button to press and no form to fill in, because the
+# whole point is that a release is cheap enough to do the moment a fix is ready.
+#
+# The tests run first and the release does not happen if they fail. Shipping a
+# broken version to people who cannot debug it is worse than shipping nothing,
+# and they will all be told about it within a day by the update check.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt ruff
+
+      # The tag and the VERSION file have to agree. They are two statements of
+      # the same fact, and the app compares the file against the tag to decide
+      # whether an update exists -- so a mismatch means either everybody is
+      # told to update forever, or nobody is ever told at all.
+      - name: Tag matches VERSION
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          file="$(tr -d '[:space:]' < VERSION)"
+          echo "tag=$tag file=$file"
+          test "$tag" = "$file"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Tests
+        run: python -m pytest -q
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A plain zip of the source, named so somebody can tell what they have
+      # downloaded a month later. The app's own updater fetches GitHub's
+      # zipball rather than this, but a person downloading by hand gets
+      # something with a sensible name.
+      - name: Build the download
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          staging="basicagent-$version"
+          mkdir "$staging"
+          rsync -a --exclude '.git' --exclude '.github' --exclude '.venv' \
+                --exclude '__pycache__' --exclude '.pytest_cache' \
+                ./ "$staging/"
+          zip -qr "basicagent-$version.zip" "$staging"
+          ls -la *.zip
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: basicagent-*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true

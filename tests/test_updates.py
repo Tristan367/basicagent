@@ -1,0 +1,257 @@
+"""Finding out there is a new version, and putting it on.
+
+The people this app is for cannot update it themselves. There is no terminal in
+their life, `git pull` is not a sentence they will ever type, and "download the
+new one and copy it over the old one" is four chances to lose their work. If
+updating is not one button it does not happen, and an app that never updates
+keeps every bug it shipped with -- which matters most for the people least able
+to work around one.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from agent_server import updates
+
+
+@pytest.fixture(autouse=True)
+def no_calls(monkeypatch):
+    """Nothing here reaches GitHub or moves a file on this machine."""
+    monkeypatch.setattr(updates, "ROOT", Path("/nonexistent-app-root"))
+    yield
+
+
+# ── which of two versions is newer ─────────────────────────────────────────
+
+
+def test_versions_compare_as_numbers_not_as_text():
+    """The one that bites: 1.10.0 is newer than 1.9.0, and as text it is not.
+    Get it wrong and the tenth release of a series silently stops offering
+    itself to anybody."""
+    assert updates.newer("1.10.0", "1.9.0")
+    assert not updates.newer("1.9.0", "1.10.0")
+    assert updates.newer("2.0.0", "1.99.99")
+
+
+def test_the_v_prefix_makes_no_difference():
+    """Tags are written `v1.0.1` and the file says `1.0.1`. They are the same
+    fact and have to compare as one."""
+    assert not updates.newer("v1.0.0", "1.0.0")
+    assert updates.newer("v1.0.1", "1.0.0")
+
+
+def test_the_same_version_is_not_an_update():
+    assert not updates.newer("1.0.0", "1.0.0")
+
+
+def test_rubbish_does_not_look_like_an_update():
+    """A malformed tag must never read as newer, or everybody is told to update
+    forever and the button does nothing."""
+    for bad in ("", "latest", "nightly", "v", "one.two.three"):
+        assert not updates.newer(bad, "1.0.0"), bad
+
+
+def test_this_copy_knows_its_own_version():
+    """Read from the file the release workflow checks against the tag."""
+    real = Path(__file__).resolve().parent.parent / "VERSION"
+    assert real.is_file(), "there is no VERSION file to release against"
+    text = real.read_text().strip()
+    assert updates._parts(text) >= (1, 0, 0), text
+
+
+# ── asking, and not asking too often ───────────────────────────────────────
+
+
+async def test_a_recent_answer_is_reused(db, monkeypatch):
+    """Nobody's machine should be talking to GitHub while they work."""
+    import time
+
+    called = []
+
+    async def boom(*a, **k):
+        called.append(1)
+        raise AssertionError("it asked again")
+
+    await db.set_setting(updates.CHECK_KEY, str(time.time()))
+    await db.set_setting(updates.FOUND_KEY, json.dumps(
+        {"version": "9.9.9", "notes": "", "url": "u", "zip_url": "z"}))
+    monkeypatch.setattr(updates, "current", lambda: "1.0.0")
+
+    found = await updates.look()
+    assert found and found.version == "9.9.9"
+    assert not called
+
+
+async def test_no_network_is_not_an_error(db, monkeypatch):
+    """No wifi, a school firewall, GitHub having a bad morning: all of them
+    mean "no news", which is the same shape as the common case."""
+    import httpx
+
+    class Dead:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, *a, **k): raise httpx.ConnectError("no")
+
+    monkeypatch.setattr(httpx, "AsyncClient", Dead)
+    assert await updates.look(force=True) is None
+
+
+async def test_an_older_release_is_not_offered(db, monkeypatch):
+    import httpx
+
+    class Fake:
+        status_code = 200
+        @staticmethod
+        def json():
+            return {"tag_name": "v0.9.0", "body": "old", "html_url": "u",
+                    "zipball_url": "z"}
+
+    class Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, *a, **k): return Fake()
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    monkeypatch.setattr(updates, "current", lambda: "1.0.0")
+    assert await updates.look(force=True) is None
+    assert await db.get_setting(updates.FOUND_KEY, "") == ""
+
+
+async def test_a_newer_release_is_remembered(db, monkeypatch):
+    """So the answer survives a restart without asking again."""
+    import httpx
+
+    class Fake:
+        status_code = 200
+        @staticmethod
+        def json():
+            return {"tag_name": "v1.2.0", "body": "Fixed the thing.",
+                    "html_url": "https://example.test/r", "zipball_url": "https://z"}
+
+    class Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, *a, **k): return Fake()
+
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    monkeypatch.setattr(updates, "current", lambda: "1.0.0")
+
+    found = await updates.look(force=True)
+    assert found and found.version == "1.2.0"
+    assert "Fixed the thing." in found.notes
+    saved = json.loads(await db.get_setting(updates.FOUND_KEY, ""))
+    assert saved["version"] == "1.2.0"
+
+
+# ── what an update may and may not touch ───────────────────────────────────
+
+
+def test_an_update_never_replaces_the_environment_or_the_repository():
+    """The virtual environment belongs to this machine and the repository to
+    whoever cloned it. A release containing either must not overwrite them."""
+    assert ".venv" in updates.KEEP
+    assert ".git" in updates.KEEP
+
+
+def test_the_users_work_lives_somewhere_an_update_cannot_reach():
+    """Not a rule in the updater -- a fact about where things are. Projects,
+    settings and API keys are in the data directory, which is not inside the
+    app folder at all."""
+    from agent_server.config import DATA_DIR
+
+    app = Path(__file__).resolve().parent.parent
+    assert not str(DATA_DIR.resolve()).startswith(str(app.resolve()) + "/"), (
+        f"the data directory is inside the app folder ({DATA_DIR}), so an "
+        f"update could destroy somebody's projects"
+    )
+
+
+def test_a_clone_and_a_zip_update_differently():
+    """`git pull` on a folder that was never a clone fails in a way nobody
+    could act on, and unpacking a zip over a clone throws away their work."""
+    import inspect
+
+    source = inspect.getsource(updates.apply)
+    assert "from_git()" in source
+
+
+def test_a_clone_with_local_changes_is_left_alone():
+    """Fast-forward only. A merge performed on somebody's behalf by a button is
+    how you lose an afternoon's work you had not committed."""
+    import inspect
+
+    assert "--ff-only" in inspect.getsource(updates._pull)
+
+
+def test_the_new_version_is_checked_before_anything_is_replaced():
+    """Half an app copied over a working one is the worst outcome available."""
+    import inspect
+
+    source = inspect.getsource(updates._download_and_swap)
+    assert 'for needed in ("agent_server", "requirements.txt", "VERSION")' in source
+    assert source.index("does not look like this app") < source.index("_swap_in")
+
+
+def test_dependencies_are_installed_after_an_update():
+    """A version that added a dependency and did not install it starts, fails
+    on the first import, and looks exactly like a broken update."""
+    import inspect
+
+    assert "_refresh_dependencies" in inspect.getsource(updates._pull)
+    assert "_refresh_dependencies" in inspect.getsource(updates._download_and_swap)
+
+
+# ── the pipeline that produces the thing ───────────────────────────────────
+
+APP = Path(__file__).resolve().parent.parent
+
+
+def test_the_release_workflow_refuses_a_mismatched_tag():
+    """The tag and VERSION are two statements of one fact. If they disagree,
+    either nobody is ever told about an update or everybody is told forever."""
+    flow = (APP / ".github" / "workflows" / "release.yml").read_text()
+    assert 'test "$tag" = "$file"' in flow
+    assert "needs: check" in flow, "it could publish without the tests passing"
+
+
+def test_the_release_runs_the_tests_first():
+    flow = (APP / ".github" / "workflows" / "release.yml").read_text()
+    assert "pytest" in flow and "ruff check" in flow
+
+
+def test_the_download_page_points_at_the_newest_release():
+    """So it never needs editing when a release is cut -- and so it cannot go
+    stale pointing at a version from March."""
+    page = (APP / "docs" / "index.html").read_text()
+    assert "releases/latest" in page
+
+
+def test_the_page_tells_each_platform_what_to_double_click():
+    page = (APP / "docs" / "index.html").read_text()
+    for named in ("install.bat", "Assistant.bat", "install.command",
+                  "Assistant.command", "install.py"):
+        assert named in page, named
+
+
+def test_everything_the_page_promises_actually_exists():
+    """A download page naming a file that is not in the zip is the first thing
+    somebody meets and the last thing they try."""
+    for named in ("install.bat", "Assistant.bat", "install.command",
+                  "Assistant.command", "install.py", "basicagent.py"):
+        assert (APP / named).is_file(), named
+
+
+def test_the_mac_launchers_are_executable():
+    """Finder will not run a .command that is not, and the error it gives is
+    no help at all."""
+    import os
+
+    for named in ("install.command", "Assistant.command"):
+        assert os.access(APP / named, os.X_OK), named

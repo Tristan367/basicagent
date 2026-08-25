@@ -439,6 +439,48 @@ function initSettings() {
             });
         })();
 
+        // ── A new version ─────────────────────────────────────────────────
+        (function () {
+            const card = document.getElementById('update-card');
+            if (!card) return;
+            const what = document.getElementById('update-what');
+            const status = document.getElementById('update-status');
+            const go = document.getElementById('update-go');
+            const notes = document.getElementById('update-notes');
+
+            fetch('/api/update').then((r) => r.json()).then((d) => {
+                if (!d || !d.update) return;
+                what.textContent = 'Version ' + d.update.version
+                    + ' is ready. You have ' + d.version + '.';
+                notes.href = d.update.url;
+                card.hidden = false;
+            }).catch(() => {});
+
+            go.addEventListener('click', async () => {
+                go.disabled = true;
+                status.hidden = false;
+                /* Said plainly, because this is the one place in the app where
+                 * a wait of a minute is normal and silence would read as a
+                 * hang. */
+                status.textContent = 'Fetching the new version. This takes a '
+                    + 'minute or two — please leave it be.';
+                let r = { ok: false };
+                try {
+                    r = await fetch('/api/update', { method: 'POST' })
+                        .then((x) => x.json());
+                } catch (e) {}
+                if (!r.ok) {
+                    status.textContent = r.reason
+                        || 'The update could not be finished. Nothing was lost.';
+                    go.disabled = false;
+                    return;
+                }
+                status.textContent = 'Done. Restarting the app\u2026';
+                try { await fetch('/api/restart', { method: 'POST' }); } catch (e) {}
+                setTimeout(() => location.reload(), 4000);
+            });
+        })();
+
         // Locked settings: the password is asked for once per change, and buys
         // exactly that change.
         //

@@ -3236,3 +3236,21 @@ html.wide-gutter .app-bar-btn.icon-only#settings-btn { display: none; }
     white-space: pre-wrap;
     word-break: break-word;
 }
+
+/* A new version, when there is one. Absent entirely when there is not: an app
+   that says "you are up to date!" every time has taught you to ignore it. */
+.update-card {
+    margin-bottom: 18px;
+    padding: 16px 20px;
+    border: 2px solid var(--accent);
+    border-radius: 14px;
+    background: var(--accent-dim);
+}
+.update-what { display: block; font-weight: 700; }
+.update-why {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-dim);
+    font-size: 0.92rem;
+}
+.update-card .quit-actions { margin-top: 12px; }

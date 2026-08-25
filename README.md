@@ -52,7 +52,9 @@ Options go on the end either way — `install.bat --minimal` on Windows,
 **Starting it:** click the icon. Or `./bin/basicagent` on a Mac or Linux;
 `.venv\Scripts\python basicagent.py` on Windows.
 
-**Updating it:** `git pull`, then run the installer again. Your projects and
+**Updating it:** the app checks once a day and offers a button in Settings that
+does the whole thing. From a clone you can still `git pull` and re-run the
+installer by hand. Your projects and
 settings live outside the folder, so nothing is lost.
 
 **Removing it:** delete the folder, delete

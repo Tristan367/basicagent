@@ -438,6 +438,43 @@ async def system_prompt(kind: str = "project"):
     return {"kind": kind, "text": text}
 
 
+@router.get("/api/update")
+async def update_status(force: bool = False):
+    """Is there a newer version? Answered from a saved answer most of the time.
+
+    Never fails: no network, no GitHub, a school firewall -- all of them mean
+    "no news", which is the same shape as the common case and needs no
+    explaining to anybody.
+    """
+    from agent_server import updates
+
+    found = await updates.look(force=force)
+    return {
+        "version": updates.current(),
+        "update": found.as_dict() if found else None,
+        "from_git": updates.from_git(),
+        "releases": updates.RELEASES_PAGE,
+    }
+
+
+@router.post("/api/update")
+async def update_apply():
+    """Put the new version on. The caller restarts afterwards."""
+    from agent_server import updates
+
+    try:
+        said = await updates.apply()
+    except updates.UpdateError as e:
+        return {"ok": False, "reason": str(e)}
+    except Exception as e:  # a shape nothing anticipated
+        log.exception("update failed")
+        return {"ok": False,
+                "reason": f"The update stopped part-way ({type(e).__name__}). "
+                          f"Nothing was lost -- your projects and settings are "
+                          f"kept somewhere else entirely."}
+    return {"ok": True, "said": said}
+
+
 @router.get("/api/theme")
 async def get_theme():
     """Everything the open page can change about itself without reloading.
