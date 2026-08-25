@@ -18,6 +18,8 @@ cannot read it.
 
 from __future__ import annotations
 
+import pytest
+
 from agent_server import database as db
 from agent_server import parental
 from agent_server.conversation import build_messages
@@ -437,3 +439,49 @@ async def test_a_parent_still_can(db, tmp_path):
                       abort=asyncio.Event())
     result = await create_project(ctx, name="Mine", folder=str(tmp_path / "here"))
     assert not result.is_error, result.output
+
+
+# ── the instructions themselves, for anybody who wants to read them ────────
+
+
+async def test_the_system_prompt_can_be_read(db):
+    """Not a secret, and no good reason for it to be one. Somebody deciding
+    whether to trust this with their child is entitled to read the instructions
+    it is given -- and some of what they might write in the box above is
+    already in there, which nobody can know without being shown."""
+    from agent_server.routes.settings import system_prompt
+
+    await db.set_setting("child_mode", "0")
+    project = await system_prompt(kind="project")
+    assert len(project["text"]) > 500
+    # The child-safety block is shown alongside it, marked as what it is.
+    assert "In child mode, everything below is added as well." in project["text"]
+    assert "You are talking to a child" in project["text"]
+
+    manager = await system_prompt(kind="manager")
+    assert manager["text"] != project["text"]
+
+
+async def test_a_child_is_not_handed_the_rules_they_are_held_to(db):
+    """Withheld in child mode not because it is secret but because that is a
+    different situation, and it is the parent's to decide rather than ours."""
+    from fastapi import HTTPException
+
+    from agent_server.routes.settings import system_prompt
+
+    await db.set_setting("child_mode", "1")
+    with pytest.raises(HTTPException) as refused:
+        await system_prompt(kind="project")
+    assert refused.value.status_code == 403
+
+
+def test_the_house_rules_examples_are_things_somebody_would_actually_write():
+    """"Never add a framework unless I ask" was weak -- these do not reach for
+    one uninvited anyway. What people actually repeat every session is "check
+    it works before you tell me it is done"."""
+    from pathlib import Path
+
+    said = " ".join(Path("web_ui/templates/settings_body.html").read_text().split())
+    assert "actually run it and show me it works" in said
+    assert "Write a test for everything you build" in said
+    assert "the sentences you are tired of typing" in said

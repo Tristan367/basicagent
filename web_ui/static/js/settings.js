@@ -406,6 +406,39 @@ function initSettings() {
             });
         })();
 
+        // ── What the AI is told ───────────────────────────────────────────
+        //
+        // Fetched when the fold is opened rather than with the page: it is
+        // several thousand words and nobody has asked to see it yet.
+        (function () {
+            const peek = document.getElementById('prompt-peek');
+            if (!peek) return;
+            const out = document.getElementById('prompt-peek-text');
+            let wanted = 'project';
+
+            async function show(kind) {
+                wanted = kind;
+                out.textContent = 'Loading\u2026';
+                peek.querySelectorAll('[data-prompt]').forEach((b) => {
+                    b.classList.toggle('active', b.dataset.prompt === kind);
+                });
+                try {
+                    const r = await fetch('/api/system-prompt?kind=' + kind)
+                        .then((x) => x.json());
+                    if (wanted === kind) out.textContent = r.text || '(nothing)';
+                } catch (e) {
+                    out.textContent = 'That could not be loaded.';
+                }
+            }
+
+            peek.addEventListener('toggle', () => {
+                if (peek.open && out.textContent.startsWith('Loading')) show('project');
+            });
+            peek.querySelectorAll('[data-prompt]').forEach((b) => {
+                b.addEventListener('click', () => show(b.dataset.prompt));
+            });
+        })();
+
         // Locked settings: the password is asked for once per change, and buys
         // exactly that change.
         //

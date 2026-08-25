@@ -92,18 +92,25 @@
         <h2>House rules</h2>
         <p class="hint">
             A note the AI reads before everything it does here, in all of your own
-            projects. It is for the sentence you are tired of typing at the start of
-            every conversation.
+            projects. It is for the sentences you are tired of typing at the start of
+            every conversation — as few or as many as you like.
         </p>
         <details class="house-rules-examples">
             <summary>Some things people write</summary>
-            <p class="hint house-rules-group">How you like things built:</p>
+            <p class="hint house-rules-group">How you want it to work:</p>
             <ul>
-                <li>&ldquo;Plain HTML, CSS and JavaScript. Never add a framework unless I
-                    ask for one.&rdquo;</li>
-                <li>&ldquo;Explain what you are about to do before you do it, in one
-                    line.&rdquo;</li>
-                <li>&ldquo;British spelling everywhere, including in code.&rdquo;</li>
+                <li>&ldquo;After you change anything, actually run it and show me it
+                    works. Do not tell me it is done until you have checked.&rdquo;</li>
+                <li>&ldquo;Write a test for everything you build, and run the whole lot
+                    before you say you have finished.&rdquo;</li>
+                <li>&ldquo;Ask before you install anything new. I want to know what is
+                    on this computer.&rdquo;</li>
+                <li>&ldquo;If you think there is a better way than what I asked for, say
+                    so once, then do what I asked.&rdquo;</li>
+                <li>&ldquo;I am learning. The first time something new comes up, tell me
+                    in a sentence what it is.&rdquo;</li>
+                <li>&ldquo;Stop and ask me rather than guessing when a decision could go
+                    two ways.&rdquo;</li>
             </ul>
             <p class="hint house-rules-group">If you are preparing lessons:</p>
             <ul>
@@ -120,6 +127,28 @@
             else in the moment, what you asked for wins. They do not apply in child
             mode &mdash; that has a box of its own, below.
         </p>
+        {#
+          Some of what people write here is already in the instructions the AI
+          gets. Nobody can know that without being shown, so here it is: the
+          real thing, not a description of it. Parent mode only -- not because
+          it is a secret, but because a child reading the rules they are being
+          held to is a different situation and it is the parent's to decide.
+        #}
+        {% if not child_mode %}
+        <details class="prompt-peek" id="prompt-peek">
+            <summary>See exactly what the AI is told before you say anything</summary>
+            <p class="hint">
+                This is the whole of it, word for word. Some of what you might write
+                above may already be in here &mdash; and if it is, saying it again does
+                no harm.
+            </p>
+            <div class="prompt-peek-tabs">
+                <button type="button" class="btn-neutral" data-prompt="project">In a project</button>
+                <button type="button" class="btn-neutral" data-prompt="manager">Project Manager</button>
+            </div>
+            <pre class="prompt-peek-text" id="prompt-peek-text">Loading&hellip;</pre>
+        </details>
+        {% endif %}
         <div class="house-rules">
             <label class="house-rules-label" for="own-rules-text">Your note to the AI</label>
             <textarea id="own-rules-text" class="house-rules-text" rows="5"

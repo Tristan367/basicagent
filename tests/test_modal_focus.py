@@ -53,3 +53,21 @@ def test_there_is_somewhere_to_fall_back_to():
 def test_the_main_landmark_can_actually_take_focus():
     base = APP_JS.parents[2] / "templates" / "base.html"
     assert '<main id="main-content" tabindex="-1">' in base.read_text()
+
+
+def test_the_bar_buttons_wear_their_focus_ring_straight():
+    """The seam between the left-hand bar buttons used to be a border, which is
+    two pixels of the button's own width on the right only -- so the words sat
+    two pixels left of centre and the focus ring, which wraps the box rather
+    than the words, looked shifted right. Every other control in the app has a
+    centred ring, and the odd one out is the one people notice.
+
+    Drawn inside the box now, with the room made on both sides."""
+    from pathlib import Path
+
+    css = Path("web_ui/static/css/style.css").read_text()
+    at = css.index(".app-bar-side:first-child .app-bar-btn {")
+    rule = css[at:css.index("}", at)]
+    assert "border-right" not in rule, "the seam is back to being part of the box"
+    assert "box-shadow: inset" in rule
+    assert "padding: 0 calc(var(--bar-pad) + var(--seam))" in rule

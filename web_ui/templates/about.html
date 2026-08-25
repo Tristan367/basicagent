@@ -16,6 +16,22 @@
 <div class="about-scroll">
 <div class="about" id="about-page">
 
+    {#
+      Two ways to take this page away with you.
+
+      Copy, because handing a page to an AI is how people read long things now
+      -- "explain this to me", "what does this mean for my kid" -- and because
+      the whole page in the clipboard costs one line of code.
+
+      And read aloud, because a fair number of the people this app is for do
+      not read screens, and a page about accessibility that could not be
+      listened to would be an embarrassment.
+    #}
+    <div class="about-tools">
+        <button type="button" class="btn-neutral" id="about-copy">Copy this page</button>
+        <button type="button" class="btn-neutral" id="about-play" hidden>Read it to me</button>
+    </div>
+
     <h1>How any of this works</h1>
     <p class="about-lead">
         No jargon, nothing assumed. If you have ever wondered what these things
@@ -65,7 +81,7 @@
         </p>
         <p>
             What it knows, it learned once, in one enormous go, from an enormous
-            amount of writing. That took months and cost millions of pounds. At
+            amount of writing. That took months and cost millions of dollars. At
             the end of it the knowledge was set, the way a fired pot is set —
             and then it stopped learning. Talking to it does not teach it
             anything. Nothing you say here goes back into it. Tomorrow it will
@@ -96,21 +112,30 @@
     <section id="memory">
         <h2>Why it forgets, and what happens when it does</h2>
         <p>
-            Imagine someone who has read every book in the library and remembers
-            all of it — but can only hold a few pages on the desk in front of
-            them at a time. The library is what they learned during training.
-            The desk is your conversation.
+            The closest thing in real life is a person who has lost the ability
+            to form new memories. Everything they knew before the injury is
+            intact — their family, their skills, that the sky is blue — and none
+            of it is going anywhere. But nothing that happens today sticks.
+            Tomorrow, it is gone.
         </p>
         <p>
-            Everything you have said, everything it has said, every file it has
-            read and every command it has run this session — all of that has to
-            sit on the desk, all at once, every single time it answers you. That
-            is not a metaphor for how it works. It is how it works: it re-reads
-            the entire conversation from the beginning before writing each reply.
+            People in that situation cope with notes. Everything that matters
+            gets written down and kept where they can see it, and they read the
+            whole stack again each morning before they can carry on. That stack
+            is the only thing standing between them and starting from nothing.
         </p>
         <p>
-            The desk has an edge. When the conversation gets close to it, this
-            app does something you will occasionally see happen:
+            <strong>Your conversation is the stack of notes.</strong> Everything
+            you have said, everything it has said, every file it has opened and
+            every command it has run — the AI re-reads all of it, from the top,
+            before writing each single reply. Not a summary of it. The actual
+            thing, every time. That is not a way of describing how it works. It
+            is how it works.
+        </p>
+        <p>
+            And there is only so much it can hold. When the stack gets close to
+            that limit, this app does something you will occasionally see
+            happen:
             <strong>it writes a summary of the older part and clears that part
             away</strong>. What it did, what it decided, which files it changed,
             what is still to do — kept. The exact back-and-forth of two hours
@@ -123,7 +148,8 @@
         </p>
         <p class="about-aside">
             It is worth knowing because of what it means for you: if something
-            matters and you mentioned it a long way back, say it again. And if
+            matters and you mentioned it a long way back, say it again — it may
+            be reading a summary of that part rather than your actual words. And if
             you are about to start something quite different, a fresh project is
             cheaper and sharper than carrying an old conversation into it.
         </p>
@@ -173,9 +199,11 @@
             problem: it carries on and tells you what it could not do.
         </p>
         <p>
-            In child mode the question is the same one, and saying yes needs the
-            parent password — the buttons say so before they are pressed. Saying
-            no never does: stopping something has to stay the easy answer.
+            Child mode works the same way, with one difference: only a grown-up
+            can say yes. Both of the “yes” buttons are labeled <em>needs a
+            grown-up</em> and ask for the parent password. Saying no never does
+            — a child should always be able to stop something without needing
+            permission first.
         </p>
         <p>
             A few places never ask, because a question there would be noise and
@@ -228,7 +256,7 @@
             <strong>It uses real energy and real water.</strong> Every reply is
             worked out in a building full of machines that need power and
             cooling. One reply is small. Hundreds of millions of replies a day
-            are not, and the data centres behind them are being built at a pace
+            are not, and the data centers behind them are being built at a pace
             that has real consequences for real places. Using it thoughtfully
             rather than idly is not nothing.
         </p>
@@ -260,9 +288,10 @@
     <section id="skynet">
         <h2>Should you be frightened of it?</h2>
         <p>
-            Not of the film version, no. The machine that wakes up, decides
-            things on its own and turns on us is a different kind of thing from
-            what we have actually built, and the difference is not a detail.
+            Not of the kind you see in movies — the machine that wakes up,
+            decides things for itself and turns on us. That is a genuinely
+            different kind of thing from what anyone has actually built, and the
+            difference is not a technicality.
         </p>
         <p>
             What we have built cannot learn while it runs. It was trained once
@@ -273,19 +302,18 @@
             this app is any of those.
         </p>
         <p>
-            Where the real risk sits is duller and closer: <strong>it is about
-            who gets to tell one what to do.</strong> These things follow
-            instructions, and they are not very good at telling whose
-            instructions they are. Hide a message in a web page, and an AI
-            reading that page may treat it as an order from you. That is called
-            prompt injection, nobody has solved it, and it is the reason this app
-            keeps a child's browsing away from the open web.
+            The real risk is duller and much closer to home:
+            <strong>an AI does whatever it is told, and it is bad at working out
+            who is telling it.</strong> Hide an instruction inside a web page,
+            and an AI that reads that page may follow it as though it came from
+            you. That is called prompt injection. Nobody has solved it, and it is
+            why this app keeps a child away from the open web.
         </p>
         <p>
-            So the thing to watch is not an AI deciding to do something dreadful.
-            It is a person aiming a capable, obedient system at something
-            dreadful — or slipping a note into its reading. That is a problem
-            about people, which is the sort of problem we have always had.
+            So the danger is not a machine deciding to do something terrible. It
+            is a person pointing an obedient machine at something terrible — or
+            hiding a note where it will read one. Both of those are people
+            problems, and people problems are the kind we have always had.
         </p>
         <p class="about-aside">
             Thoughtful people do disagree about the long run, and this page is
@@ -298,17 +326,28 @@
     <section id="good">
         <h2>Why we think it is worth it</h2>
         <p>
-            Until very recently, making software meant years of learning before
-            you could build the thing you actually wanted. Most people who had a
-            good idea simply never got to find out whether it was any good. The
-            barrier was never imagination. It was punctuation.
+            Until very recently, making software cost years twice over. Years to
+            learn enough to start — and then years again to actually build the
+            thing, because even for someone who knew exactly what they were
+            doing, a real website or a real app is thousands of small decisions
+            and tens of thousands of lines. Most people with a good idea never
+            found out whether it was any good. They gave up somewhere in the
+            middle, or shipped something half-finished, or decided this sort of
+            thing was not for them.
         </p>
         <p>
-            That barrier has gone. A ten-year-old with an idea can have it
+            That barrier is gone. A ten-year-old with an idea can have it
             running this afternoon. A parent with a small business can have the
             tool they have wanted for five years. Whatever else is true about
-            all this, that part is an enormous, straightforwardly good thing, and
-            it is what this app exists to hand to your family.
+            all of this, that part is an enormous, straightforwardly good thing,
+            and it is what this app exists to hand to your family.
+        </p>
+        <p class="about-aside">
+            <strong>This app was built this way too.</strong> Every line of it
+            was written by an AI, working from plain-English descriptions of what
+            it should do and why — the same thing your child will be doing on the
+            other side of this screen. It is not a demonstration of what the
+            technique might one day manage. It is the technique, running.
         </p>
         <p>
             It also gives you back the part of the day nobody misses. You say
@@ -325,6 +364,30 @@
             was always the point: deciding what to make, judging whether it is
             any good, and caring how it turns out.
         </p>
+        <h3>When you outgrow this</h3>
+        <p>
+            You may, eventually, and it would be a strange kind of honesty to
+            pretend otherwise. This app is built for someone who has never done
+            any of this: it does one project at a time, it explains itself as it
+            goes, and it connects to an AI you pay per use — which is the right
+            arrangement while you are finding out whether you like it, because a
+            quiet week costs nothing.
+        </p>
+        <p>
+            If your child ends up building constantly, that arrangement stops
+            being the cheap one. At that point the thing to look at is
+            <strong>Claude Code</strong>, which is what this app was built with.
+            It is a professional tool with a professional learning curve — a
+            terminal, and no hand-holding — so it is not where anyone should
+            start. But a flat monthly subscription buys far more work than the
+            same money spent per use, and it runs the strongest models there are.
+        </p>
+        <p>
+            We would rather say that than keep somebody here who has outgrown us.
+            The point of this app is not to hold your family; it is to get them
+            started, and started well.
+        </p>
+
         <h3>Two futures, and the difference is how it is used</h3>
         <p>
             One is a world where people stop bothering. The machine does it, so
@@ -354,4 +417,85 @@
     </p>
 </div>
 </div>
+
+<script>
+(function () {
+    /* Everything on the page as plain prose, in the order it is read. The
+       controls themselves are left out: "Copy this page" is not part of the
+       page. */
+    function words() {
+        const page = document.getElementById('about-page');
+        const parts = [];
+        page.querySelectorAll('h1, h2, h3, p, li').forEach((el) => {
+            if (el.closest('.about-tools') || el.closest('.about-toc')) return;
+            const t = el.textContent.replace(/\s+/g, ' ').trim();
+            if (t) parts.push(t);
+        });
+        return parts;
+    }
+
+    const copy = document.getElementById('about-copy');
+    copy.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(words().join('\n\n'));
+            copy.textContent = 'Copied';
+        } catch (e) {
+            copy.textContent = 'Could not copy';
+        }
+        setTimeout(() => { copy.textContent = 'Copy this page'; }, 2500);
+    });
+
+    /* Read aloud, in the app's own voice. Offered only when that voice is
+       actually installed -- a button that explains it cannot do the thing is
+       worse than no button. */
+    const play = document.getElementById('about-play');
+    let audio = null;
+    let stopped = false;
+
+    fetch('/api/tts/status').then((r) => r.json()).then((s) => {
+        if (s && s.available) { play.hidden = false; play.dataset.voice = s.voice || '';
+                                play.dataset.speed = s.speed || 1; }
+    }).catch(() => {});
+
+    function stop() {
+        stopped = true;
+        if (audio) { audio.pause(); audio = null; }
+        play.textContent = 'Read it to me';
+    }
+
+    play.addEventListener('click', async () => {
+        if (audio) { stop(); return; }
+        stopped = false;
+        play.textContent = 'Stop reading';
+        let sentences = [];
+        try {
+            const r = await fetch('/api/tts/plan', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: words().join('\n\n') }),
+            }).then((x) => x.json());
+            sentences = r.sentences || [];
+        } catch (e) { stop(); return; }
+
+        for (const line of sentences) {
+            if (stopped) return;
+            try {
+                const resp = await fetch('/api/tts/speak', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: line, voice: play.dataset.voice,
+                                           speed: parseFloat(play.dataset.speed) || 1 }),
+                });
+                if (!resp.ok) continue;
+                const url = URL.createObjectURL(await resp.blob());
+                if (stopped) { URL.revokeObjectURL(url); return; }
+                audio = new Audio(url);
+                await new Promise((done) => {
+                    audio.onended = audio.onerror = () => { URL.revokeObjectURL(url); done(); };
+                    audio.play().catch(() => done());
+                });
+            } catch (e) { /* one sentence failing is not a reason to stop */ }
+        }
+        stop();
+    });
+})();
+</script>
 {% endblock %}

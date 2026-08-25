@@ -238,7 +238,10 @@ body {
     background: transparent;
     border: none;
     border-radius: 0;
-    padding: 0 16px;
+    /* Named, because the seam below has to add itself to whichever value is in
+       force -- see the note there. */
+    --bar-pad: 16px;
+    padding: 0 var(--bar-pad);
     font-size: 0.95rem;
     font-family: var(--font);
     color: var(--text);
@@ -246,7 +249,7 @@ body {
     cursor: pointer;
     white-space: nowrap;
 }
-.app-bar-btn.nav-btn { padding: 0 14px; font-size: 1.05rem; }
+.app-bar-btn.nav-btn { --bar-pad: 14px; font-size: 1.05rem; }
 /* The way back. It was the widest thing on the bar -- full-size text and 16px
    of padding either side, for the longest label in the interface -- so the
    words are smaller and closer in now.
@@ -256,13 +259,30 @@ body {
    thing: where you are. */
 .app-bar-btn.home-btn {
     gap: 7px;
-    padding: 0 12px;
+    --bar-pad: 12px;
     font-size: 0.88rem;
 }
 .app-bar-btn.home-btn svg { flex: none; }
 /* On the home page itself, in the heading, taking the heading's colour. */
 .title-home { flex: none; vertical-align: -3px; margin-right: 7px; }
-.app-bar-side:first-child .app-bar-btn { border-right: var(--seam) solid var(--border); }
+/* The seam between the bar's left-hand buttons, drawn inside the box rather
+   than as a border on it.
+
+   As a border it was two pixels of the button's own width, on the right only --
+   so the focus ring, which wraps the border box, sat two pixels further right
+   than the glyph it was meant to be around. On every other control in the app
+   the ring is centred, and the odd one out is the one people notice.
+   Compensating padding keeps the geometry identical to what it replaced. */
+.app-bar-side:first-child .app-bar-btn {
+    box-shadow: inset calc(-1 * var(--seam)) 0 0 var(--border);
+    /* Both sides, so the words sit in the middle of the box.
+       As a border, the seam was two pixels of the button's own width on the
+       right only: the content ended up two pixels left of centre, and the focus
+       ring -- which wraps the box, not the words -- looked shifted right. Every
+       other control in the app has a centred ring, and the odd one out is the
+       one people notice. */
+    padding: 0 calc(var(--bar-pad) + var(--seam));
+}
 .app-bar-btn:hover { background: var(--accent-dim); }
 .app-bar-btn:disabled {
     color: var(--text-dim);
@@ -3161,4 +3181,42 @@ html.wide-gutter .app-bar-btn.icon-only#settings-btn { display: none; }
 .stop-beside {
     padding: 11px 18px;
     font-size: 0.95rem;
+}
+
+/* A thought a child can see happened and cannot read. Same row as the
+   disclosure it replaces, without the twisty: there is nothing to open. */
+.thinking-shut {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.thinking-shut .thinking-label { cursor: default; }
+.thinking-shut { cursor: default; }
+.thinking-locked { color: var(--text-dim); font-size: 0.88rem; }
+
+/* Take-this-away controls, top right of "How any of this works". */
+.about-tools {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+/* The instructions the AI is given, for anybody who wants to read them. */
+.prompt-peek { margin-top: 16px; }
+.prompt-peek > summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.prompt-peek-tabs { display: flex; gap: 8px; margin: 10px 0; }
+.prompt-peek-tabs .active { border-color: var(--accent); color: var(--accent); }
+.prompt-peek-text {
+    max-height: 26rem;
+    overflow: auto;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--code-bg);
+    color: var(--code-text);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
 }

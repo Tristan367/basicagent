@@ -77,6 +77,24 @@
       quiet enough that somebody who does not want it never notices it is there.
     #}
     {% if (m.reasoning_content or '') | trim %}
+    {#
+      In child mode this is a mark and nothing else. The thought itself is not
+      folded away, it is not rendered at all: a child prising open a disclosure
+      is the easiest thing in the world, and what is inside is the assistant
+      working out how to handle them -- which house rules apply, what not to
+      say, why it is steering somewhere. Reading that would be worse than
+      reading the house rules.
+
+      They still see *that* it thought, because "it went quiet for a moment and
+      then answered" is worth understanding, and because the tick is part of
+      learning what these things do.
+    #}
+    {% if child_mode %}
+    <div class="thinking thinking-shut" role="note">
+        <span class="thinking-mark" aria-hidden="true">&#10003;</span>
+        <span class="thinking-label">Thought about it</span>
+    </div>
+    {% else %}
     <details class="thinking">
         {# The mark is a real element rather than a `::before`, because while a
            thought is actually happening the same row shows a turning glyph in
@@ -88,6 +106,7 @@
         </summary>
         <div class="thinking-text">{{ m.reasoning_content }}</div>
     </details>
+    {% endif %}
     {% endif %}
     {% if (m.content or '') | trim %}
     <div class="message assistant" id="msg-{{ m.id }}">

@@ -71,16 +71,20 @@ async def create_session(payload: dict):
     profile = await parental.current_profile()
     raw_folder = str(payload.get("folder") or "").strip()
 
+    # The menu does not offer this in child mode, and neither does the route.
+    # Its whole purpose is naming a folder, and a project rooted wherever a
+    # child liked would hand every tool in that session the run of that folder
+    # with nobody asked. Asking the Project Manager still works and puts it in
+    # the usual place.
+    if profile == "child":
+        raise HTTPException(
+            403,
+            "Child mode is on, so new projects are made by asking the Project "
+            "Manager for one. Turn child mode off in Settings to make one this "
+            "way.",
+        )
+
     if raw_folder:
-        # Only outside child mode. A child pointing a project at any folder on
-        # the machine is exactly what the separation exists to prevent, and the
-        # option is not offered to them in the first place.
-        if profile == "child":
-            raise HTTPException(
-                403,
-                "Child mode is on, so a project can only go in the usual place. Turn "
-                "it off in Settings, under Parental controls, to choose a folder.",
-            )
         folder = _Path(raw_folder).expanduser()
         try:
             folder = folder.resolve()
@@ -111,8 +115,7 @@ async def create_session(payload: dict):
             except OSError as e:
                 raise HTTPException(400, f"That folder could not be made: {e}") from e
     else:
-        base = PROJECTS_DIR / "child" if profile == "child" else PROJECTS_DIR
-        folder = base / _slug(name)
+        folder = PROJECTS_DIR / _slug(name)
         try:
             folder.mkdir(parents=True, exist_ok=True)
         except OSError as e:

@@ -6,7 +6,7 @@ import os
 import sys
 import time
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from agent_server import database as db
@@ -412,6 +412,30 @@ async def house_rules_save(request: Request):
         return {"ok": False, "reason": "too_long"}
     await parental.set_own_note(note)
     return {"ok": True, "saved": bool(note.strip())}
+
+
+@router.get("/api/system-prompt")
+async def system_prompt(kind: str = "project"):
+    """What the AI is told before anybody says anything.
+
+    Not a secret, and there is no good reason for it to be one -- somebody
+    deciding whether to trust this with their child is entitled to read the
+    instructions it is given. It is withheld in child mode only because a child
+    reading the rules they are being held to is a different situation, and that
+    one is the parent's to decide rather than ours.
+    """
+    from agent_server.config import PROJECTS_DIR
+    from agent_server.system_prompt import build_system_prompt
+
+    if await parental.child_mode_enabled():
+        raise HTTPException(403, "Turn child mode off to read this.")
+    kind = "manager" if kind == "manager" else "project"
+    where = str(PROJECTS_DIR / "your-project") if kind == "project" else str(PROJECTS_DIR)
+    text = build_system_prompt(kind, where)
+    if kind == "project":
+        text += ("\n\n[In child mode, everything below is added as well.]\n"
+                 + parental.CHILD_MODE_BLOCK)
+    return {"kind": kind, "text": text}
 
 
 @router.get("/api/theme")

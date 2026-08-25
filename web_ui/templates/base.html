@@ -110,10 +110,21 @@
                        As a border it followed the button's rounded corners and
                        curled up at both ends, which read as a stray shadow
                        under a button that was not there. #}
+                    {#
+                      Not offered in child mode, and not merely because the
+                      folder box is hidden there. The whole point of this door
+                      is naming a folder, and a project rooted wherever a child
+                      liked would hand every tool in that session the run of
+                      that folder with nobody asked -- the permission dialog
+                      walked around from the other side. Asking the Project
+                      Manager still works, and puts it in the usual place.
+                    #}
+                    {% if not child_mode %}
                     <hr class="sessions-sep">
                     <button type="button" class="sessions-new" id="new-project-btn">
                         New empty project&hellip;
                     </button>
+                    {% endif %}
                 </div>
             </div>
         </nav>

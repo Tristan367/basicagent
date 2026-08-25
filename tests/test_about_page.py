@@ -60,7 +60,7 @@ def test_it_says_where_the_permission_line_actually_falls():
     assert "Files outside your project need your say-so" in SAID
     assert "allow everything in that folder from then on" in SAID
     assert "It does not cover every shell command" in SAID
-    assert "In child mode the question is the same one" in SAID
+    assert "only a grown-up can say yes" in SAID
     assert "Saying no never does" in SAID
     # And the short list of places it never asks about, which is the other half
     # of not training people to click past it.
@@ -78,7 +78,12 @@ def test_it_says_plainly_that_nothing_asks_permission():
 def test_it_explains_forgetting_without_jargon():
     """Compaction is the one piece of machinery a user actually sees happen,
     and "context window" means nothing to them."""
-    assert "library" in SAID and "desk" in SAID
+    # The analogy is amnesia, not a library. Somebody who cannot form new
+    # memories and copes with a stack of notes they re-read every morning is
+    # what this actually is; a library you can only see one shelf of invites
+    # the obvious question of why they cannot just fetch another book.
+    assert "lost the ability" in SAID and "form new memories" in SAID
+    assert "stack of notes" in SAID
     assert "Earlier conversation was summarized" in SAID
     assert "context window" not in SAID
 
@@ -97,7 +102,8 @@ def test_it_does_not_pretend_the_argument_is_settled():
 
 def test_it_names_the_risk_that_is_actually_real():
     assert "prompt injection" in SAID
-    assert "who gets to tell one what to do" in SAID
+    assert "it is bad at working out who is telling it" in SAID
+    assert "people problems are the kind we have always had" in SAID
 
 
 def test_it_teaches_the_two_habits_that_matter():
@@ -122,3 +128,25 @@ class _Request:
 
     def __getattr__(self, name):
         return None
+
+
+def test_it_says_this_app_was_built_the_same_way():
+    """Not a demonstration of what the technique might one day manage. The
+    technique, running."""
+    assert "This app was built this way too" in SAID
+    assert "It is the technique, running." in SAID
+
+
+def test_it_names_the_way_out_when_somebody_outgrows_it():
+    """It would be a strange kind of honesty to explain how all this works and
+    then not mention that there is a better tool for somebody building
+    constantly. The point is to get a family started, not to keep them."""
+    assert "When you outgrow this" in SAID
+    assert "Claude Code" in SAID
+    assert "professional learning curve" in SAID
+    assert "not to hold your family" in SAID
+
+
+def test_it_says_the_barrier_was_years_of_building_not_only_years_of_learning():
+    assert "cost years twice over" in SAID
+    assert "shipped something half-finished" in SAID

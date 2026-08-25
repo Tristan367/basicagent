@@ -132,16 +132,27 @@ async def test_a_child_cannot_point_a_project_anywhere_they_like(client, child_m
     assert resp.status_code == 403
 
 
-async def test_a_child_can_still_make_an_ordinary_project(client, child_mode, projects_dir):
+async def test_this_door_is_shut_in_child_mode(client, child_mode, projects_dir):
+    """Its whole purpose is naming a folder, and a project rooted wherever a
+    child liked would hand every tool in that session the run of that folder
+    with nobody asked -- the permission dialog walked around from the other
+    side. Asking the Project Manager still works and puts it in the usual
+    place."""
     resp = await make(client, name="Kid game")
-    assert resp.status_code == 200
-    assert "/child/" in resp.json()["project_dir"], "it did not land in the child's own area"
+    assert resp.status_code == 403
+    assert "Project Manager" in resp.json()["detail"]
 
 
-async def test_a_childs_project_belongs_to_the_child(client, child_mode, projects_dir, db):
-    resp = await make(client, name="Kid game")
-    session = await db.get_session(resp.json()["id"])
-    assert session["profile"] == "child"
+def test_the_menu_does_not_offer_it_in_child_mode():
+    """The page and the route agree, so a child never meets a button that then
+    refuses them."""
+    from pathlib import Path
+
+    body = Path("web_ui/templates/base.html").read_text()
+    at = body.index('id="new-project-btn"')
+    before = body[:at]
+    assert before.rstrip().endswith("{% endif %}") is False
+    assert "{% if not child_mode %}" in before[-600:]
 
 
 # ── where it is offered ────────────────────────────────────────────────────

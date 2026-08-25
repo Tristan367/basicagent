@@ -1311,8 +1311,24 @@
   (function () {
     const badge = document.getElementById('child-badge');
     if (badge) {
-      badge.addEventListener('click', () => {
-        if (window.__openSettings) window.__openSettings();
+      /* Somebody pressing "Child mode" is asking one question -- how do I turn
+       * this off -- and opening Settings at the top left them scrolling a long
+       * page to find the answer. So it goes to the control, and puts the
+       * keyboard on it: for a screen reader the whole journey is now one press
+       * followed by "Turn off child mode, button". */
+      badge.addEventListener('click', async () => {
+        if (!window.__openSettings) return;
+        await window.__openSettings();
+        for (let i = 0; i < 40; i++) {
+          const off = document.getElementById('child-disable');
+          if (off) {
+            const panel = document.getElementById('parental-panel');
+            if (panel) panel.scrollIntoView({ block: 'center', behavior: 'auto' });
+            off.focus({ preventScroll: true });
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 50));
+        }
       });
     }
 
@@ -2009,6 +2025,32 @@
 
   function noteThinking(text) {
     if (!messages) return;
+    /* In child mode the thought is a mark and nothing else -- not folded away,
+     * never put on the page. A child prising open a disclosure is the easiest
+     * thing in the world, and what is inside is the assistant working out how
+     * to handle them: which house rules apply, what not to say, why it is
+     * steering somewhere. Reading that would be worse than reading the rules.
+     *
+     * They still see that it thought, because "it went quiet and then
+     * answered" is worth understanding. */
+    if (childMode) {
+      if (!thinkingRow) {
+        thinkingRow = document.createElement('div');
+        thinkingRow.className = 'thinking thinking-shut thinking-live';
+        thinkingMark = document.createElement('span');
+        thinkingMark.className = 'thinking-mark';
+        thinkingMark.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.className = 'thinking-label';
+        label.textContent = 'Thinking…';
+        thinkingRow.appendChild(thinkingMark);
+        thinkingRow.appendChild(label);
+        messages.appendChild(thinkingRow);
+        thinkingSpin = startSpinner(thinkingMark);
+        scrollToBottom();
+      }
+      return;
+    }
     if (!thinkingRow) {
       thinkingRow = document.createElement('details');
       thinkingRow.className = 'thinking thinking-live';
@@ -2032,16 +2074,40 @@
     if (text) thinkingWords.textContent += text;
   }
 
+  /* A child poking the thought mark.
+   *
+   * There is no twisty on it, so nothing advertises that anything is hidden --
+   * which is deliberate, because a child who feels they have found a secret
+   * will keep pulling at it. But some of them will press it anyway, and a row
+   * that does nothing at all when pressed is a dead end rather than an answer.
+   *
+   * So it answers, lightly, and points at the part that is actually useful to
+   * them. Said once and left on screen: repeating it on every press would turn
+   * it into a game. */
+  if (messages) messages.addEventListener('click', (e) => {
+    const row = e.target.closest('.thinking-shut');
+    if (!row || row.querySelector('.thinking-locked')) return;
+    const note = document.createElement('span');
+    note.className = 'thinking-locked';
+    note.textContent = ' — that is the assistant working things out to itself. '
+      + 'Child mode keeps that part private. Everything it decided is in the '
+      + 'answer below.';
+    row.appendChild(note);
+    announce(note.textContent);
+  });
+
   function finishThinking() {
     if (!thinkingRow) return;
     thinkingSpin = stopSpinner(thinkingSpin);
     thinkingRow.classList.remove('thinking-live');
     thinkingMark.textContent = '✓';
     const label = thinkingRow.querySelector('.thinking-label');
-    if (label) label.textContent = 'Thinking';
+    // In child mode there are no words, only the mark -- so the past tense is
+    // all there is to change, and there is nothing to decide about keeping.
+    if (label) label.textContent = thinkingWords ? 'Thinking' : 'Thought about it';
     // Nothing was said, so there is nothing to keep. Some models stream a
     // `reasoning` event with no text in it at all.
-    if (!thinkingWords.textContent.trim()) thinkingRow.remove();
+    if (thinkingWords && !thinkingWords.textContent.trim()) thinkingRow.remove();
     else if (soundTicks) cueThoughtDone();
     thinkingRow = null;
     thinkingMark = null;
