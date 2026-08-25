@@ -380,6 +380,50 @@
       other model either pay or give up, when waiting until the conversation is
       next tidied up costs nothing at all.
     #}
+    {#
+      A file outside the project. The AI works inside a project without ever
+      asking -- that is the app -- so this box only appears when it reaches
+      past that, and it says exactly what for.
+
+      Written to be answerable by somebody who has no idea whether it is safe.
+      That means: name the file, say what would happen, say what we actually
+      think, and make the honest recommendation out loud rather than leaving
+      them to guess which button the app wants them to press.
+    #}
+    <div class="modal-backdrop" id="permission-modal" role="dialog" aria-modal="true"
+         aria-labelledby="permission-title" hidden>
+        <div class="welcome-card quit-card permission-card">
+            <h2 id="permission-title">Let the AI open a file outside your project?</h2>
+            <p class="permission-what">
+                It wants to <strong id="permission-verb">read</strong>:
+            </p>
+            <p class="permission-path" id="permission-path"></p>
+            <p class="permission-why">
+                This is not part of the project you are working on, so we are asking
+                first. It is almost always something perfectly ordinary — a setting,
+                a file you asked about, something it needs to get the job done — but
+                it could be something private, and that is your call and not ours.
+            </p>
+            <div class="permission-choices">
+                <button type="button" class="permission-choice" id="permission-once">
+                    <span class="permission-choice-what">Just this once</span>
+                    <span class="permission-choice-why">Opens this one file. You will be
+                        asked again next time.</span>
+                </button>
+                <button type="button" class="permission-choice recommended" id="permission-always">
+                    <span class="permission-choice-what">Always allow this folder
+                        <span class="permission-tag">recommended</span></span>
+                    <span class="permission-choice-why" id="permission-folder-why"></span>
+                </button>
+                <button type="button" class="permission-choice" id="permission-no">
+                    <span class="permission-choice-what">No</span>
+                    <span class="permission-choice-why">It will carry on without that
+                        file and tell you what it could not do.</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-backdrop" id="model-warning" role="dialog" aria-modal="true" aria-label="Switch model" hidden>
         <div class="welcome-card quit-card model-switch-card">
             <h2 id="model-switch-title">Switch to this AI?</h2>

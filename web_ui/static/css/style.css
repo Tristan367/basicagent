@@ -3093,3 +3093,59 @@ html.wide-gutter .app-bar-btn.icon-only#settings-btn { display: none; }
     font-size: 0.92rem;
     line-height: 1.5;
 }
+
+/* "May I open a file outside your project?" -- the one thing in this app that
+   stops and waits for a person. Laid out like the model-switch choices, since
+   it is the same shape of question: three answers, each with its consequence
+   written under it. */
+.permission-card { max-width: 560px; }
+.permission-what { margin: 4px 0 2px; color: var(--text-dim); }
+.permission-path {
+    margin: 0 0 14px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: var(--code-bg);
+    color: var(--code-text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9rem;
+    word-break: break-all;
+    text-align: left;
+}
+.permission-why { margin: 0 0 4px; color: var(--text-dim); text-align: left; }
+.permission-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0 4px;
+}
+.permission-choice {
+    display: block;
+    padding: 13px 16px;
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.permission-choice:hover { border-color: var(--accent); }
+.permission-choice.recommended { border-color: var(--accent); }
+.permission-choice-what { display: block; font-weight: 700; }
+.permission-choice-why {
+    display: block;
+    margin-top: 3px;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+.permission-tag {
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 600;
+    vertical-align: middle;
+}

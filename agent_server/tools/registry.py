@@ -892,6 +892,67 @@ def get_tool(name: str) -> Tool | None:
     return TOOLS.get(name)
 
 
+# Which argument names a file, per tool. Only the three that read and write
+# files by path: a shell command is not something this can inspect honestly.
+_PATH_ARG = {"read": "filePath", "edit": "filePath", "write": "filePath"}
+_VERB = {"read": "read", "edit": "change", "write": "write to"}
+
+
+async def _outside_guard(name: str, args: dict, ctx: ToolContext) -> ToolResult | None:
+    """A file outside the project is the user's to allow, not the model's.
+
+    Inside the project the assistant works without asking anybody, which is the
+    whole point of the app. Outside it the answer is a person's -- so the
+    question goes on the screen with the file named, and the turn waits.
+
+    Three ways it never asks. In child mode it refuses: the person at the
+    keyboard is a child, the file is very often their parent's, and a dialog is
+    an invitation to press yes. A subagent refuses, because it runs on its own
+    and there is nobody there to ask. And a folder the user has already said
+    yes to does not come back a second time -- being asked about the same
+    folder forty times is how people learn to approve without reading.
+    """
+    from agent_server import parental, permissions
+
+    key = _PATH_ARG.get(name)
+    if not key:
+        return None
+    raw = args.get(key) or ""
+    if not raw:
+        return None
+    path = ctx.resolve(raw)
+
+    if permissions.is_denied(path):
+        return ToolResult.error(
+            f"{path} is part of the operating system and nothing here may touch "
+            f"it. Say so and carry on with the project.", name)
+    if permissions.inside(path, ctx.project_dir):
+        return None
+    if await permissions.already_allowed(path):
+        return None
+
+    if ctx.subagent_tier > 0:
+        return ToolResult.error(
+            f"{path} is outside the project, and a subagent cannot ask "
+            f"permission to go there. Report this back to whoever sent you "
+            f"rather than trying another way.", name)
+    if await parental.child_mode_enabled():
+        return ToolResult.error(
+            f"{path} is outside this project, and while child mode is on that "
+            f"is not something they can allow. Tell them plainly that you can "
+            f"only work inside their own project, and that a grown-up can turn "
+            f"child mode off in Settings if the file is really needed.", name)
+
+    reply = await permissions.ask(ctx.session_id, path, _VERB.get(name, "open"))
+    if reply in ("once", "always"):
+        return None
+    return ToolResult.error(
+        f"the user did not allow access to {path}. That is an answer, not an "
+        f"obstacle: do not try the same file another way, and do not ask again "
+        f"unless they bring it up. Carry on with what you can do inside the "
+        f"project, or say what you cannot do without it.", name)
+
+
 async def _subagent_guard(name: str, args: dict, ctx: ToolContext) -> ToolResult | None:
     """A subagent works inside the project and nowhere else.
 
@@ -941,6 +1002,10 @@ async def execute_tool(
         return ToolResult.error(f"tool '{name}' is not available in this context", name)
 
     blocked = await _subagent_guard(name, args, ctx)
+    if blocked is not None:
+        return blocked
+
+    blocked = await _outside_guard(name, args, ctx)
     if blocked is not None:
         return blocked
 

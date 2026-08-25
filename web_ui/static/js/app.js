@@ -1759,6 +1759,64 @@
     scrollToBottom();
   }
 
+  /* "May I open this file, which is not in your project?"
+   *
+   * The only thing in this app that stops and waits for a person. Everything
+   * inside a project happens without asking, which is the whole design -- so
+   * when this does appear it means something genuinely outside that, and it is
+   * worth reading. That is also why it names the file rather than describing
+   * the category of thing it is. */
+  let permissionAsked = '';
+  function askPermission(request) {
+    const modal = document.getElementById('permission-modal');
+    if (!modal || !request || !request.id) return;
+    if (permissionAsked === request.id && !modal.hidden) return;
+    permissionAsked = request.id;
+
+    document.getElementById('permission-verb').textContent = request.verb || 'open';
+    document.getElementById('permission-path').textContent = request.path || '';
+    document.getElementById('permission-folder-why').textContent =
+      'Anything in ' + (request.folder || 'that folder') + ' from now on, without '
+      + 'asking again. Best if it is going to need several files from there — '
+      + 'being asked twenty times is how people stop reading the question.';
+
+    const send = async (answer) => {
+      window.__closeModal();
+      permissionAsked = '';
+      try {
+        await fetch('/api/sessions/' + sessionId + '/permission', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: request.id, answer }),
+        });
+      } catch (e) {
+        showError('That answer did not reach the app. It has carried on without '
+          + 'opening the file.');
+      }
+    };
+    document.getElementById('permission-once').onclick = () => send('once');
+    document.getElementById('permission-always').onclick = () => send('always');
+    document.getElementById('permission-no').onclick = () => send('no');
+
+    /* Focus lands on "just this once" rather than on the recommendation. The
+     * safest of the three should be the one Enter reaches, even where it is
+     * not the one we suggest. */
+    window.__openModal(modal, document.getElementById('permission-once'));
+    announce('The AI is asking to open a file outside your project: '
+      + (request.name || request.path || ''));
+  }
+
+  /* A page that was opened, or reloaded, while a question was on the screen.
+   * The turn is still sitting there waiting, so the question has to come back
+   * -- losing it would leave the app frozen with nothing to explain why. */
+  async function recoverPermission() {
+    try {
+      const pending = await fetch('/api/sessions/' + sessionId + '/permission')
+        .then((r) => (r.ok ? r.json() : null));
+      if (pending && pending.id) askPermission(pending);
+    } catch (e) {}
+  }
+
   function appendSummary(summaryText) {
     const wrap = document.createElement('div');
     wrap.className = 'message summary';
@@ -2811,6 +2869,15 @@
         closeSegment();
         setLiveWork('Summarising our conversation\u2026');
         setWorkPhase('summarising');
+        break;
+      case 'permission':
+        /* A file outside the project, and the turn is sitting inside a tool
+         * call waiting for the answer. Straight up, not held until the end of
+         * the turn like the other dialogs -- nothing else is going to happen
+         * until this is answered, so holding it back would be showing somebody
+         * a spinner and waiting for them to answer a question they cannot
+         * see. */
+        askPermission(ev);
         break;
       case 'waiting':
         /* The assistant has said its piece and is now sitting on a command
@@ -5466,4 +5533,5 @@
   });
 
   reattach();
+  recoverPermission();
 })();

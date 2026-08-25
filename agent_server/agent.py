@@ -4,9 +4,12 @@ A turn is owned by the server, not by an HTTP request: clients subscribe to the
 event stream over SSE, and closing the tab only unsubscribes. The loop persists
 every step as it happens so the stored transcript always matches what was sent.
 
-There are no permission prompts — everything is auto-approved. The only hard
-stops are the destructive-command guard in `bash` and the doom-loop detector
-below, both of which refuse and explain rather than ask.
+Work inside the project is auto-approved: the user is never asked "may I read
+this file?" about their own project, which is the whole point of the app. There
+are three places that stop or ask anyway — the destructive-command guard in
+`bash`, the doom-loop detector below, and `permissions`, which puts a question
+on the screen when a tool reaches for a file outside the project and waits for
+the person to answer it.
 """
 
 import asyncio
@@ -18,7 +21,7 @@ import uuid
 from collections.abc import AsyncIterator
 
 from agent_server import database as db
-from agent_server import image_support, jobs, parental
+from agent_server import image_support, jobs, parental, permissions
 from agent_server.config import MAX_TOOL_RESULT_CHARS
 from agent_server.conversation import (
     build_messages,
@@ -326,6 +329,22 @@ def wake(session_id: str) -> None:
 jobs.set_waker(wake)
 
 
+def _ask_permission(session_id: str, request: dict) -> None:
+    """Put a permission question on the screen of whoever is watching.
+
+    Published into the live run rather than returned from anywhere, because the
+    tool that raised it is sitting inside an await waiting for the answer. The
+    same event is what a reloaded page replays, so closing the tab and coming
+    back puts the question up again rather than losing it.
+    """
+    run = _runs.get(session_id)
+    if run is not None:
+        _publish(run, {"type": "permission", **request})
+
+
+permissions.set_asker(_ask_permission)
+
+
 def start_claimed_run(session_id: str, handle: _Run, abort: asyncio.Event) -> _Run:
     """Begin the run for a claim taken earlier by `claim_turn`."""
     handle.task = asyncio.create_task(_drive(session_id, handle, abort))
@@ -424,6 +443,10 @@ async def run(session_id: str, abort: asyncio.Event | None = None) -> AsyncItera
         async for event in _run_turn(session_id, session, provider, abort):
             yield event
     finally:
+        # A question nobody answered belongs to a turn that is over. Left
+        # behind it would be put back on the screen by the next page load,
+        # asking about a file nothing is waiting to open any more.
+        permissions.forget(session_id)
         _aborts.pop(session_id, None)
         _compacted_this_run.discard(session_id)
 

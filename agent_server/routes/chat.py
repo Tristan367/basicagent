@@ -20,7 +20,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from agent_server import agent, jobs, whisper_streaming
+from agent_server import agent, jobs, permissions, whisper_streaming
 from agent_server import database as db
 from agent_server import stt as stt_service
 from agent_server.config import ATTACH_DIR, USER_AGENT
@@ -100,6 +100,31 @@ async def _require_session(session_id: str) -> dict:
     if session is None or not await parental.may_reach(session):
         raise HTTPException(404, "Session not found")
     return session
+
+
+@router.post("/sessions/{session_id}/permission")
+async def answer_permission(session_id: str, payload: dict):
+    """The user's decision about a file outside their project.
+
+    "once" opens this one file and nothing else. "always" remembers the folder,
+    so a project that reads twenty files out of the same place asks once rather
+    than twenty times -- being asked repeatedly is how people learn to approve
+    without reading. "no" refuses, and the assistant is told plainly that a
+    refusal is an answer rather than an obstacle.
+    """
+    await _require_session(session_id)
+    reply = str(payload.get("answer", "")).strip().lower()
+    if reply not in ("once", "always", "no"):
+        raise HTTPException(400, "Answer must be once, always or no.")
+    heard = permissions.answer(session_id, str(payload.get("id", "")), reply)
+    return {"ok": heard}
+
+
+@router.get("/sessions/{session_id}/permission")
+async def pending_permission(session_id: str):
+    """Whatever is still being asked, for a page that has just been opened."""
+    await _require_session(session_id)
+    return permissions.pending(session_id) or {}
 
 
 @router.post("/sessions/{session_id}/chat")
