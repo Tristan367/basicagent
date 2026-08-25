@@ -255,3 +255,36 @@ def test_the_mac_launchers_are_executable():
 
     for named in ("install.command", "Assistant.command"):
         assert os.access(APP / named, os.X_OK), named
+
+
+# ── being told, somewhere people actually look ─────────────────────────────
+
+
+def test_the_notice_reaches_people_who_never_open_settings():
+    """Most people open Settings about twice a year. A fix could otherwise sit
+    unclaimed for months on the machine that most needed it."""
+    js = (APP / "web_ui" / "static" / "js" / "app.js").read_text()
+    assert "async function offerUpdate()" in js
+    assert "offerUpdate();" in js
+
+
+def test_it_is_said_once_per_version_and_not_again():
+    """Said on every load it becomes wallpaper, and the one that matters goes
+    unread with all the others."""
+    js = (APP / "web_ui" / "static" / "js" / "app.js").read_text()
+    at = js.index("async function offerUpdate()")
+    body = js[at:js.index("\n  function ", at)]
+    assert "localStorage.getItem(key) === info.update.version" in body
+    assert "localStorage.setItem(key, info.update.version)" in body
+    # And it is a line in the conversation, not something to dismiss before
+    # you can carry on.
+    assert "messages.appendChild(wrap)" in body
+    assert "__openModal" not in body
+
+
+def test_settings_says_nothing_when_there_is_nothing_to_say():
+    """An app that tells you it is up to date every time you look has taught
+    you to ignore it."""
+    body = (APP / "web_ui" / "templates" / "settings_body.html").read_text()
+    at = body.index('id="update-card"')
+    assert "hidden" in body[at:at + 200]

@@ -1863,6 +1863,54 @@
     } catch (e) {}
   }
 
+  /* A new version, said once where somebody will actually see it.
+   *
+   * The notice in Settings is the real one, but most people open Settings
+   * about twice a year -- so a fix could sit unclaimed for months on the
+   * machine that most needed it. This is a single quiet line in the
+   * conversation, shown once per version and never again: dismissing it, or
+   * updating, means it does not come back until there is something new to say.
+   *
+   * Deliberately not a dialog. Nothing here is urgent enough to stand between
+   * somebody and the thing they opened the app to do. */
+  async function offerUpdate() {
+    let info = null;
+    try {
+      info = await fetch('/api/update').then((r) => (r.ok ? r.json() : null));
+    } catch (e) { return; }
+    if (!info || !info.update || !messages) return;
+
+    const key = 'update-seen';
+    try {
+      if (localStorage.getItem(key) === info.update.version) return;
+    } catch (e) {}
+
+    const wrap = document.createElement('div');
+    wrap.className = 'message update-note';
+    const words = document.createElement('span');
+    words.textContent = 'Version ' + info.update.version + ' is ready.';
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'btn-primary btn-sm';
+    go.textContent = 'Update';
+    go.addEventListener('click', () => {
+      if (window.__openSettings) window.__openSettings();
+    });
+    const no = document.createElement('button');
+    no.type = 'button';
+    no.className = 'btn-neutral btn-sm';
+    no.textContent = 'Not now';
+    const remember = () => {
+      try { localStorage.setItem(key, info.update.version); } catch (e) {}
+      wrap.remove();
+    };
+    no.addEventListener('click', remember);
+    go.addEventListener('click', remember);
+    wrap.append(words, go, no);
+    messages.appendChild(wrap);
+    scrollToBottom();
+  }
+
   function appendSummary(summaryText) {
     const wrap = document.createElement('div');
     wrap.className = 'message summary';
@@ -5647,4 +5695,5 @@
 
   reattach();
   recoverPermission();
+  offerUpdate();
 })();
