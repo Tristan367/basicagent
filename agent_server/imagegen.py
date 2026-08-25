@@ -846,6 +846,13 @@ def _kind(status: int, detail: str) -> str:
     # keeps the difference.
     if status == 429:
         return "funds"
+    # Busy, not broken, and not the caller's fault. Its own kind because the
+    # answer is different from every other failure here: wait, or ask a
+    # different model. Watched live -- Google returned this three times running
+    # for one picture, and the assistant simply tried the same model again each
+    # time, which is the one thing that cannot work.
+    if status in (500, 502, 503, 529):
+        return "busy"
     if status in (401, 403):
         return "key"
     if status == 404:
@@ -882,6 +889,13 @@ def _why(status: int, text: str) -> str:
                 "account up has to add funds -- for a child that is a parent "
                 "or a teacher, and it is not something they can fix "
                 f"themselves. ({detail[:160]})")
+    if kind == "busy":
+        return ("that picture model is busy right now and turned the request "
+                "away. Nothing is wrong with what you asked for and nothing is "
+                "wrong with the account -- it is their end, and it passes. Do "
+                "not ask the same model again: either pick a different one from "
+                "the list, or tell them plainly that it is busy and offer to "
+                f"try again in a few minutes. ({detail[:160]})")
     if kind == "key":
         return ("the key was refused for pictures. Making pictures often has "
                 "to be switched on for an account separately from text, and a "

@@ -684,3 +684,17 @@ def test_a_ceiling_is_always_sent(monkeypatch):
 
     source = inspect.getsource(imagegen._chat)
     assert "max_tokens" in source
+
+
+async def test_a_busy_model_is_told_apart_from_a_broken_one(db):
+    """Watched live: Google returned 503 three times running for one picture,
+    and the assistant tried the same model again each time -- which is the one
+    thing that cannot work. Nothing is wrong with the request or the account,
+    so the answer is a different model or a few minutes, and it says so."""
+    said = imagegen._why(503, '{"error":{"message":"high demand"}}')
+    assert "busy right now" in said
+    assert "Do not ask the same model again" in said
+    assert "pick a different one from the list" in said
+    # Not a money problem: sending somebody to a payment page over a 503 would
+    # be a payment page for nothing.
+    assert not isinstance(imagegen._failure(503, "{}"), imagegen.NoFunds)
