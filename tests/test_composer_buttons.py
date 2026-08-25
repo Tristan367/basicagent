@@ -112,23 +112,26 @@ async def test_nothing_is_queued_when_nothing_is_running(db):
     assert agent.queue_message(session["id"], "hello") is None
 
 
-def test_enter_on_talk_starts_talking():
-    """It submitted the form instead, so tabbing to Talk and pressing the
-    obvious key sent an empty message and did not turn the microphone on. It
-    looked exactly like a dead button -- and for somebody working by keyboard,
-    Talk is how they use this app at all."""
+def test_enter_on_talk_does_what_the_button_says_and_nothing_else():
+    """It stopped *and sent*, which is wrong twice over. The button says Stop.
+    People press it because somebody has walked into the room, or because they
+    said the wrong thing, or because they want to think -- and every one of
+    those ended with half a sentence sent to an AI that started working on it.
+
+    There was never a problem to solve. Shift+Tab reaches the message box and
+    Enter sends from there, which is how every keyboard user already moves
+    around a form."""
     at = JS.index("micBtn.addEventListener('keydown'")
     handler = JS[at:JS.index("});", at)]
-    assert "if (!listening) { toggleDictation(); return; }" in handler
-    assert "form.requestSubmit()" not in handler
+    assert "toggleDictation()" in handler
+    assert "requestSubmit" not in handler, "Stop sends again"
+    assert "sendWhenDictationEnds" not in JS, "the machinery for it is still there"
 
 
-def test_enter_while_talking_stops_and_sends():
-    """The half that was already right. You have said your piece, and the
-    alternative is tabbing past every control on the row to find Send -- which
-    somebody who cannot see the screen has to know is there in the first
-    place."""
-    at = JS.index("micBtn.addEventListener('keydown'")
-    handler = JS[at:JS.index("});", at)]
-    assert "sendWhenDictationEnds = true" in handler
-    assert "stopDictation()" in handler
+def test_only_the_message_box_sends_on_enter():
+    """One control sends, and it is the one you type into. Anything else that
+    grew a send on Enter would be the same mistake wearing a different label."""
+    senders = [i for i in range(len(JS)) if JS.startswith("requestSubmit", i)]
+    assert len(senders) == 1, "something else submits the form on a key"
+    before = JS[max(0, senders[0] - 400):senders[0]]
+    assert "textarea.addEventListener('keydown'" in before

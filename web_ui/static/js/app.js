@@ -4764,7 +4764,6 @@
   let micOn = view.dataset.sttEnabled === '1';
   let listening = false;
   // Set by Enter on the Talk button, answered in finishDictation().
-  let sendWhenDictationEnds = false;
 
   /* The microphone being open is the other reason voice takes the floor: a tick
    * while dictation runs is not merely heard over the user, it is recorded and
@@ -4825,29 +4824,22 @@
   if (micBtn && sttAvailable) {
     setMicUI();
     micBtn.addEventListener('click', toggleDictation);
-    /* Enter on Talk: start talking, or -- if already talking -- stop and send.
+    /* Enter on Talk does what the button says and nothing else.
      *
-     * The second half was right and the first half was backwards. Enter on a
-     * button that has not started yet submitted the form, so tabbing to Talk
-     * and pressing the obvious key sent an empty message and did not turn the
-     * microphone on. It looked exactly like a dead button, which for somebody
-     * working by keyboard is the end of the road: Talk is how they use this
-     * app at all.
+     * It used to stop *and send*, which is wrong twice over. The button says
+     * Stop. Somebody presses it because a person has walked into the room, or
+     * because they said the wrong thing, or because they want to think -- and
+     * every one of those ends with half a sentence sent to an AI that starts
+     * working on it.
      *
-     * Once it *is* listening, Enter is the obvious way to finish -- you have
-     * said your piece and the alternative is tabbing past every control on the
-     * row to find Send, which somebody who cannot see the screen has to know
-     * is there in the first place.
-     *
-     * Space still toggles, which is what Space does to a button everywhere. */
+     * There was never a problem to solve here. Shift+Tab goes back to the
+     * message box and Enter sends from there, which is how every keyboard user
+     * already moves around a form. Enter and Space now both do exactly what
+     * clicking does, which is the whole contract of a button. */
     micBtn.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
-      if (!listening) { toggleDictation(); return; }
-      // Stop first, and send once the last words have actually arrived --
-      // sending here would cut off the end of the sentence.
-      sendWhenDictationEnds = true;
-      stopDictation();
+      toggleDictation();
     });
   }
 
@@ -5026,13 +5018,6 @@
     // with Space (while not typing), stealing focus back would make the next
     // Space type a literal space instead of toggling again.
     textarea.scrollTop = textarea.scrollHeight;
-    // Both routes out of dictation land here, and both land here only once the
-    // transcript has been written into the box -- which is why "send when this
-    // is done" is answered from here rather than from the key that asked.
-    if (sendWhenDictationEnds) {
-      sendWhenDictationEnds = false;
-      setTimeout(() => form.requestSubmit(), 0);
-    }
   }
 
   // ── TTS toggle ────────────────────────────────────────────────────────────
