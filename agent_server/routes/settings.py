@@ -362,25 +362,17 @@ async def child_disable(request: Request):
     return {"ok": True}
 
 
-@router.post("/api/child/reset")
-async def child_reset(request: Request):
-    """Set a fresh parent password after a forgot-password timer has elapsed.
-
-    Child mode stays on — the parent just takes back control with a new password.
-    """
-    data = await _body(request)
-    password = str(data.get("password", "")).strip()
-    if not await parental.override_elapsed():
-        return {"ok": False, "reason": "waiting"}
-    if len(password) < 4:
-        return {"ok": False, "reason": "password"}
-    await db.set_setting("parent_password_hash", parental.hash_password(password))
-    await db.delete_setting("child_override_until")
-    return {"ok": True}
-
-
 @router.post("/api/child/forgot")
 async def child_forgot():
+    """Start the wait that ends child mode without a password.
+
+    A day, and then it simply switches off -- it does not offer to set a new
+    password, because at that moment whoever is at the keyboard could type one,
+    and after a twenty-four hour countdown that is most likely the child. The
+    wait is the whole protection: long enough that wanting the lock gone means
+    wanting it for a day, short enough that a parent is never shut out of their
+    own machine.
+    """
     await db.set_setting("child_override_until", str(int(time.time()) + parental.OVERRIDE_SECONDS))
     return {"ok": True, "override_remaining": parental.OVERRIDE_SECONDS}
 

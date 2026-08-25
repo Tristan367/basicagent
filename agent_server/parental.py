@@ -9,17 +9,22 @@
 
 The password is hashed (PBKDF2 + per-password salt), never stored in plain text.
 If the parent forgets it there is always a way out: a "forgot password" request
-starts a 24-hour timer after which child mode unlocks with no password.
+starts a 24-hour wait, and when that is up child mode simply switches itself
+off. Not "then choose a new password" -- see `release_if_elapsed` for why that
+was worse than useless.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import time
 
 from agent_server import database as db
 from agent_server.config import CHILD_HOME_SESSION_ID, HOME_SESSION_ID
+
+log = logging.getLogger(__name__)
 
 OVERRIDE_SECONDS = 24 * 60 * 60
 
@@ -216,7 +221,48 @@ def verify_password(password: str, stored: str | None) -> bool:
 
 
 async def child_mode_enabled() -> bool:
+    if await release_if_elapsed():
+        return False
     return await db.get_setting("child_mode", "0") == "1"
+
+
+async def release_if_elapsed() -> bool:
+    """Turn child mode off once a forgotten-password wait has run its course.
+
+    Off, rather than "now choose a new password". That was the original
+    design and it was pointless: at the moment the timer expires, whoever is
+    at the keyboard can type a new password -- and the person most likely to
+    be sitting there having watched a countdown for twenty-four hours is the
+    child. A lock that hands its key to whoever waits is not a lock, it is a
+    delay with a ceremony on the end.
+
+    So the wait *is* the protection. A day is long enough that a child who
+    wants child mode gone has to want it for a day, which in practice means
+    they ask; and short enough that a parent is never shut out of their own
+    machine. When it is up, it is up: child mode ends, the password it was
+    protecting is discarded, and turning it back on means choosing a new one.
+
+    Done here rather than on a timer or at startup so there is no path that
+    can observe child mode still on after its time. Every check goes through
+    this function.
+    """
+    raw = await db.get_setting("child_override_until", "")
+    if not raw:
+        return False
+    try:
+        due = int(raw)
+    except ValueError:
+        # Whatever ended up in that row, it is not a time that has passed.
+        return False
+    if int(time.time()) < due:
+        return False
+
+    if await db.get_setting("child_mode", "0") == "1":
+        log.info("child mode released: the forgotten-password wait ran out")
+    await db.set_setting("child_mode", "0")
+    await db.delete_setting("parent_password_hash")
+    await db.delete_setting("child_override_until")
+    return True
 
 
 async def current_profile() -> str:
@@ -279,7 +325,13 @@ async def override_remaining() -> int:
 
 
 async def override_elapsed() -> bool:
-    """True once a requested forgot-password override has run its course."""
+    """True once a requested wait has run its course and not yet been acted on.
+
+    Rarely true for long: `release_if_elapsed` clears the row the moment
+    anything asks whether child mode is on, which is on every page load. It
+    survives as the answer to "did this just happen", for the page that has to
+    explain why the lock is suddenly gone.
+    """
     raw = await db.get_setting("child_override_until", "")
     if not raw:
         return False

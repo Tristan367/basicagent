@@ -56,18 +56,22 @@
         Changing the AI (model, API keys) is locked behind a parent password.</p>
         {% if child_mode %}
         <p><strong>Child mode is on.</strong></p>
-        {% if override_elapsed %}
-        <p class="hint">The 24-hour reset is ready. Set a new parent password to take back control.</p>
-        <button type="button" class="btn-primary" id="child-reset">Set a new password</button>
-        {% else %}
         <div class="quit-actions">
             <button type="button" class="btn-stop" id="child-disable">Turn off child mode</button>
             <button type="button" class="btn-neutral" id="child-forgot">I forgot the password</button>
         </div>
+        {#
+          A day, and then it switches itself off. Not "then choose a new
+          password": at the moment the wait ends, whoever is at the keyboard
+          can type one, and after watching a countdown for twenty-four hours
+          that is most likely the child. The wait is the protection.
+        #}
         <p class="hint" id="child-override-note" {% if override_remaining == 0 %}hidden{% endif %}>
-            Password reset ready in <strong id="child-override-time">{{ (override_remaining // 3600) }} hours</strong>.
+            Child mode will switch itself off in
+            <strong id="child-override-time">{{ (override_remaining // 3600) }} hours</strong>,
+            with no password needed. You can still turn it off before then if you
+            remember it.
         </p>
-        {% endif %}
         {% else %}
         <button type="button" class="btn-primary" id="child-enable">Turn on child mode</button>
         {% endif %}

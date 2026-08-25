@@ -347,15 +347,6 @@ function initSettings() {
             if (r.ok) location.reload();
         });
 
-        const resetBtn = document.getElementById('child-reset');
-        if (resetBtn) resetBtn.addEventListener('click', () => {
-            openPrompt('Set a new password', 'Choose a new parent password to take back control of child mode.', false, async (password) => {
-                const r = await post('/api/child/reset', { password });
-                if (r.ok) return { ok: true, reload: true };
-                return { ok: false, reason: r.reason === 'waiting' ? 'password' : r.reason };
-            });
-        });
-
         // ── House rules: the parent's own note to the AI ──────────────────
         //
         // While child mode is on the saved text is never rendered into the

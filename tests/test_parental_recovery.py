@@ -94,61 +94,68 @@ async def test_asking_for_a_reset_starts_a_day_long_clock(keyed):
     assert not await parental.override_elapsed()
 
 
-async def test_the_reset_is_refused_until_the_clock_runs_out(keyed):
-    """Otherwise it is not a delay, it is a button that turns the lock off."""
+async def test_the_lock_holds_until_the_clock_runs_out(keyed):
+    """Otherwise it is not a wait, it is a button that turns the lock off."""
     await enable()
     await routes.child_forgot()
-    refused = await routes.child_reset(_Body({"password": "newpass"}))
-    assert refused == {"ok": False, "reason": "waiting"}
-    assert await parental.parent_password_correct("hunter2"), "the old one was replaced"
-    assert not await parental.parent_password_correct("newpass")
-
-
-async def test_after_a_day_a_new_password_can_be_set(keyed):
-    await enable()
-    await routes.child_forgot()
-    # A day later.
-    await db.set_setting("child_override_until", str(int(time.time()) - 1))
-    assert await parental.override_elapsed()
-
-    assert (await routes.child_reset(_Body({"password": "newpass"})))["ok"] is True
-    assert await parental.parent_password_correct("newpass")
-    assert not await parental.parent_password_correct("hunter2")
-
-
-async def test_the_reset_leaves_child_mode_on(keyed):
-    """The parent takes back control; they do not have their child's setup
-    dismantled underneath them. Turning it off is then one more step, with the
-    password they have just chosen."""
-    await enable()
-    await routes.child_forgot()
-    await db.set_setting("child_override_until", str(int(time.time()) - 1))
-    await routes.child_reset(_Body({"password": "newpass"}))
-
     assert await parental.child_mode_enabled()
-    assert (await routes.child_disable(_Body({"password": "newpass"})))["ok"] is True
-    assert not await parental.child_mode_enabled()
+    assert await parental.parent_password_correct("hunter2")
+    assert (await routes.child_disable(_Body({"password": "guess"})))["ok"] is False
+    assert await parental.child_mode_enabled()
 
 
-async def test_the_clock_is_spent_once_it_is_used(keyed):
-    """A used override left lying around is a permanent skeleton key."""
+async def test_after_a_day_child_mode_simply_ends(keyed):
+    """Not "now choose a new password". At the moment the wait is up, whoever
+    is at the keyboard can type one -- and after watching a countdown for
+    twenty-four hours that is most likely the child. A lock that hands its key
+    to whoever waited is not a lock. The wait is the protection."""
     await enable()
     await routes.child_forgot()
     await db.set_setting("child_override_until", str(int(time.time()) - 1))
-    await routes.child_reset(_Body({"password": "newpass"}))
+
+    assert await parental.child_mode_enabled() is False
+    assert not await parental.parent_password_set(), "the old password survived"
+
+
+async def test_it_ends_without_anybody_asking_it_to(keyed):
+    """No button to find, no page to be on. Every check for "is child mode on"
+    goes through the release, so there is no path that can observe it still on
+    after its time -- including a child who simply leaves the app open."""
+    await enable()
+    await routes.child_forgot()
+    await db.set_setting("child_override_until", str(int(time.time()) - 1))
+
+    # Nothing here is a settings page or a button; this is the app going about
+    # its business.
+    assert await parental.current_profile() == "parent"
+    assert await parental.visible_profile() is None
+    assert await db.get_setting("child_mode", "0") == "0"
+
+
+async def test_the_clock_is_spent_once_it_has_fired(keyed):
+    """A used wait left lying around is a permanent skeleton key: child mode
+    turned back on would end again the moment anything looked at it."""
+    await enable()
+    await routes.child_forgot()
+    await db.set_setting("child_override_until", str(int(time.time()) - 1))
+    await parental.child_mode_enabled()
 
     assert await db.get_setting("child_override_until", "") == ""
-    assert not await parental.override_elapsed()
     assert await parental.override_remaining() == 0
-    # And a second attempt with no fresh request is refused.
-    assert (await routes.child_reset(_Body({"password": "third"})))["ok"] is False
-    assert await parental.parent_password_correct("newpass")
+
+    await enable("afresh")
+    assert await parental.child_mode_enabled(), "it ended again straight away"
 
 
-async def test_a_reset_still_needs_a_real_password(keyed):
+async def test_a_corrupt_clock_is_not_an_unlocked_door(keyed):
+    """Whatever ends up in that row, child mode may only end because a real
+    wait really ran out."""
     await enable()
-    await db.set_setting("child_override_until", str(int(time.time()) - 1))
-    assert (await routes.child_reset(_Body({"password": "x"})))["ok"] is False
+    for rubbish in ("soon", "NaN", "-", "2026-01-01", "9e99999"):
+        await db.set_setting("child_override_until", rubbish)
+        assert await parental.override_remaining() == 0
+        assert await parental.override_elapsed() is False, rubbish
+        assert await parental.child_mode_enabled() is True, rubbish
     assert await parental.parent_password_correct("hunter2")
 
 
@@ -171,16 +178,16 @@ async def test_switching_off_clears_it_too(keyed):
     assert await db.get_setting("child_override_until", "") == ""
 
 
-async def test_a_corrupt_clock_is_not_an_unlocked_door(keyed):
-    """Whatever ends up in that row, the answer to "may they reset now" has to
-    be no unless a real timer really has run out."""
-    await enable()
-    for rubbish in ("", "soon", "NaN", "9e99999", "-", "2026-01-01"):
-        await db.set_setting("child_override_until", rubbish)
-        assert await parental.override_remaining() == 0
-        assert await parental.override_elapsed() is False, rubbish
-        assert (await routes.child_reset(_Body({"password": "newpass"})))["ok"] is False
-    assert await parental.parent_password_correct("hunter2")
+async def test_there_is_no_password_step_left_to_hijack(keyed):
+    """The route that offered to set a new password is gone, not merely
+    unused. It was the whole flaw: a box a child could type into after waiting
+    a day."""
+    assert not hasattr(routes, "child_reset")
+    from pathlib import Path
+
+    body = Path("web_ui/templates/settings_body.html").read_text()
+    assert "child-reset" not in body
+    assert "switch itself off" in body
 
 
 # ── what the lock is actually guarding ─────────────────────────────────────
