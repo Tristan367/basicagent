@@ -231,14 +231,40 @@ def _refresh_dependencies() -> str:
     A version that added a dependency and did not install it starts, fails on
     the first import, and looks exactly like a broken update -- which, to the
     person looking at it, it is.
+
+    Three ways of doing it, because there are three ways the environment may
+    have been made. `python -m pip` is the normal one and is what the installer
+    produces. An environment built by `uv` has no pip in it at all, which is
+    not exotic -- it is what any developer on this project will be running, and
+    it is how this was found. And `ensurepip` can put pip into an environment
+    that simply lost it.
     """
-    result = _run([str(_venv_python()), "-m", "pip", "install", "--quiet",
-                   "-r", "requirements.txt"])
-    if result.returncode != 0:
-        raise UpdateError(
-            "The new version was fetched but its extra pieces could not be "
-            f"installed: {(result.stderr or '').strip()[:200]}")
-    return "Updated."
+    python = str(_venv_python())
+    attempts = [[python, "-m", "pip", "install", "--quiet", "-r", "requirements.txt"]]
+    if shutil.which("uv"):
+        attempts.append(["uv", "pip", "install", "--python", python,
+                         "-r", "requirements.txt"])
+    attempts.append([python, "-m", "ensurepip", "--upgrade"])
+
+    last = ""
+    for index, attempt in enumerate(attempts):
+        result = _run(attempt)
+        if result.returncode == 0:
+            # `ensurepip` only installs pip; the actual install still has to run.
+            if attempt[-1] == "--upgrade":
+                return _refresh_dependencies()
+            return "Updated."
+        last = (result.stderr or result.stdout or "").strip()
+        log.info("dependency install attempt %d failed: %s", index + 1, last[:200])
+
+    # The code is already in place by this point, which changes what to say.
+    # "The update failed" is wrong and frightening: what failed is the last
+    # step, and if this version added nothing new the app will start perfectly.
+    raise UpdateError(
+        "The new version is in place, but the check for extra pieces it might "
+        "need could not run. Restart the app -- it will very likely be fine. "
+        f"If it is not, reinstalling from the download page will fix it. "
+        f"({last[:160]})")
 
 
 async def _download_and_swap() -> str:

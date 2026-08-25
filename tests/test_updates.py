@@ -309,3 +309,27 @@ def test_the_workflow_checks_the_zip_before_publishing_it():
                   "Assistant.command"):
         assert named in flow, named
     assert "missing from the zip" in flow
+
+
+def test_installing_the_dependencies_has_more_than_one_way_to_do_it():
+    """Found by pressing the button rather than by reading the code. An
+    environment built by `uv` has no pip in it at all -- which is not exotic,
+    it is what anybody working on this project is running -- so `python -m pip`
+    failed and every update would have died at the last step."""
+    import inspect
+
+    source = inspect.getsource(updates._refresh_dependencies)
+    assert '"-m", "pip"' in source
+    assert 'shutil.which("uv")' in source
+    assert "ensurepip" in source
+
+
+def test_a_failure_at_the_last_step_says_the_code_is_already_in_place():
+    """By then it is. "The update failed" is both wrong and frightening: what
+    failed is the check for extra pieces, and if this version added none the
+    app will start perfectly."""
+    import inspect
+
+    source = inspect.getsource(updates._refresh_dependencies)
+    assert "The new version is in place" in source
+    assert "Restart the app" in source
