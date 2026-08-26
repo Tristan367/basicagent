@@ -52,6 +52,12 @@ jobs:
   publish:
     needs: check
     runs-on: ubuntu-latest
+    # `id-token` and `attestations` are what let GitHub sign a statement that
+    # this exact zip came out of this exact commit. See the attest step below.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
 
@@ -79,6 +85,21 @@ jobs:
           test ! -e "$staging/$staging" || { echo "the zip contains itself"; exit 1; }
           zip -qr "basicagent-$version.zip" "$staging"
           ls -la *.zip
+          echo "zip=basicagent-$version.zip" >> "$GITHUB_ENV"
+          echo "sha=$(sha256sum "basicagent-$version.zip" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      # A receipt, signed by GitHub, saying this zip was built by this workflow
+      # from this commit -- so "the download is the source code you can read"
+      # stops being something people have to take on trust.
+      #
+      # This is the only honest answer available at the moment. A code-signing
+      # certificate is what stops Windows and macOS warning about an unknown
+      # publisher, and there isn't one; this at least means the claim on the
+      # download page is checkable rather than a promise.
+      - name: Sign a receipt for the download
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: basicagent-*.zip
 
       - name: Publish
         uses: softprops/action-gh-release@v2
@@ -86,3 +107,20 @@ jobs:
           files: basicagent-*.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
+          body: |
+            **Download `${{ env.zip }}` below**, unzip it, and run the installer
+            inside. Setup instructions, per computer, are on the
+            [download page](https://tristan367.github.io/basicagent/).
+
+            <details><summary>Checking that this is what it says it is</summary>
+
+            This file was built by GitHub from the source in this repository,
+            not on anybody's laptop. GitHub signed a statement saying so, which
+            anyone can check:
+
+            ```
+            gh attestation verify ${{ env.zip }} -R Tristan367/basicagent
+            ```
+
+            SHA-256: `${{ env.sha }}`
+            </details>

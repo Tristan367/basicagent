@@ -35,6 +35,13 @@
     font-size: 1.15rem; font-weight: 700; text-align: center; text-decoration: none;
   }
   .get:hover { filter: brightness(1.08); }
+  .also {
+    display: block; margin: 12px auto 0; max-width: 26rem;
+    padding: 13px 24px; border-radius: 14px;
+    border: 1px solid var(--edge); background: none; color: var(--text);
+    font-size: 1rem; text-align: center; text-decoration: none;
+  }
+  .also:hover { border-color: var(--accent); }
   .under { text-align: center; color: var(--dim); font-size: 0.92rem; }
   .card {
     margin: 16px 0; padding: 18px 22px;
@@ -68,8 +75,11 @@
 <a class="get" href="https://github.com/Tristan367/basicagent/releases/latest">
   Download it &nbsp;&rarr;
 </a>
+<a class="also" href="https://github.com/Tristan367/basicagent">
+  Read the code that does it
+</a>
 <p class="under">Free. Windows, Mac and Linux. Takes about five minutes to set up,
-once.</p>
+once. <a href="#safe">Is it safe?</a></p>
 
 <h2>What it does</h2>
 <p>You describe something — a game, a website, a story, a tool to sort out your
@@ -91,8 +101,9 @@ installer, the folder, or this page ever again.</p>
   <h3>Windows</h3>
   <ol>
     <li>Open the folder you unzipped.</li>
-    <li>Double-click <code>install.bat</code> and wait. If Windows asks whether
-      to allow it, say yes.</li>
+    <li>Double-click <code>install.bat</code> and wait. Windows will say it does
+      not recognise who made this — choose <em>More info</em>, then <em>Run
+      anyway</em>. (<a href="#safe">Why it says that</a>.)</li>
     <li>It puts an <strong>Assistant</strong> icon on your desktop and in the
       Start menu. Double-click that whenever you want it.</li>
   </ol>
@@ -104,8 +115,10 @@ installer, the folder, or this page ever again.</p>
   <h3>Mac</h3>
   <ol>
     <li>Open the folder you unzipped.</li>
-    <li>Double-click <code>install.command</code>. The first time, macOS may
-      refuse: right-click it, choose <em>Open</em>, then <em>Open</em> again.</li>
+    <li>Double-click <code>install.command</code>. The first time, macOS will
+      refuse because it cannot tell who made it: right-click the file, choose
+      <em>Open</em>, then <em>Open</em> again. (<a href="#safe">Why it does
+      that</a>.)</li>
     <li>It puts an <strong>Assistant</strong> app in your Applications folder
       and on your desktop. Open that whenever you want it — you can drag it to
       the Dock like anything else.</li>
@@ -120,6 +133,56 @@ installer, the folder, or this page ever again.</p>
     <li>It adds <strong>Assistant</strong> to your applications menu. Or run
       <code>python3 basicagent.py</code>.</li>
   </ol>
+</div>
+
+<h2 id="safe">Is it safe?</h2>
+<p><strong>Your computer is going to warn you about this, and it is better to
+hear why now than to meet the warning cold.</strong> Windows and Mac put a
+notice in front of anything whose publisher they cannot identify, and
+identifying yourself means buying a certificate — a few hundred dollars a year,
+forever. I have not bought one. So the warning says the software comes from an
+unknown publisher, which is exactly true: it comes from me.</p>
+<p>That is a warning worth taking seriously in general, so here is what I can
+offer in place of having paid for it to go away.</p>
+
+<div class="card">
+  <h3>You can look</h3>
+  <p>Every line of it is public and written to be read —
+  <a href="https://github.com/Tristan367/basicagent">here</a>. Nothing is
+  hidden or compiled. If you know someone who writes software, this is a
+  reasonable thing to ask them to glance at.</p>
+</div>
+
+<div class="card">
+  <h3>The download is built from that code, by GitHub</h3>
+  <p>Not on my computer, where I could have put anything in it. GitHub builds
+  each release from the public code and signs a statement saying so, attached
+  to the download. Someone technical can check that with one command — it is
+  written on the release page. That is the part that turns "the code you can
+  read is the file you are getting" from something you take on trust into
+  something anybody can verify.</p>
+</div>
+
+<div class="card">
+  <h3>It stays in its own corner</h3>
+  <p>It never asks for administrator or root. It installs into your own user
+  folder, and uninstalling is deleting that folder. It talks to three places
+  and nowhere else: the AI company whose account you connect, GitHub once a day
+  to see whether there is a newer version, and DuckDuckGo when you ask it to
+  look something up. There is no account with me, no sign-up, and no
+  analytics — I do not find out that you are using it.</p>
+</div>
+
+<div class="card">
+  <h3>The honest part</h3>
+  <p>The real risk here was never that this is a virus. It is an assistant that
+  writes programs and runs them on your computer, because that is the entire
+  point of it — so it can also make a mess, change a file it should have left
+  alone, or be led somewhere daft by a web page it was asked to read. It asks
+  permission before touching anything outside the project it is working on. The
+  page inside the app called <em>How any of this works</em> goes through all of
+  this plainly, including the parts that are not reassuring, and it is worth ten
+  minutes before you hand this to a child.</p>
 </div>
 
 <h2>What it costs</h2>
