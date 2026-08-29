@@ -51,7 +51,11 @@ def test_the_same_version_is_not_an_update():
 def test_rubbish_does_not_look_like_an_update():
     """A malformed tag must never read as newer, or everybody is told to update
     forever and the button does nothing."""
-    for bad in ("", "latest", "nightly", "v", "one.two.three"):
+    # "models-v1" is not hypothetical: the speech models are mirrored on a
+    # release of that name, and while it existed it was briefly what GitHub
+    # returned for /releases/latest. Every copy of the app asked, and every one
+    # of them correctly decided there was nothing to update to.
+    for bad in ("", "latest", "nightly", "v", "one.two.three", "models-v1"):
         assert not updates.newer(bad, "1.0.0"), bad
 
 
