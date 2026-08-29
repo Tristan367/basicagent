@@ -118,29 +118,126 @@ def install_read_aloud(say=print, force: bool = False) -> bool:
     return True
 
 
-def install_dictation(say=print) -> bool:
+# The dictation models, mirrored onto this project's own releases.
+#
+# faster-whisper fetches these from Hugging Face by itself, and that turned out
+# to be a dependency worth removing. The repositories are public and ungated,
+# but an anonymous download is rate-limited, and what the library reports when
+# it is refused is a message about needing a token -- which is unanswerable
+# advice for somebody who has never heard of Hugging Face and is halfway
+# through installing a thing they were told was not technical. It is also one
+# more host to be blocked by a school filter.
+#
+# So the same files are copied to a release here, exactly as the read-aloud
+# voices already were, and fetched with the same plain download that reports
+# its progress. Pinned to a tag, so what an install pulls down cannot change
+# underneath it. If this mirror is ever unreachable, faster-whisper's own
+# download still runs as a fallback.
+WHISPER_BASE = (
+    "https://github.com/Tristan367/basicagent/releases/download/models-v1"
+)
+WHISPER_FILES = ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt")
+
+# Exact byte counts of the mirrored files. A download that arrives shorter than
+# this is a captive portal or a truncated transfer, not a model.
+WHISPER_SIZES = {
+    "tiny.en": {"config.json": 2317, "model.bin": 75_537_502,
+                "tokenizer.json": 2_128_466, "vocabulary.txt": 422_309},
+    "base.en": {"config.json": 2227, "model.bin": 145_216_508,
+                "tokenizer.json": 2_128_466, "vocabulary.txt": 422_309},
+    "small.en": {"config.json": 2657, "model.bin": 483_545_366,
+                 "tokenizer.json": 2_128_466, "vocabulary.txt": 422_309},
+}
+
+
+def whisper_dir(size: str) -> Path:
+    """Where a dictation model lives once it is here."""
+    return models_dir() / f"whisper-{size}"
+
+
+def dictation_installed(size: str) -> bool:
+    """Whether every file of that model is present and the right length."""
+    expected = WHISPER_SIZES.get(size)
+    if not expected:
+        return False
+    folder = whisper_dir(size)
+    return all(
+        (folder / name).is_file() and (folder / name).stat().st_size == length
+        for name, length in expected.items()
+    )
+
+
+def install_dictation(say=print, size: str = "", force: bool = False) -> bool:
     """Pull down the dictation model now, rather than during the first sentence.
 
-    faster-whisper fetches its own model the first time it transcribes anything,
-    which is a wait of a minute or two with no explanation, at the exact moment
-    somebody is finding out whether the microphone works at all.
+    Otherwise faster-whisper fetches it the first time it transcribes anything:
+    a wait of a minute or two with no explanation, at the exact moment somebody
+    is finding out whether the microphone works at all.
 
-    Needs the installed dependencies, so unlike the read-aloud fetch this one
-    only runs from inside the virtual environment.
+    Unlike the read-aloud voices this does not need the virtual environment --
+    it is four files over HTTP -- which means it can be retried by hand later
+    on an install where something else went wrong.
+    """
+    if not size:
+        try:
+            from agent_server.config import whisper_size
+
+            size = whisper_size()
+        except Exception:
+            size = "small.en"
+
+    expected = WHISPER_SIZES.get(size)
+    if not expected:
+        say(f"  There is no mirrored model called {size}.")
+        return _dictation_from_upstream(say, size)
+
+    if dictation_installed(size) and not force:
+        say("The dictation model is already installed.")
+        return True
+
+    folder = whisper_dir(size)
+    total = sum(expected.values())
+    say(f"Downloading the dictation model ({size}, {_human(total)}) to {folder}")
+    for name in WHISPER_FILES:
+        target = folder / name
+        length = expected[name]
+        if target.is_file() and target.stat().st_size == length and not force:
+            continue
+        # Only the big one is worth announcing; the other three are instant.
+        if length > 1_000_000:
+            say(f"  {name} ({_human(length)})")
+        try:
+            _download(f"{WHISPER_BASE}/faster-whisper-{size}--{name}",
+                      target, length, say)
+        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            say(f"  Could not download {name}: {e}")
+            return _dictation_from_upstream(say, size)
+    say("Dictation model installed.")
+    return True
+
+
+def _dictation_from_upstream(say, size: str) -> bool:
+    """The old route, kept as a fallback when the mirror cannot be reached.
+
+    faster-whisper's own download, which needs the virtual environment and may
+    be rate-limited -- but a rate limit that lifts in an hour is better than no
+    dictation at all, and this is the path that was working before the mirror
+    existed.
     """
     try:
         from faster_whisper import WhisperModel
     except ImportError:
-        say("  faster-whisper is not installed; skipping dictation.")
+        say("  Dictation will fetch its model the first time it is used instead.")
         return False
-    from agent_server.config import DEFAULT_WHISPER_MODEL, FASTER_WHISPER_COMPUTE
+    from agent_server.config import FASTER_WHISPER_COMPUTE
 
-    say(f"Downloading the dictation model ({DEFAULT_WHISPER_MODEL}, about 480 MB)")
+    say("  Trying the original source instead...")
     try:
-        WhisperModel(DEFAULT_WHISPER_MODEL, device="cpu", compute_type=FASTER_WHISPER_COMPUTE)
+        WhisperModel(size, device="cpu", compute_type=FASTER_WHISPER_COMPUTE)
     except Exception as e:
-        say(f"  Could not download it: {e}")
-        say("  Dictation will fetch it the first time it is used instead.")
+        say(f"  That did not work either: {e}")
+        say("  Dictation will try again the first time it is used. Everything")
+        say("  else works; you can type instead of talking until then.")
         return False
     say("Dictation model installed.")
     return True
@@ -151,7 +248,8 @@ def main(argv: list[str]) -> int:
     if what in ("read-aloud", "tts"):
         return 0 if install_read_aloud(force="--force" in argv) else 1
     if what in ("dictation", "stt"):
-        return 0 if install_dictation() else 1
+        size = next((a for a in argv[2:] if not a.startswith("-")), "")
+        return 0 if install_dictation(size=size, force="--force" in argv) else 1
     print("usage: python -m agent_server.downloads read-aloud|dictation [--force]",
           file=sys.stderr)
     return 2

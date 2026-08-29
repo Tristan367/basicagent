@@ -26,7 +26,8 @@ python3 install.py "$@"
 status=$?
 echo
 if [ $status -eq 0 ]; then
-    echo "Done. You can close this window and double-click Assistant.command to start."
+    echo "Done. You can close this window. Open Assistant from your"
+    echo "Applications folder or from your desktop."
 else
     echo "Something went wrong above. The message says what."
 fi

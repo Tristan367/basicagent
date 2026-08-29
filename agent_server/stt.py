@@ -92,8 +92,14 @@ async def get_model(size: str = ""):
                 )
             from faster_whisper import WhisperModel
 
+            from agent_server.downloads import dictation_installed, whisper_dir
+
+            # A folder if the installer mirrored it here, otherwise the bare
+            # name -- which makes faster-whisper fetch it from Hugging Face,
+            # the fallback for an install that could not reach the mirror.
+            where = str(whisper_dir(size)) if dictation_installed(size) else size
             _models[size] = await asyncio.to_thread(
-                WhisperModel, size, device="cpu", compute_type=FASTER_WHISPER_COMPUTE
+                WhisperModel, where, device="cpu", compute_type=FASTER_WHISPER_COMPUTE
             )
             log.info("dictation model ready (%s)", size)
     return _models[size]

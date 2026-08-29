@@ -77,13 +77,26 @@ def test_the_install_ends_with_something_to_click():
     assert (ROOT / "basicagent.py").is_file()
 
 
-def test_nothing_fatal_hangs_off_an_optional_download():
-    """A user whose read-aloud download failed still has an app. Letting the
-    installer die there would leave them with a half-built environment and no
-    idea which half."""
-    source = _read("install.py")
-    block = source[source.index("def install_speech("):source.index("# ── the icon")]
-    assert "check=False" in block, "a failed speech download aborts the install"
+def test_nothing_fatal_hangs_off_an_optional_download(monkeypatch, capsys):
+    """A user whose read-aloud download failed still has an app.
+
+    Letting the installer die there would leave them with a half-built
+    environment and no idea which half. Run for real against an interpreter
+    that is not there, which is the worst version of the failure: not a
+    download that returned an error, but a command that cannot start at all.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_installer", ROOT / "install.py")
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+
+    monkeypatch.setattr(installer, "VENV_PY", ROOT / "no" / "such" / "python")
+    installer.install_speech("read-aloud")     # must not raise
+    installer.install_speech("dictation")      # must not raise
+    assert installer.install_browser() is False
+    # And it said something about it rather than failing silently.
+    assert capsys.readouterr().out.strip()
 
 
 # ── the settings a developer is told about ──────────────────────────────────

@@ -60,12 +60,13 @@ def test_the_three_places_it_talks_to_are_the_only_three():
         "openrouter.ai",
         "api.deepseek.com",
         "api.github.com",  # the update check
+        "github.com",  # release downloads: the voices and the speech model
         "lite.duckduckgo.com",  # the search tool
     }
     # Places that are only ever shown to a person to visit, never called.
     signposts = {
         "aistudio.google.com", "ai.google.dev", "platform.deepseek.com",
-        "api-docs.deepseek.com", "github.com", "www.python.org",
+        "api-docs.deepseek.com", "www.python.org",
         "docs.astral.sh", "www.w3.org", "www.apple.com",
     }
     found = set()
