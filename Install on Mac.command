@@ -5,7 +5,13 @@
 # `cd` matters too -- Finder starts it in the user's home folder, not in the
 # folder the file is sitting in, so without this it installs nothing anywhere
 # useful.
-cd "$(dirname "$0")" || exit 1
+here="$(cd "$(dirname "$0")" && pwd)" || exit 1
+
+# Two layouts, one file: `app` in the download, beside this file in the source
+# repository. See the note in "Install on Windows.bat".
+app="$here"
+[ -f "$here/app/install.py" ] && app="$here/app"
+cd "$app" || exit 1
 
 if ! command -v python3 >/dev/null 2>&1; then
     cat <<'MSG'

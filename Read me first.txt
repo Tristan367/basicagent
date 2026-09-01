@@ -1,0 +1,41 @@
+Assistant __VERSION__
+Made by Tristan Johnson  --  https://tristan367.github.io/basicagent/
+
+
+WHAT TO CLICK
+
+  Windows      Install on Windows
+  Mac          Install on Mac        (right-click it, choose Open, then Open
+                                      again -- the first time only)
+  Linux        Install on Linux      (or: python3 app/install.py)
+
+That is the whole instruction. It takes about ten minutes, nearly all of it
+downloading, and it only ever happens once.
+
+When it finishes you will have an Assistant icon on your desktop. That is what
+you click from then on. You will not need this folder again -- you can delete
+it, including from your Downloads, because the installer copies the app
+somewhere permanent and tells you where.
+
+
+THE WARNING YOU ARE ABOUT TO SEE
+
+Windows and Mac put a notice in front of anything whose publisher they cannot
+identify, and identifying yourself means buying a certificate that costs a few
+hundred dollars a year. I have not bought one, so the warning is right: this
+comes from an unknown publisher. It comes from me.
+
+  Windows   click "More info", then "Run anyway"
+  Mac       right-click the file, choose "Open", then "Open" again
+
+Why you might believe me anyway, at length and honestly, including the parts
+that are not reassuring:
+
+  https://tristan367.github.io/basicagent/#safe
+
+
+WHAT IS IN THIS FOLDER
+
+  Install on ...    the three files above; use the one for your computer
+  app               everything the app is made of. Nothing in here needs
+                    opening, and nothing in here needs understanding.

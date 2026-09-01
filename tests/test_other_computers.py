@@ -305,7 +305,7 @@ def test_windows_has_something_to_double_click():
     it `python`, `py`, or a path inside AppData is exactly the kind of thing
     this app exists so that nobody has to do.
     """
-    script = Path("install.bat")
+    script = Path("Install on Windows.bat")
     assert script.exists(), "there is no Windows installer"
     text = script.read_text()
     assert "py -3 install.py" in text, "it does not use the Python launcher"
@@ -322,4 +322,51 @@ def test_the_readme_does_not_tell_windows_users_to_run_python3():
     readme = Path("README.md").read_text()
     windows_part = readme.split("**Windows**")[1].split("**Mac or Linux**")[0]
     assert "python3" not in windows_part, windows_part
-    assert "install.bat" in windows_part
+    assert "Install on Windows" in windows_part
+
+
+# ── the icon on the desktop, which is the only thing most people ever use ───
+
+
+def test_the_launcher_looks_for_a_file_windows_will_admit_exists():
+    """The bug this is named after: `.venv\\Scripts\\python` with no `.exe`.
+
+    Windows will happily *run* that, because CreateProcess appends the
+    extension itself -- but `os.path.exists` does not, so the launcher's check
+    for "is this installed yet" was False on every Windows machine there has
+    ever been, and it exited before doing anything. The shortcut runs
+    pythonw.exe, which has no console, so what that looked like from the
+    outside was an icon that showed an hourglass for a second and then nothing
+    at all: no window, no error, nowhere to look.
+    """
+    source = (Path("basicagent.py")).read_text()
+    at = source.index("VENV_PY = ")
+    line = source[at:source.index("\n\n", at)]
+    assert '"python.exe" if IS_WIN else "python"' in line, line
+
+
+def test_there_is_somewhere_for_a_message_to_go_when_there_is_no_console():
+    """pythonw.exe leaves sys.stdout and sys.stderr as None, so every print in
+    the launcher is either thrown away or an AttributeError nobody will ever
+    see -- which is exactly the moment somebody needs to be told something.
+
+    Two consequences, both checked here: there is a log file, and the few
+    messages worth interrupting a person about reach an actual dialog box.
+    """
+    source = (Path("basicagent.py")).read_text()
+    assert "sys.stdout is None" in source and "sys.stderr is None" in source
+    assert "MessageBoxW" in source
+    # And it happens before the first thing that would want to say something.
+    body = source[source.index("def main("):]
+    assert body.index("log_file()") < body.index("os.path.exists(VENV_PY)")
+
+
+def test_children_of_a_windowless_launcher_do_not_open_windows_of_their_own():
+    """A console program started by a console-less parent gets a console of
+    its own on Windows: a black box that appears beside the app and stays
+    there for as long as it is open. The whole reason for pythonw was that it
+    does not do that."""
+    source = (Path("basicagent.py")).read_text()
+    assert "CREATE_NO_WINDOW" in source
+    # Every child of the launcher, not just the first one that was noticed.
+    assert source.count("**child_output()") >= 3

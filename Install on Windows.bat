@@ -1,4 +1,6 @@
 @echo off
+rem Setting the app up on Windows, by double-clicking.
+rem
 rem Windows has no `python3`, and telling somebody to work out whether their
 rem computer calls it `python`, `py` or a path in AppData is the step where a
 rem non-technical person stops -- which on Windows is nearly everybody using
@@ -8,7 +10,15 @@ rem `py` is the launcher that ships with python.org's installer and knows about
 rem every version on the machine; `python` is what a Microsoft Store install
 rem leaves on PATH. Whichever answers first is used.
 setlocal
-cd /d "%~dp0"
+
+rem Two layouts, one file. In the download, everything the app is made of sits
+rem in `app` so that the folder somebody unzips holds four things instead of
+rem twenty. In the source repository it sits beside this file. Looking for
+rem `app\install.py` tells the two apart, and means the file people actually
+rem receive is the same one that gets tested here.
+set "APP=%~dp0"
+if exist "%~dp0app\install.py" set "APP=%~dp0app\"
+cd /d "%APP%"
 
 where py >nul 2>nul
 if %errorlevel%==0 (

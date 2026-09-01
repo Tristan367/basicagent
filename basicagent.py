@@ -19,7 +19,83 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 IS_WIN = os.name == "nt"
-VENV_PY = os.path.join(ROOT, ".venv", "Scripts" if IS_WIN else "bin", "python")
+# The `.exe` is not decoration. Windows will happily *run* "python" without it,
+# because CreateProcess adds the extension itself -- but os.path.exists does
+# not, so the check below said the app had never been installed on every
+# Windows machine there has ever been. The desktop icon starts pythonw, which
+# has no console, so what that looked like from outside was a shortcut that
+# flashed an hourglass and then did nothing at all, with no error anywhere.
+VENV_PY = os.path.join(ROOT, ".venv", "Scripts" if IS_WIN else "bin",
+                       "python.exe" if IS_WIN else "python")
+
+
+# ── having somewhere to say things, when there is nowhere to say them ───────
+#
+# The Windows shortcut runs pythonw.exe, which is Python with no console
+# attached. That is what stops a black window sitting behind the app for as
+# long as it is open -- and it also means sys.stdout and sys.stderr are None,
+# so every print() in this file is either thrown away or an AttributeError
+# nobody will ever see. Which is precisely the situation in which somebody
+# needs to be told something.
+#
+# So: a log file when there is no console, and a real dialog box for the few
+# messages that are worth interrupting somebody about.
+
+LOG = None
+
+
+def log_file():
+    """Where to write when there is no console. None when there is one."""
+    global LOG
+    if LOG is not None or (sys.stdout is not None and sys.stderr is not None):
+        return LOG
+    if IS_WIN:
+        base = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"),
+                            "basicagent")
+    else:
+        base = os.path.join(os.environ.get("XDG_DATA_HOME")
+                            or os.path.join(os.path.expanduser("~"), ".local", "share"),
+                            "basicagent")
+    try:
+        os.makedirs(base, exist_ok=True)
+        LOG = open(os.path.join(base, "start.log"), "a",  # noqa: SIM115
+                   encoding="utf-8", errors="replace", buffering=1)
+    except OSError:
+        return None
+    if sys.stdout is None:
+        sys.stdout = LOG
+    if sys.stderr is None:
+        sys.stderr = LOG
+    print(f"\n--- started {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+    return LOG
+
+
+def child_output() -> dict:
+    """Where a child process's output should go, and whether it gets a window.
+
+    A console program started by a console-less parent gets a console of its
+    own on Windows -- a black box that appears beside the app and stays there.
+    """
+    where = log_file()
+    extra = {}
+    if where is not None:
+        extra = {"stdout": where, "stderr": where}
+    if IS_WIN and where is not None:
+        extra["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return extra
+
+
+def tell(message: str) -> None:
+    """Something the user has to see, whether or not there is a console."""
+    print(message)
+    if IS_WIN and LOG is not None:
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(None, message, "Assistant", 0x10)
+        except Exception:
+            pass
+
 
 PORT = os.environ.get("PORT", "8220")
 HOST = os.environ.get("HOST", "127.0.0.1")
@@ -83,7 +159,8 @@ def open_app_window() -> bool:
     """
     try:
         return subprocess.run(
-            [VENV_PY, "-m", "agent_server.desktop", URL], cwd=ROOT
+            [VENV_PY, "-m", "agent_server.desktop", URL], cwd=ROOT,
+            **child_output()
         ).returncode == 0
     except Exception:
         return False
@@ -102,7 +179,8 @@ def repair_browser_and_retry() -> bool:
     print("Fetching it now (about 150 MB, a few minutes). Nothing else to do.")
     try:
         got = subprocess.run(
-            [VENV_PY, "-m", "playwright", "install", "chromium"], cwd=ROOT
+            [VENV_PY, "-m", "playwright", "install", "chromium"], cwd=ROOT,
+            **child_output()
         ).returncode == 0
     except Exception:
         got = False
@@ -131,8 +209,12 @@ def main() -> None:
         print(__doc__)
         return
 
+    log_file()
+
     if not os.path.exists(VENV_PY):
-        print("No .venv found. Run:  python install.py")
+        tell("Assistant is not finished installing.\n\n"
+             "Run the installer again (\"Install on Windows\" in the folder you "
+             "downloaded), let it finish, then click this icon again.")
         sys.exit(1)
 
     warn_if_exposed()
@@ -141,9 +223,11 @@ def main() -> None:
     if alive():
         print(f"Assistant already running at {URL}")
     else:
-        proc = subprocess.Popen(server_command(), cwd=ROOT)
+        proc = subprocess.Popen(server_command(), cwd=ROOT, **child_output())
         if not wait_up():
-            print(f"Server did not come up at {URL}. Check the log.", file=sys.stderr)
+            tell("Assistant could not start.\n\n"
+                 f"The server did not come up at {URL}."
+                 + (f"\n\nThere is a log at {LOG.name}" if LOG else ""))
             if proc:
                 proc.terminate()
             sys.exit(1)

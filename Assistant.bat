@@ -17,7 +17,7 @@ if not exist "%APP%.venv\Scripts\python.exe" set "APP=%LOCALAPPDATA%\Programs\As
 
 if not exist "%APP%.venv\Scripts\python.exe" (
     echo.
-    echo This has not been set up yet. Double-click install.bat first, wait for
+    echo This has not been set up yet. Open "Install on Windows" first, wait for
     echo it to finish, then run this again.
     echo.
     pause

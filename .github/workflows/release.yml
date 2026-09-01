@@ -61,32 +61,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # A plain zip of the source, named so somebody can tell what they have
-      # downloaded a month later. The app's own updater fetches GitHub's
-      # zipball rather than this, but a person downloading by hand gets
-      # something with a sensible name.
+      # What a stranger unzips. Two rules decide the layout, and both were
+      # written after somebody actually did it:
+      #
+      # 1. No wrapper folder inside the zip. Windows Explorer and macOS
+      #    Archive Utility both create a folder named after the archive, so a
+      #    zip that contains one as well produces a folder sitting inside an
+      #    identically named folder. The fix is to zip the contents, not the
+      #    directory.
+      # 2. Four things at the top, not twenty. install.py beside install.sh
+      #    beside install.bat beside pyproject.toml is a dozen wrong answers
+      #    surrounding the right one, for a person who was promised this was
+      #    not technical. Everything the app is made of goes in `app`.
+      #
+      # The name is fixed rather than versioned, so the download button on the
+      # page can link straight at the file instead of at a release page asking
+      # somebody which of three assets they want. The version is in the readme,
+      # in app/VERSION, and in the app itself.
       - name: Build the download
         run: |
           version="${GITHUB_REF_NAME#v}"
-          staging="basicagent-$version"
-          mkdir "$staging"
-          # The staging folder is inside the folder being copied, so it has to
-          # exclude itself or the zip contains a hollow copy of its own name --
-          # which is confusing to open and was in the first build of this.
+          mkdir -p staging/app
           rsync -a --exclude '.git' --exclude '.github' --exclude '.venv' \
                 --exclude '__pycache__' --exclude '.pytest_cache' \
-                --exclude "/$staging" \
-                ./ "$staging/"
+                --exclude '.ruff_cache' --exclude '/staging' --exclude '/docs' \
+                --exclude '/Install on *' --exclude '/Read me first.txt' \
+                ./ staging/app/
+          cp "Install on Windows.bat" "Install on Mac.command" \
+             "Install on Linux.sh" staging/
+          sed "s/__VERSION__/$version/" "Read me first.txt" > "staging/Read me first.txt"
+          chmod +x "staging/Install on Mac.command" "staging/Install on Linux.sh"
+
           # What a stranger unzips is what they were promised.
-          for needed in install.py basicagent.py VERSION requirements.txt \
-                        install.bat Assistant.bat install.command Assistant.command; do
-            test -f "$staging/$needed" || { echo "missing from the zip: $needed"; exit 1; }
+          for needed in "Install on Windows.bat" "Install on Mac.command" \
+                        "Install on Linux.sh" "Read me first.txt" \
+                        app/install.py app/basicagent.py app/VERSION \
+                        app/requirements.txt app/Assistant.bat app/Assistant.command; do
+            test -e "staging/$needed" || { echo "missing from the zip: $needed"; exit 1; }
           done
-          test ! -e "$staging/$staging" || { echo "the zip contains itself"; exit 1; }
-          zip -qr "basicagent-$version.zip" "$staging"
-          ls -la *.zip
-          echo "zip=basicagent-$version.zip" >> "$GITHUB_ENV"
-          echo "sha=$(sha256sum "basicagent-$version.zip" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          test ! -e staging/app/app || { echo "the zip contains itself"; exit 1; }
+          test ! -e "staging/install.py" || { echo "app internals leaked to the top"; exit 1; }
+          grep -q "^Assistant $version$" "staging/Read me first.txt"
+
+          ( cd staging && zip -qr ../Assistant-Setup.zip . )
+          unzip -l Assistant-Setup.zip | head -20
+          echo "zip=Assistant-Setup.zip" >> "$GITHUB_ENV"
+          echo "sha=$(sha256sum Assistant-Setup.zip | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
       # A receipt, signed by GitHub, saying this zip was built by this workflow
       # from this commit -- so "the download is the source code you can read"
@@ -99,17 +119,18 @@ jobs:
       - name: Sign a receipt for the download
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: basicagent-*.zip
+          subject-path: Assistant-Setup.zip
 
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          files: basicagent-*.zip
+          files: Assistant-Setup.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
           body: |
-            **Download `${{ env.zip }}` below**, unzip it, and run the installer
-            inside. Setup instructions, per computer, are on the
+            **[Download Assistant ${{ github.ref_name }}](https://github.com/Tristan367/basicagent/releases/latest/download/Assistant-Setup.zip)**
+            — unzip it and open the installer for your computer. There is a
+            `Read me first.txt` inside, and fuller instructions on the
             [download page](https://tristan367.github.io/basicagent/).
 
             <details><summary>Checking that this is what it says it is</summary>

@@ -243,13 +243,40 @@ def _dictation_from_upstream(say, size: str) -> bool:
     return True
 
 
+def dictation_sizes_needed(chosen: str = "") -> list:
+    """Every speech model the app will actually load, not just the chosen one.
+
+    Live dictation shows words as you speak by re-transcribing about once a
+    second, which the chosen model is usually too slow to keep up with -- so a
+    small fast one does that job and the chosen one produces the final text.
+    Installing only the chosen one therefore left the app fetching the other
+    from Hugging Face at first launch: a silent 145 MB, from the one host that
+    rate-limits anonymous downloads, at the moment somebody first presses the
+    microphone button. Which is the failure this mirror exists to prevent.
+    """
+    from agent_server.stt import partial_size
+
+    if not chosen:
+        try:
+            from agent_server.config import whisper_size
+
+            chosen = whisper_size()
+        except Exception:
+            chosen = "small.en"
+    return list(dict.fromkeys([chosen, partial_size(chosen)]))
+
+
 def main(argv: list[str]) -> int:
     what = argv[1] if len(argv) > 1 else ""
     if what in ("read-aloud", "tts"):
         return 0 if install_read_aloud(force="--force" in argv) else 1
     if what in ("dictation", "stt"):
-        size = next((a for a in argv[2:] if not a.startswith("-")), "")
-        return 0 if install_dictation(size=size, force="--force" in argv) else 1
+        asked = next((a for a in argv[2:] if not a.startswith("-")), "")
+        force = "--force" in argv
+        ok = True
+        for size in dictation_sizes_needed(asked):
+            ok = install_dictation(size=size, force=force) and ok
+        return 0 if ok else 1
     print("usage: python -m agent_server.downloads read-aloud|dictation [--force]",
           file=sys.stderr)
     return 2

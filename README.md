@@ -19,10 +19,14 @@ tool for everybody else too.
 ## Installing it
 
 You need [Python](https://www.python.org/downloads/) 3.11, 3.12 or 3.13 and
-about 3 GB of disk. Download this folder, then:
+about 3 GB of disk.
 
-**Windows** — double-click **`install.bat`**. (On the Python installer's first
-screen, tick *Add python.exe to PATH*.)
+Most people should get the [download](https://tristan367.github.io/basicagent/)
+rather than a clone: it unzips to four things, three of which are installers
+named after the computer they are for.
+
+**Windows** — double-click **`Install on Windows`**. (On the Python installer's
+first screen, tick *Add python.exe to PATH*.)
 
 **Mac or Linux** —
 
@@ -41,8 +45,8 @@ If your computer's Python is too new for one of the parts, the installer finds a
 suitable one that is already installed, or fetches one with
 [uv](https://docs.astral.sh/uv/) if you have it — it does not just fail.
 
-Options go on the end either way — `install.bat --minimal` on Windows,
-`python3 install.py --minimal` elsewhere:
+Options go on the end either way — `"Install on Windows.bat" --minimal` on
+Windows, `python3 install.py --minimal` elsewhere:
 
 | | |
 |---|---|

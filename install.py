@@ -76,11 +76,11 @@ def home_for() -> Path:
 # room while it happens.
 
 BANNER = r"""
-    _              _        _                 _
-   /_\   ___ ___  (_) ___  | |_   __ _  _ _  | |_
-  / _ \ (_-<(_-<  | |(_-<  |  _| / _` || ' \ |  _|
- /_/ \_\/__//__/ _/ |/__/   \__| \__,_||_||_| \__|
-                |__/
+    _            _     _              _
+   / \   ___ ___(_)___| |_ __ _ _ __ | |_
+  / _ \ / __/ __| / __| __/ _` | '_ \| __|
+ / ___ \\__ \__ \ \__ \ || (_| | | | | |_
+/_/   \_\___/___/_|___/\__\__,_|_| |_|\__|
 """
 
 SPINNER = "|/-\\"
@@ -119,7 +119,14 @@ def _unicode_ok() -> bool:
 
 ANSI = _ansi_ok()
 BLOCKS = _unicode_ok()
-TICK = "✓" if BLOCKS else "ok"
+
+# A tick is not a block. The console can encode U+2713 perfectly well and then
+# draw an empty box, because Windows' own console font is Consolas and Consolas
+# has no dingbats in it -- so the one character that means "this worked" was the
+# one character that looked like something had gone wrong. Reported from a real
+# Windows install. Blocks, box drawing, the ellipsis and the em dash are all in
+# Consolas and are kept; the tick is spelt out on Windows instead of guessed at.
+TICK = "\u2713" if BLOCKS and not IS_WIN else "OK"
 
 
 def _width() -> int:
@@ -136,7 +143,11 @@ def _fit(text: str) -> str:
     return text[: room - 1] + ("…" if BLOCKS else ".")
 
 
-def _bar(fraction: float, width: int = 30) -> str:
+def _bar(fraction: float, width: int = 0) -> str:
+    # Narrow terminals exist and 80 columns is still the default on Windows.
+    # Every column the bar takes is a column the line underneath cannot use to
+    # say what is actually happening, and the words are worth more than the bar.
+    width = width or (20 if _width() < 90 else 28)
     fraction = max(0.0, min(1.0, fraction))
     filled = round(fraction * width)
     full, empty = ("█", "░") if BLOCKS else ("#", "-")
@@ -179,6 +190,7 @@ class Screen:
         self.shown = False
         self.tick = 0
         self.last_plain = -1
+        self.watcher = None
         self.lock = threading.RLock()
         self.stopping = threading.Event()
         self.ticker = None
@@ -206,8 +218,14 @@ class Screen:
             return
         self.tick += 1
         spin = SPINNER[self.tick % len(SPINNER)]
-        first = _fit(f"  {spin}  {self.title}")
-        second = _fit(f"     [{_bar(self.overall())}] {percent:3.0f}%  {self.detail}")
+        # How long this step has been going. Watching a bar that has not moved
+        # for four minutes, with no way to tell four minutes from forty
+        # seconds, is the moment somebody decides it has hung and kills it.
+        took = _mins(time.monotonic() - self.step_began)
+        head = f"  {spin}  {self.title}"
+        pad = max(1, _width() - 1 - len(head) - len(took))
+        first = _fit(f"{head}{' ' * pad}{took}")
+        second = _fit(f"     [{_bar(self.overall())}] {percent:3.0f}%   {self.detail}")
         if self.shown:
             sys.stdout.write("\033[2A")
         sys.stdout.write(f"\r\033[K{first}\n\r\033[K{second}\n")
@@ -217,12 +235,34 @@ class Screen:
     def _run_ticker(self) -> None:
         while not self.stopping.wait(0.12):
             with self.lock:
+                # Some progress is not announced by anything -- pip goes silent
+                # for the whole time it is unpacking what it downloaded. A step
+                # can leave a function here that goes and looks instead.
+                if self.watcher:
+                    with contextlib.suppress(Exception):
+                        found = self.watcher()
+                        if found:
+                            self.frac, self.detail = found
                 self._paint()
 
     # -- what the installer calls -------------------------------------------
 
-    def plan(self, weights: list) -> None:
+    def plan(self, titles: list, weights: list) -> None:
+        """The whole shape of it, before any of it starts.
+
+        Somebody who can see the seven things that are going to happen can tell
+        a slow step from a stuck one, and can tell that the big download in the
+        middle is the fourth of seven rather than the end of the world."""
         self.total = float(sum(weights)) or 1.0
+        print("  It is going to:")
+        for number, title in enumerate(titles, 1):
+            print(f"    {number}. {title[0].lower()}{title[1:]}")
+        print()
+
+    def watch(self, fn=None) -> None:
+        """Ask a function what the current step is up to, until told otherwise."""
+        with self.lock:
+            self.watcher = fn
 
     def line(self, text: str = "") -> None:
         """A permanent line, printed above the live area."""
@@ -239,6 +279,7 @@ class Screen:
 
     def start(self, title: str, weight: float, detail: str = "") -> None:
         with self.lock:
+            self.watcher = None
             self.title, self.detail = title, detail
             self.span, self.frac = float(weight), 0.0
             self.step_began = time.monotonic()
@@ -256,15 +297,25 @@ class Screen:
 
     def finish_step(self, note: str = "") -> None:
         with self.lock:
+            self.watcher = None
             took = _mins(time.monotonic() - self.step_began)
             self.done += self.span
             self.span = self.frac = 0.0
             title, self.title, self.detail = self.title, "", ""
             self._erase()
-            tail = f"  {note}" if note else ""
-            body = f"  {TICK}  {title}{tail}"
-            pad = max(1, _width() - 1 - len(body) - len(took))
-            print(_fit(f"{body}{' ' * pad}{took}"), flush=True)
+            # The note is what this step turned out to be -- where it went,
+            # how many packages, how big. Squeezed onto the end of a long title
+            # on an 80-column console it was the first thing to be cut off, so
+            # it drops to a line of its own rather than being lost.
+            body = f"  {TICK}  {title}"
+            room = _width() - 1 - len(body) - len(took)
+            if note and len(note) + 4 <= room:
+                body = f"{body}  {note}"
+                room = _width() - 1 - len(body) - len(took)
+                note = ""
+            print(_fit(f"{body}{' ' * max(1, room)}{took}"), flush=True)
+            if note:
+                print(_fit(f"        {note}"), flush=True)
             self.last_plain = -1
 
     def close(self) -> None:
@@ -505,13 +556,24 @@ PURPOSE = {
     "fastapi": "the app itself",
     "starlette": "the app itself",
     "uvicorn": "runs the app on your computer",
+    "uvloop": "makes the app respond quickly",
+    "watchfiles": "makes the app respond quickly",
+    "httptools": "makes the app respond quickly",
+    "websockets": "the live connection to the page you see",
     "jinja2": "the pages you see",
     "markupsafe": "the pages you see",
     "openai": "talking to the AI",
+    "jiter": "reading the AI's replies as they arrive",
     "httpx": "talking over the internet",
+    "httpx2": "talking over the internet",
     "httpcore": "talking over the internet",
+    "httpcore2": "talking over the internet",
     "h11": "talking over the internet",
+    "anyio": "doing several things at once",
+    "sniffio": "doing several things at once",
+    "idna": "web addresses with accents in them",
     "certifi": "checking who it is talking to",
+    "truststore": "checking who it is talking to",
     "aiosqlite": "remembering your projects",
     "python-dotenv": "your settings",
     "python-multipart": "files you attach",
@@ -521,41 +583,54 @@ PURPOSE = {
     "numpy": "the number crunching behind the voices",
     "soundfile": "reading and writing sound",
     "cffi": "reading and writing sound",
+    "pycparser": "reading and writing sound",
     "pillow": "pictures",
     "kokoro-onnx": "the read-aloud voices",
     "onnxruntime": "running the voice and hearing models",
     "espeakng-loader": "how the read-aloud voice pronounces things",
+    "phonemizer": "how the read-aloud voice pronounces things",
     "phonemizer-fork": "how the read-aloud voice pronounces things",
+    "dlinfo": "how the read-aloud voice pronounces things",
+    "joblib": "how the read-aloud voice pronounces things",
     "faster-whisper": "turning what you say into words",
     "ctranslate2": "turning what you say into words",
     "tokenizers": "turning what you say into words",
     "huggingface-hub": "fetching the speech model",
+    "hf-xet": "fetching the speech model",
+    "fsspec": "fetching the speech model",
+    "filelock": "fetching the speech model",
+    "tqdm": "fetching the speech model",
     "av": "decoding the sound from your microphone",
     "pydantic": "checking data is the shape it should be",
     "pydantic-core": "checking data is the shape it should be",
-    "pytest": "the tests",
-    "pytest-asyncio": "the tests",
-    # onnxruntime drags these in, and they are large enough to sit on screen
-    # for a while. Naming them beats a bare word nobody can place.
+    "annotated-types": "checking data is the shape it should be",
+    "annotated-doc": "checking data is the shape it should be",
+    "typing-extensions": "checking data is the shape it should be",
+    "typing-inspection": "checking data is the shape it should be",
+    "attrs": "checking data is the shape it should be",
+    "pytest": "the tests, so you can check it works",
+    "pytest-asyncio": "the tests, so you can check it works",
+    "pluggy": "the tests, so you can check it works",
+    "iniconfig": "the tests, so you can check it works",
+    "pygments": "colouring code so it can be read",
+    "click": "reading options typed on a command line",
+    "packaging": "comparing version numbers",
+    "pyyaml": "reading configuration files",
+    "cloudpickle": "part of the voice engine",
     "coloredlogs": "part of the voice engine",
     "humanfriendly": "part of the voice engine",
     "flatbuffers": "part of the voice engine",
     "protobuf": "part of the voice engine",
     "sympy": "part of the voice engine",
     "mpmath": "part of the voice engine",
-    "uvloop": "makes the app respond quickly",
-    "watchfiles": "makes the app respond quickly",
-    "websockets": "the live connection to the page you see",
-    "hf-xet": "fetching the speech model",
-    "tqdm": "fetching the speech model",
 }
 
-# Only ever used to move a bar along. Both are deliberate over-estimates of a
-# fresh install on this machine, and the bar is clamped below full until pip
-# actually finishes, so being wrong makes it slightly pessimistic and never
-# makes it lie about being done.
-EXPECTED_PACKAGES = 86
-EXPECTED_MB = 430.0
+# Only ever used to move a bar along, and both measured from a real cold
+# install rather than guessed: sixty-five packages and a little over 200 MB.
+# The bar is clamped below full until pip actually finishes, so being wrong
+# makes it slightly pessimistic and never makes it lie about being done.
+EXPECTED_PACKAGES = 65
+EXPECTED_MB = 210.0
 
 PIP_COLLECT = re.compile(r"^\s*Collecting\s+([A-Za-z0-9._-]+)")
 # "Downloading numpy-2.5.2-cp313-...whl (16.7 MB)", and the cached equivalent.
@@ -566,49 +641,142 @@ PIP_FILE = re.compile(
     r"^\s*(?:Downloading|Using cached)\s+([A-Za-z0-9._-]+?)-\d\S*"
     r"\s+\(([\d.]+)\s*([kKMG])B\)\s*$")
 PIP_INSTALLING = re.compile(r"^\s*Installing collected packages:\s*(.+)$")
+# Installing over the top of an existing copy -- which is what happens when
+# somebody runs the installer a second time, and what happened to the first
+# person who did. Nothing is downloaded and nothing is unpacked, so every other
+# line here is silent and the bar went from nought to done in one jump with no
+# explanation of why this time was different.
+PIP_HAVE_IT = re.compile(r"^\s*Requirement already satisfied:\s*([A-Za-z0-9._-]+)")
+# What `--progress-bar raw` prints instead of a bar it cannot draw. See the
+# note in install_dependencies() -- this is the difference between a live
+# number and four silent minutes on a slow connection.
+PIP_BYTES = re.compile(r"^\s*Progress\s+(\d+)\s+of\s+(\d+)\s*$")
 
 
 def _describe(name: str) -> str:
     clean = name.lower().replace("_", "-").split("[")[0]
     purpose = PURPOSE.get(clean)
-    return f"{clean} — {purpose}" if purpose else clean
+    dash = " \u2014 " if BLOCKS else " - "
+    return f"{clean}{dash}{purpose}" if purpose else clean
 
 
-def install_dependencies() -> None:
+def site_packages() -> Path | None:
+    """Where the environment puts what it installs, so it can be watched."""
+    if IS_WIN:
+        found = VENV / "Lib" / "site-packages"
+        return found if found.is_dir() else None
+    for lib in sorted((VENV / "lib").glob("python*")):
+        found = lib / "site-packages"
+        if found.is_dir():
+            return found
+    return None
+
+
+def _installed_count() -> int:
+    where = site_packages()
+    if where is None:
+        return 0
+    try:
+        return sum(1 for _ in where.glob("*.dist-info"))
+    except OSError:
+        return 0
+
+
+def install_dependencies() -> str:
+    """Fetch and unpack the sixty-odd packages the app is built from.
+
+    The long one, and the one somebody actually sits and watches. Two things
+    about pip make that worse than it needs to be, and both are worked around
+    here rather than complained about:
+
+    Pip draws no progress bar when its output is being read by a program
+    instead of shown to a person -- which is exactly what is happening -- so a
+    200 MB download is one line followed by several silent minutes. Asking for
+    `--progress-bar raw` gets plain "Progress 262144 of 23136817" lines that
+    are no use to a human and ideal here.
+
+    And pip says nothing at all while it unpacks what it downloaded. That part
+    is quick on a fast disk and slow on Windows, where an antivirus reads every
+    file as it lands. Nothing announces it, so the number of packages that have
+    appeared in the environment gets counted instead.
+    """
     seen = []
+    already = []
     megabytes = [0.0]
     installing = []
     current = [""]
+    fetching = [0.0, 0.0]   # bytes done, bytes expected, of the current file
+
+    def show() -> None:
+        # Size first. The line is longer than most terminals, so whatever goes
+        # last is what gets cut -- and losing the end of an explanation costs
+        # less than losing the number that proves something is still moving.
+        size = ""
+        if fetching[1]:
+            size = f"{fetching[0] / 1e6:.0f} of {fetching[1] / 1e6:.0f} MB   "
+        elif megabytes[0]:
+            size = f"{megabytes[0]:.0f} MB   "
+        screen.progress(_pip_fraction(seen, already, megabytes, installing),
+                        f"{size}{current[0]}")
 
     def watch(line: str) -> None:
-        fetching = PIP_FILE.match(line)
-        if fetching and ".metadata" not in line:
-            name, amount, unit = fetching.groups()
+        moved = PIP_BYTES.match(line)
+        if moved:
+            fetching[0], fetching[1] = float(moved.group(1)), float(moved.group(2))
+            show()
+            return
+        found = PIP_FILE.match(line)
+        if found and ".metadata" not in line:
+            name, amount, unit = found.groups()
             if name not in seen:
                 seen.append(name)
             megabytes[0] += float(amount) * {"k": 0.001, "K": 0.001,
                                              "M": 1.0, "G": 1024.0}[unit]
             current[0] = _describe(name)
-            screen.progress(
-                _pip_fraction(seen, megabytes, installing),
-                f"{current[0]}   ({megabytes[0]:.0f} MB so far)")
+            fetching[0] = fetching[1] = 0.0
+            show()
             return
-        found = PIP_COLLECT.match(line)
-        if found:
+        have = PIP_HAVE_IT.match(line)
+        if have:
+            name = have.group(1)
+            if name not in already:
+                already.append(name)
+            current[0] = f"already here: {_describe(name)}"
+            fetching[0] = fetching[1] = 0.0
+            show()
+            return
+        collecting = PIP_COLLECT.match(line)
+        if collecting:
             # Still working out what it needs; nothing is downloading yet.
-            current[0] = _describe(found.group(1))
-            screen.progress(_pip_fraction(seen, megabytes, installing), current[0])
+            current[0] = f"working out what it needs: {collecting.group(1)}"
+            fetching[0] = fetching[1] = 0.0
+            show()
             return
         started = PIP_INSTALLING.match(line)
         if started:
             installing[:] = [n.strip() for n in started.group(1).split(",") if n.strip()]
-            screen.progress(_pip_fraction(seen, megabytes, installing),
-                            f"putting {len(installing)} pieces in place")
+            fetching[0] = fetching[1] = 0.0
+            before = _installed_count()
+            names = list(installing)
 
+            def unpacking():
+                done = max(0, _installed_count() - before)
+                done = min(done, len(names))
+                name = names[done] if done < len(names) else names[-1]
+                where = 0.8 + 0.19 * (done / max(1, len(names)))
+                return where, (f"unpacking {done + 1} of {len(names)}: "
+                               f"{_describe(name)}")
+
+            screen.watch(unpacking)
+
+    screen.progress(0.01, "getting the installer itself up to date")
     run([VENV_PY, "-m", "pip", "install", "--upgrade", "pip"])
-    screen.progress(0.02, "reading the list")
-    code, tail = _stream([VENV_PY, "-m", "pip", "install", "-r", "requirements.txt"],
-                         on_line=watch)
+    screen.progress(0.02, "reading the list of what it needs")
+    code, tail = _stream(
+        [VENV_PY, "-m", "pip", "install", "--progress-bar", "raw",
+         "-r", "requirements.txt"],
+        on_line=watch)
+    screen.watch(None)
     if code != 0:
         screen.close()
         say()
@@ -618,16 +786,26 @@ def install_dependencies() -> None:
             say(f"    {line}")
         stop("the app's parts could not be installed.",
              "The lines above are pip's own; they usually name what is missing.")
-    screen.progress(1.0, f"{len(seen) or len(installing)} pieces installed")
+    screen.progress(1.0)
+    if not seen and not installing:
+        return f"all {len(already)} were already here"
+    return f"{len(seen) or len(installing)} packages, {megabytes[0]:.0f} MB"
 
 
-def _pip_fraction(seen: list, megabytes: list, installing: list) -> float:
-    """Two guesses at how far along pip is, and the more advanced one wins."""
-    by_count = len(seen) / EXPECTED_PACKAGES
+def _pip_fraction(seen: list, already: list, megabytes: list,
+                  installing: list) -> float:
+    """Two guesses at how far along pip is, and the more advanced one wins.
+
+    Downloading is the first four fifths of it; unpacking is the rest, and has
+    a watcher of its own once it starts. A package that was already installed
+    counts the same as one that was fetched: from where somebody is sitting,
+    both are pip working through the same list.
+    """
+    by_count = (len(seen) + len(already)) / EXPECTED_PACKAGES
     by_size = megabytes[0] / EXPECTED_MB
-    guess = max(by_count, by_size)
+    guess = 0.8 * max(by_count, by_size)
     if installing:
-        guess = max(guess, 0.9)
+        guess = max(guess, 0.8)
     return min(0.97, guess)
 
 
@@ -943,7 +1121,7 @@ def finish(shortcut: str, moved_from: Path | None) -> None:
         say()
         say("  It was copied there out of the folder you unzipped, so that a")
         say("  tidy-up of your Downloads can never delete it. You can throw")
-        say(f"  away {moved_from.name} whenever you like.")
+        say("  that folder away whenever you like.")
     say()
     say("  Your projects, settings and keys are kept separately again, in")
     say(f"  {_data_dir_hint()} -- updating or reinstalling never touches them.")
@@ -981,17 +1159,17 @@ def main() -> None:
         steps.append(("Putting it somewhere permanent", 2))
     steps += [
         ("Making a private Python for the app", 3),
-        ("Installing the app's parts", 40),
+        ("Installing the pieces the app is built from (Python packages)", 40),
         ("Installing the browser it shows your work in (Chromium)", 18),
     ]
     if not minimal:
         steps += [
-            ("Installing the read-aloud voices (Kokoro)", 16),
-            ("Installing the model that hears you (Whisper)", 18),
+            ("Installing the voices that read to you (Kokoro)", 16),
+            ("Installing the model that hears you speak (Whisper)", 18),
         ]
     if not no_shortcut:
         steps.append(("Putting an icon where you can click it", 2))
-    screen.plan([weight for _, weight in steps])
+    screen.plan([title for title, _ in steps], [weight for _, weight in steps])
     pending = dict(steps)
 
     def step(title):
@@ -1015,9 +1193,9 @@ def main() -> None:
     make_venv()
     screen.finish_step()
 
-    step("Installing the app's parts")
-    install_dependencies()
-    screen.finish_step()
+    step("Installing the pieces the app is built from (Python packages)")
+    note = install_dependencies()
+    screen.finish_step(note)
 
     step("Installing the browser it shows your work in (Chromium)")
     install_browser()
@@ -1027,10 +1205,10 @@ def main() -> None:
         say("  Skipping the speech downloads. Ask the assistant to install them")
         say("  later if you want them -- it knows how.")
     else:
-        step("Installing the read-aloud voices (Kokoro)")
+        step("Installing the voices that read to you (Kokoro)")
         install_speech("read-aloud")
         screen.finish_step()
-        step("Installing the model that hears you (Whisper)")
+        step("Installing the model that hears you speak (Whisper)")
         install_speech("dictation")
         screen.finish_step()
 

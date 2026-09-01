@@ -239,7 +239,8 @@ def test_the_download_page_points_at_the_newest_release():
 
 def test_the_page_tells_each_platform_what_to_double_click():
     page = (APP / "docs" / "index.html").read_text()
-    for named in ("install.bat", "install.command", "install.py"):
+    for named in ("Install on Windows", "Install on Mac", "Install on Linux",
+                  "app/install.py"):
         assert named in page, named
 
 
@@ -257,7 +258,8 @@ def test_the_page_says_a_shortcut_appears():
 def test_everything_the_page_promises_actually_exists():
     """A download page naming a file that is not in the zip is the first thing
     somebody meets and the last thing they try."""
-    for named in ("install.bat", "Assistant.bat", "install.command",
+    for named in ("Install on Windows.bat", "Install on Mac.command",
+                  "Install on Linux.sh", "Read me first.txt", "Assistant.bat",
                   "Assistant.command", "install.py", "basicagent.py"):
         assert (APP / named).is_file(), named
 
@@ -267,7 +269,8 @@ def test_the_mac_launchers_are_executable():
     no help at all."""
     import os
 
-    for named in ("install.command", "Assistant.command"):
+    for named in ("Install on Mac.command", "Install on Linux.sh",
+                  "Assistant.command"):
         assert os.access(APP / named, os.X_OK), named
 
 
@@ -304,13 +307,46 @@ def test_settings_says_nothing_when_there_is_nothing_to_say():
     assert "hidden" in body[at:at + 200]
 
 
-def test_the_download_does_not_contain_itself():
-    """The staging folder is inside the folder being copied, so rsync has to
-    exclude it -- the first build of this shipped a hollow copy of its own name
-    inside the zip, which is a strange first thing to meet."""
+def test_the_download_unzips_to_one_folder_and_not_two():
+    """Windows Explorer and macOS both make a folder named after the archive.
+
+    A zip that contains a folder of its own therefore lands as a folder inside
+    an identically named folder, which is what somebody unzipping this actually
+    got and reported. The fix is to zip the contents rather than the directory
+    -- `cd staging && zip ..` and not `zip staging` -- so this pins the shape
+    of that command rather than trusting the comment above it.
+    """
     flow = (APP / ".github" / "workflows" / "release.yml").read_text()
-    assert '--exclude "/$staging"' in flow
-    assert 'test ! -e "$staging/$staging"' in flow
+    assert "( cd staging && zip -qr ../Assistant-Setup.zip . )" in flow
+    assert "zip -qr Assistant-Setup.zip staging" not in flow
+    assert "--exclude '/staging'" in flow
+    assert "test ! -e staging/app/app" in flow
+
+
+def test_the_top_of_the_download_holds_only_what_is_meant_to_be_clicked():
+    """The complaint was that finding the file you want means reading twenty.
+
+    install.py beside install.sh beside install.bat beside pyproject.toml is a
+    dozen wrong answers surrounding the right one, for somebody who was
+    promised this was not technical. Everything the app is made of goes one
+    level down, and the check that it stayed there lives with the build.
+    """
+    flow = (APP / ".github" / "workflows" / "release.yml").read_text()
+    assert 'test ! -e "staging/install.py"' in flow
+    assert "app internals leaked to the top" in flow
+
+
+def test_the_installers_work_in_both_layouts():
+    """One file, shipped inside the zip and tested here.
+
+    In the download the app sits in `app`; in this repository it sits beside
+    the launcher. A launcher written for only one of those is either untested
+    or broken, so each looks for `app/install.py` and works either way.
+    """
+    for named in ("Install on Windows.bat", "Install on Mac.command",
+                  "Install on Linux.sh"):
+        text = (APP / named).read_text()
+        assert "app" in text and "install.py" in text, named
 
 
 def test_the_workflow_checks_the_zip_before_publishing_it():
@@ -318,9 +354,11 @@ def test_the_workflow_checks_the_zip_before_publishing_it():
     the first thing somebody meets and the last thing they try. Checked where
     the zip is made, not only where the page is written."""
     flow = (APP / ".github" / "workflows" / "release.yml").read_text()
-    for named in ("install.py", "basicagent.py", "VERSION", "requirements.txt",
-                  "install.bat", "Assistant.bat", "install.command",
-                  "Assistant.command"):
+    for named in ("app/install.py", "app/basicagent.py", "app/VERSION",
+                  "app/requirements.txt", "app/Assistant.bat",
+                  "app/Assistant.command", "Install on Windows.bat",
+                  "Install on Mac.command", "Install on Linux.sh",
+                  "Read me first.txt"):
         assert named in flow, named
     assert "missing from the zip" in flow
 

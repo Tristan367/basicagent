@@ -8,6 +8,7 @@ built points at a path that no longer exists.
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 from pathlib import Path
 
@@ -141,9 +142,23 @@ def test_the_progress_bar_never_reports_more_than_it_knows(monkeypatch):
     """A bar that reaches 100% and then sits there for four minutes is worse
     than one that stops at 97%."""
     installer = _installer()
-    huge = installer._pip_fraction(["x"] * 5000, [99999.0], ["a", "b"])
+    huge = installer._pip_fraction(["x"] * 5000, [], [99999.0], ["a", "b"])
     assert huge <= 0.97
-    assert installer._pip_fraction([], [0.0], []) == 0.0
+    assert installer._pip_fraction([], [], [0.0], []) == 0.0
+
+
+def test_a_second_install_still_looks_like_something_happening():
+    """Running it again over an existing copy downloads nothing and unpacks
+    nothing, so every line the progress relies on goes quiet and the bar sat at
+    nought and then jumped to done. Reported by the first person to reinstall.
+    Pip does say "Requirement already satisfied" for each one, so that counts.
+    """
+    installer = _installer()
+    line = "Requirement already satisfied: numpy in ./.venv/lib (2.5.2)"
+    found = installer.PIP_HAVE_IT.match(line)
+    assert found and found.group(1) == "numpy"
+    moving = installer._pip_fraction([], ["a"] * 30, [0.0], [])
+    assert 0.2 < moving < 0.8, moving
 
 
 def test_pip_lines_are_read_the_way_pip_writes_them():
@@ -201,3 +216,100 @@ def test_the_installer_is_still_standard_library_only():
                "threading", "time", "pathlib", "ctypes", "importlib", ""}
     used = set(result.stdout.split())
     assert used <= allowed, f"install.py imports {used - allowed}"
+
+
+# ── being able to see it working ───────────────────────────────────────────
+#
+# Reported from a real install: the bar sat at 42% for minutes with the words
+# "putting 65 pieces in place" under it and no way to tell a slow step from a
+# hung one. Both causes turned out to be things pip does when nobody is
+# looking, and both are worked around rather than lived with.
+
+
+def test_pip_is_asked_for_progress_it_would_otherwise_withhold():
+    """Pip draws no bar when its output is read by a program rather than shown
+    to a person -- which is exactly this case -- so a 200 MB download is one
+    line and then several silent minutes. `--progress-bar raw` gets plain byte
+    counts instead, which are no use to a human and ideal here."""
+    installer = _installer()
+    source = (ROOT / "install.py").read_text()
+    assert '"--progress-bar", "raw"' in source
+    found = installer.PIP_BYTES.match("Progress 262144 of 23136817")
+    assert found and found.group(1) == "262144" and found.group(2) == "23136817"
+
+
+def test_the_silent_part_of_pip_is_watched_rather_than_guessed():
+    """Pip says nothing at all while it unpacks what it downloaded, and on
+    Windows that is the slow half -- an antivirus reads every file as it
+    lands. So the packages appearing in the environment get counted."""
+    installer = _installer()
+    assert callable(installer.site_packages)
+    assert hasattr(installer.screen, "watch")
+
+
+def test_the_step_shows_how_long_it_has_been_going(monkeypatch):
+    """Four minutes and forty seconds look identical when neither is shown,
+    and one of them is the moment somebody decides it has hung."""
+    installer = _installer()
+    monkeypatch.setattr(installer, "ANSI", True)
+    installer.screen.start("Installing the pieces", 40)
+    installer.screen.progress(0.4, "numpy")
+    painted = []
+    monkeypatch.setattr(installer.sys.stdout, "write", painted.append)
+    installer.screen._paint()
+    shown = "".join(painted)
+    assert "Installing the pieces" in shown
+    assert "numpy" in shown
+    assert re.search(r"\d+s", shown), shown
+
+
+def test_the_tick_is_not_a_character_windows_cannot_draw():
+    """A console that encodes U+2713 perfectly well and then draws an empty
+    box, because Windows' own console font has no dingbats in it. The one
+    character meaning "this worked" was the one that looked like breakage."""
+    source = (ROOT / "install.py").read_text()
+    assert 'if BLOCKS and not IS_WIN else "OK"' in source
+
+
+def test_what_is_being_installed_is_named_in_words(tmp_path):
+    """An educational app that says "installing the app's parts" for four
+    minutes has taught nobody anything. The big ones say what they are for."""
+    installer = _installer()
+    for package in ("faster-whisper", "onnxruntime", "kokoro-onnx", "playwright",
+                    "numpy", "openai"):
+        assert package in installer.PURPOSE, package
+        assert installer._describe(package) != package
+    # And an unknown package is still named rather than hidden.
+    assert installer._describe("something-new") == "something-new"
+
+
+def test_the_whole_plan_is_shown_before_any_of_it_starts(capsys):
+    """Seven named steps make a slow fourth step legible as the fourth of
+    seven. One step at a time makes it the end of the world."""
+    installer = _installer()
+    installer.screen.plan(["Checking this computer can run it",
+                           "Installing the pieces"], [1, 40])
+    shown = capsys.readouterr().out
+    assert "1. checking this computer can run it" in shown
+    assert "2. installing the pieces" in shown
+
+
+def test_the_installer_fetches_every_model_the_app_will_load():
+    """Not just the one in the settings.
+
+    Live dictation shows words as you speak by re-transcribing about once a
+    second, and the chosen model is usually too slow for that -- so a small
+    fast one does that job. Installing only the chosen one left the app
+    fetching the other from Hugging Face at first launch: a silent 145 MB,
+    from the one host that rate-limits anonymous downloads, at the moment
+    somebody first presses the microphone button. Which is the exact failure
+    the mirror was built to prevent, moved from install time to first use.
+    """
+    from agent_server.downloads import WHISPER_SIZES, dictation_sizes_needed
+
+    needed = dictation_sizes_needed("small.en")
+    assert "base.en" in needed, needed
+    for size in needed:
+        assert size in WHISPER_SIZES, size
+    # A choice that is already fast enough needs nothing extra.
+    assert dictation_sizes_needed("tiny.en") == ["tiny.en"]

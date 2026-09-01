@@ -72,9 +72,13 @@ _lock = asyncio.Lock()
 PARTIAL_MODEL = "base.en"
 
 
-def partial_size() -> str:
-    """The model for words-as-you-speak. The chosen one if it can keep up."""
-    chosen = whisper_size()
+def partial_size(chosen: str = "") -> str:
+    """The model for words-as-you-speak. The chosen one if it can keep up.
+
+    Takes the choice as an argument so the installer can ask what a given
+    setting would need without having a database to read it out of.
+    """
+    chosen = chosen or whisper_size()
     return chosen if chosen in ("tiny.en", "base.en") else PARTIAL_MODEL
 
 

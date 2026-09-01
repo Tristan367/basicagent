@@ -42,7 +42,27 @@
     font-size: 1rem; text-align: center; text-decoration: none;
   }
   .also:hover { border-color: var(--accent); }
-  .under { text-align: center; color: var(--dim); font-size: 0.92rem; }
+  /* The button above this is a thing you click; this is a sentence you read.
+     With no gap between them the sentence looked like part of the button. */
+  .under { margin-top: 22px; text-align: center; color: var(--dim);
+           font-size: 0.92rem; }
+  .by {
+    display: flex; gap: 16px; align-items: center;
+    max-width: 30rem; margin: 26px auto 0;
+  }
+  .by p { margin: 0; color: var(--dim); font-size: 0.95rem; }
+  .face {
+    flex: 0 0 auto; width: 60px; height: 60px;
+    border-radius: 50%; object-fit: cover;
+    border: 2px solid var(--edge);
+  }
+  .who { display: flex; gap: 22px; align-items: flex-start; }
+  .who .face { width: 108px; height: 108px; }
+  .who p:last-child { margin-bottom: 0; }
+  @media (max-width: 30rem) {
+    .who { display: block; }
+    .who .face { margin-bottom: 12px; }
+  }
   .card {
     margin: 16px 0; padding: 18px 22px;
     border: 1px solid var(--edge); border-radius: 14px; background: var(--card);
@@ -72,7 +92,7 @@
   watch. No code, no jargon, nothing technical to learn first.</p>
 </header>
 
-<a class="get" href="https://github.com/Tristan367/basicagent/releases/latest">
+<a class="get" href="https://github.com/Tristan367/basicagent/releases/latest/download/Assistant-Setup.zip">
   Download it &nbsp;&rarr;
 </a>
 <a class="also" href="https://github.com/Tristan367/basicagent">
@@ -80,6 +100,13 @@
 </a>
 <p class="under">Free. Windows, Mac and Linux. About ten minutes to set up, once
 — nearly all of it downloading. <a href="#safe">Is it safe?</a></p>
+
+<div class="by">
+  <img class="face" src="tristan.jpg" alt="Tristan Johnson">
+  <p>Made by <strong>Tristan Johnson</strong>. If I taught your child guitar,
+  this is the same me — I built it for the families I teach.
+  <a href="#who">More about that</a>.</p>
+</div>
 
 <h2>What it does</h2>
 <p>You describe something — a game, a website, a story, a tool to sort out your
@@ -92,10 +119,13 @@ you would rather talk than type, and it reads its replies out loud if you would
 rather listen than read.</p>
 
 <h2>Setting it up</h2>
-<p>Once, and then never again. Download the file above and unzip it, then run
-the installer below. <strong>When it finishes you will have an Assistant icon on
-your desktop</strong> — that is what you click from then on. You do not need the
-installer, the folder, or this page ever again.</p>
+<p>Once, and then never again. Download the file above and unzip it. Inside are
+three files named <strong>Install on Windows</strong>, <strong>Install on
+Mac</strong> and <strong>Install on Linux</strong> — open the one for your
+computer, and there is a <code>Read me first</code> beside them saying the same.
+<strong>When it finishes you will have an Assistant icon on your desktop</strong>
+— that is what you click from then on. You do not need the installer, the
+folder, or this page ever again.</p>
 <p><strong>It does not matter where you unzip it.</strong> The installer copies
 the app somewhere permanent for you and tells you where it went, so leaving the
 download in your Downloads folder is fine — you can delete that folder
@@ -105,22 +135,23 @@ Downloads every month, and an app installed there would go with it.</p>
 <div class="card">
   <h3>Windows</h3>
   <ol>
-    <li>Open the folder you unzipped.</li>
-    <li>Double-click <code>install.bat</code> and wait. Windows will say it does
-      not recognise who made this — choose <em>More info</em>, then <em>Run
-      anyway</em>. (<a href="#safe">Why it says that</a>.)</li>
+    <li>Right-click the downloaded file, choose <em>Extract All</em>, and open
+      the folder it makes.</li>
+    <li>Double-click <strong>Install on Windows</strong> and wait. Windows will
+      say it does not recognise who made this — choose <em>More info</em>, then
+      <em>Run anyway</em>. (<a href="#safe">Why it says that</a>.)</li>
     <li>It puts an <strong>Assistant</strong> icon on your desktop and in the
       Start menu. Double-click that whenever you want it.</li>
   </ol>
   <p class="quiet">If it says Python is missing, it will tell you where to get
-  it. Install that, then run <code>install.bat</code> again.</p>
+  it. Install that, then open <strong>Install on Windows</strong> again.</p>
 </div>
 
 <div class="card">
   <h3>Mac</h3>
   <ol>
-    <li>Open the folder you unzipped.</li>
-    <li>Double-click <code>install.command</code>. The first time, macOS will
+    <li>Double-click the downloaded file, and open the folder it makes.</li>
+    <li>Open <strong>Install on Mac</strong>. The first time, macOS will
       refuse because it cannot tell who made it: right-click the file, choose
       <em>Open</em>, then <em>Open</em> again. (<a href="#safe">Why it does
       that</a>.)</li>
@@ -133,10 +164,10 @@ Downloads every month, and an app installed there would go with it.</p>
 <div class="card">
   <h3>Linux</h3>
   <ol>
-    <li>Open a terminal in the folder you unzipped.</li>
-    <li><code>python3 install.py</code></li>
+    <li><code>unzip -d Assistant Assistant-Setup.zip &amp;&amp; cd Assistant</code></li>
+    <li><code>python3 app/install.py</code></li>
     <li>It adds <strong>Assistant</strong> to your applications menu. Or run
-      <code>python3 basicagent.py</code>.</li>
+      <code>basicagent</code>.</li>
   </ol>
 </div>
 
@@ -191,6 +222,23 @@ offer in place of having paid for it to go away.</p>
   minutes before you hand this to a child.</p>
 </div>
 
+<h2 id="who">Who made this</h2>
+<div class="card who">
+  <img class="face" src="tristan.jpg" alt="Tristan Johnson">
+  <div>
+    <p><strong>Tristan Johnson.</strong> I teach guitar, and a lot of the
+    people I teach are homeschooled. This started because one of them wanted to
+    make a game and there was nothing I could hand them that did not begin with
+    a wall of setup, an account, or a monthly bill.</p>
+    <p>So it is not a product and there is no company behind it. It is one
+    person's software, given away, and my name is on it on purpose: if this
+    turns out to be a nuisance on your computer, you know exactly whose fault
+    that is and where to find me.
+    <a href="https://github.com/Tristan367/basicagent/issues">Tell me here</a>,
+    and I will fix it.</p>
+  </div>
+</div>
+
 <h2>What it costs</h2>
 <p>The app is free and always will be. It has no AI of its own — it connects to
 one you have an account with, which is why it can be given away and why it costs
@@ -218,7 +266,9 @@ separate and are never touched by an update.</p>
 
 <footer>
   <p><a href="https://github.com/Tristan367/basicagent">Source code</a> ·
+     <a href="https://github.com/Tristan367/basicagent/releases/latest">All versions</a> ·
      <a href="https://github.com/Tristan367/basicagent/issues">Report a problem</a></p>
+  <p>Made by Tristan Johnson.</p>
   <p>Built with AI, which is rather the point.</p>
 </footer>
 

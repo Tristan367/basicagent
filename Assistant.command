@@ -13,7 +13,7 @@ fi
 
 if [ ! -x "$app/.venv/bin/python" ]; then
     echo
-    echo "This has not been set up yet. Double-click install.command first,"
+    echo "This has not been set up yet. Open \"Install on Mac\" first,"
     echo "wait for it to finish, then run this again."
     echo
     read -r -p "Press return to close." _

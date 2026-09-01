@@ -27,6 +27,27 @@ def test_the_page_offers_the_source_beside_the_download():
     assert 'class="also" href="https://github.com/Tristan367/basicagent"' in PAGE
 
 
+def test_the_download_button_downloads():
+    """It used to land on the releases page, which asks a question instead of
+    answering one: three files, a heading of release notes, and no way for
+    somebody non-technical to know whether they want one of them or all three.
+    A download button that opens a page is a download button that does not
+    work for the person it was put there for."""
+    button = PAGE.split('class="get"')[1].split(">")[0]
+    assert button.rstrip('"').endswith(".zip"), button
+    assert "releases/latest/download/" in button
+
+
+def test_the_page_says_who_made_it():
+    """Recommended parent to parent, the useful fact is not that the code is
+    public -- it is that this was made by somebody they have met. The name is
+    the reassurance; the rest of the safety section is the evidence."""
+    assert "Tristan Johnson" in PAGE
+    assert 'id="who"' in PAGE
+    assert 'src="tristan.jpg"' in PAGE
+    assert (ROOT / "docs" / "tristan.jpg").is_file()
+
+
 def test_the_warning_is_explained_before_it_is_met():
     """Both installer steps point at the section, and the section exists."""
     assert 'id="safe"' in PAGE
@@ -45,7 +66,7 @@ def test_the_receipt_the_page_promises_is_actually_signed():
     assert "attestations: write" in WORKFLOW
     assert "id-token: write" in WORKFLOW
     # The signature covers the file people download, not something else.
-    assert "subject-path: basicagent-*.zip" in WORKFLOW
+    assert "subject-path: Assistant-Setup.zip" in WORKFLOW
     # And the release itself says how to check it.
     assert "gh attestation verify" in WORKFLOW
 
