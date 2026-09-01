@@ -101,7 +101,12 @@ jobs:
           done
           test ! -e staging/app/app || { echo "the zip contains itself"; exit 1; }
           test ! -e "staging/install.py" || { echo "app internals leaked to the top"; exit 1; }
-          grep -q "^Assistant $version$" "staging/Read me first.txt"
+          # Stripped of carriage returns first: the readme ships with Windows
+          # line endings, because Notepad is what will open it. Every check in
+          # this step says what it found when it fails, or a silent exit 1
+          # sends somebody reading raw workflow logs to find out which line.
+          tr -d '\r' < "staging/Read me first.txt" | grep -q "^Assistant $version$" \
+            || { echo "the readme does not say it is version $version"; exit 1; }
 
           ( cd staging && zip -qr ../Assistant-Setup.zip . )
           unzip -l Assistant-Setup.zip | head -20
