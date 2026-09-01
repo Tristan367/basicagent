@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -308,8 +309,9 @@ def test_windows_has_something_to_double_click():
     script = Path("Install on Windows.bat")
     assert script.exists(), "there is no Windows installer"
     text = script.read_text()
-    assert "py -3 install.py" in text, "it does not use the Python launcher"
-    assert "python install.py" in text, "no fallback for a Store install"
+    assert "set \"PY=py -3\"" in text, "it does not use the Python launcher"
+    assert "set \"PY=python\"" in text, "no fallback for a Store install"
+    assert "%PY% install.py" in text, "it never runs the installer"
     commands = [ln for ln in text.splitlines() if not ln.strip().startswith("rem")]
     assert "python3" not in "\n".join(commands), (
         "python3 does not exist on Windows")
@@ -370,3 +372,89 @@ def test_children_of_a_windowless_launcher_do_not_open_windows_of_their_own():
     assert "CREATE_NO_WINDOW" in source
     # Every child of the launcher, not just the first one that was noticed.
     assert source.count("**child_output()") >= 3
+
+
+# ── getting Python, rather than mentioning it ──────────────────────────────
+#
+# "Install Python and run this again" is not an instruction. The person reading
+# it was told this app was not technical, is looking at a black window full of
+# text they did not expect, and has no way to judge which of the eight things
+# on python.org's download page is the one they want. Both double-clickable
+# installers fetch it themselves.
+
+
+def _pinned() -> dict:
+    """The Python version and checksum each launcher pins, read out of it."""
+    found = {}
+    for named, pattern in (("windows", r'set "PYVER=([\d.]+)"'),
+                           ("mac", r'PYVER="([\d.]+)"')):
+        text = Path(f"Install on {'Windows.bat' if named == 'windows' else 'Mac.command'}").read_text()
+        version = re.search(pattern, text)
+        checksum = re.search(r'PYSUM=?"?([0-9a-f]{64})"?', text)
+        url = re.search(r"(https://www\.python\.org/ftp/python/[^\s\"]+)", text)
+        assert version and checksum and url, named
+        found[named] = (version.group(1), checksum.group(1), url.group(1))
+    return found
+
+
+def test_both_installers_fetch_python_from_the_official_place():
+    for named, (version, _, url) in _pinned().items():
+        assert url.startswith("https://www.python.org/ftp/python/"), named
+        assert f"/{version}/" in url or "$PYVER" in url or "%PYVER%" in url, named
+
+
+def test_what_is_downloaded_is_checked_before_it_is_run():
+    """Downloading an executable and running it unread is the shape of the
+    thing this app spends a page reassuring people it is not. So the exact
+    SHA-256 of the file the CPython release manager signed is pinned, and a
+    mismatch opens the download page instead of running anything."""
+    windows = Path("Install on Windows.bat").read_text()
+    mac = Path("Install on Mac.command").read_text()
+    assert "certutil -hashfile" in windows and "SHA256" in windows
+    assert "shasum -a 256" in mac
+    # The check happens before the thing is started, not after.
+    assert windows.index("certutil -hashfile") < windows.index("start /wait")
+    assert mac.index("shasum -a 256") < mac.index("open -W")
+    # And a mismatch is a stop, not a warning.
+    assert "Nothing has been run" in windows and "Nothing has been run" in mac
+
+
+def test_the_python_it_fetches_is_one_the_app_can_actually_use():
+    """Raising the supported ceiling without moving these would have the
+    installer download a Python and then refuse to run on it."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_i", Path("install.py"))
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+
+    versions = {version for version, _, _ in _pinned().values()}
+    assert len(versions) == 1, f"the two installers pin different Pythons: {versions}"
+    pinned = tuple(int(n) for n in versions.pop().split("."))
+    assert installer.MIN_PYTHON <= pinned[:2] < installer.BELOW_PYTHON, pinned
+
+
+def test_neither_installer_asks_for_an_administrator_to_get_python():
+    """A per-user install needs no password on Windows. The Mac pkg does ask,
+    because Apple's installer always does -- but it is Apple's dialog, not one
+    of ours, and nothing here runs sudo."""
+    windows = Path("Install on Windows.bat").read_text()
+    assert "InstallAllUsers=0" in windows, "it would need an administrator"
+    assert "/passive" in windows, "it would ask the user questions about paths"
+    for named in ("Install on Windows.bat", "Install on Mac.command"):
+        assert "sudo " not in Path(named).read_text(), named
+
+
+def test_a_python_that_is_too_new_is_answered_rather_than_announced():
+    """A computer bought this year has a Python newer than one of the parts
+    supports. The installer says so with exit code 3, and the file that was
+    double-clicked fetches the right one and starts again."""
+    windows = Path("Install on Windows.bat").read_text()
+    mac = Path("Install on Mac.command").read_text()
+    assert "if errorlevel 3" in windows
+    assert '"$status" -eq 3' in mac
+    # And it uses the exact interpreter afterwards, not the launcher: `py -3`
+    # picks the newest Python on the machine, which is the one just worked
+    # around.
+    assert "Python313\\python.exe" in windows
+    assert "Python.framework/Versions/3.13/bin/python3" in mac

@@ -41,9 +41,12 @@ everything, downloads the voices, and puts **Assistant** in your applications
 menu (Start menu on Windows, Applications folder on a Mac) so nobody has to open
 a terminal again.
 
-If your computer's Python is too new for one of the parts, the installer finds a
-suitable one that is already installed, or fetches one with
-[uv](https://docs.astral.sh/uv/) if you have it — it does not just fail.
+If your computer has no Python, or one too new for one of the parts, the
+Windows and Mac installers fetch the official python.org build — checked
+against the SHA-256 of the file the CPython release manager signed, installed
+per-user on Windows so it never needs an administrator. Elsewhere the installer
+looks for a suitable interpreter already on the machine, or fetches one with
+[uv](https://docs.astral.sh/uv/) if you have it. It does not just fail.
 
 Options go on the end either way — `"Install on Windows.bat" --minimal` on
 Windows, `python3 install.py --minimal` elsewhere:

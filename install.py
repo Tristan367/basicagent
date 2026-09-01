@@ -385,14 +385,30 @@ def stop(message: str, fix: str = "") -> None:
 # ── the checks worth making before anything is downloaded ───────────────────
 
 
-def _version_of(python: str) -> tuple | None:
-    """What version an interpreter on PATH is, or None if it is not there."""
-    found = shutil.which(python)
+def _as_command(candidate) -> list | None:
+    """A candidate as something runnable, or None if it is not on this machine.
+
+    A candidate is either a name or a path -- `python3.12`, or the exact place
+    Windows puts a per-user install -- or a launcher with an argument, as in
+    `py -3.13`. The launcher matters on Windows: `py -3` picks the *newest*
+    Python, which is the one the parts do not support yet, and asking for the
+    exact minor version is the only way past that.
+    """
+    cmd = [candidate] if isinstance(candidate, str) else list(candidate)
+    found = shutil.which(cmd[0])
     if not found:
+        return None
+    return [found, *cmd[1:]]
+
+
+def _version_of(candidate) -> tuple | None:
+    """What version an interpreter is, or None if it is not there."""
+    cmd = _as_command(candidate)
+    if not cmd:
         return None
     try:
         out = subprocess.run(
-            [found, "-c", "import sys; print(*sys.version_info[:2])"],
+            [*cmd, "-c", "import sys; print(*sys.version_info[:2])"],
             capture_output=True, text=True, timeout=20, check=True,
         ).stdout.split()
         return tuple(int(n) for n in out)
@@ -402,6 +418,26 @@ def _version_of(python: str) -> tuple | None:
 
 def _suitable(version: tuple | None) -> bool:
     return bool(version) and MIN_PYTHON <= version < BELOW_PYTHON
+
+
+def _candidates() -> list:
+    """Every interpreter worth trying, best first.
+
+    On Windows almost none of these are on PATH under a name anybody could
+    guess, so the launcher is asked for each supported version by number and
+    the per-user install directory is looked in directly -- including the one
+    the Windows installer may have put there thirty seconds ago, which is on
+    the user's PATH in the registry but not in the console already running.
+    """
+    found = list(FALLBACK_PYTHONS)
+    if not IS_WIN:
+        return found
+    base = Path(os.getenv("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    for minor in range(BELOW_PYTHON[1] - 1, MIN_PYTHON[1] - 1, -1):
+        found.append(["py", f"-3.{minor}"])
+        found.append(str(base / "Programs" / "Python" / f"Python3{minor}"
+                         / "python.exe"))
+    return found
 
 
 def check_python() -> None:
@@ -420,13 +456,14 @@ def check_python() -> None:
     low = ".".join(str(n) for n in MIN_PYTHON)
     high = ".".join(str(n) for n in (BELOW_PYTHON[0], BELOW_PYTHON[1] - 1))
 
-    for candidate in FALLBACK_PYTHONS:
+    for candidate in _candidates():
         if _suitable(_version_of(candidate)):
-            found = shutil.which(candidate)
+            cmd = _as_command(candidate)
+            name = candidate if isinstance(candidate, str) else " ".join(candidate)
             say(f"This is Python {have}, which some of the parts do not support yet.")
-            say(f"Found {candidate} on this computer; using that instead.")
+            say(f"Found {name} on this computer; using that instead.")
             say()
-            os.execv(found, [found, str(Path(__file__).resolve()), *sys.argv[1:]])
+            os.execv(cmd[0], [*cmd, str(Path(__file__).resolve()), *sys.argv[1:]])
 
     # `uv` can fetch one without administrator rights, which is the only route
     # that works on a locked-down machine. Only used if it is already here --
@@ -445,6 +482,18 @@ def check_python() -> None:
                 os.execv(found, [found, str(Path(__file__).resolve()), *sys.argv[1:]])
         except (subprocess.SubprocessError, OSError) as e:
             say(f"  That did not work ({e}).")
+
+    if IS_WIN or IS_MAC:
+        # Handed back to the file that was double-clicked, which can fetch
+        # Python from python.org and start again. Telling somebody who was
+        # promised this was not technical to go and install a programming
+        # language is not an instruction, it is where they stop -- and on
+        # Windows and macOS there is a signed official installer that can be
+        # fetched and run without them reading anything.
+        say(f"This is Python {have}, which some of the parts do not support yet.")
+        say(f"Python {high} is needed.")
+        say("Fetching it, or get it from https://www.python.org/downloads/")
+        sys.exit(3)
 
     stop(
         f"this app needs Python {low} to {high}, and this is Python {have}.",

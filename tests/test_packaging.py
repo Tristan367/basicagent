@@ -59,9 +59,13 @@ def test_a_python_that_is_too_new_is_repaired_rather_than_reported():
     non-technical person stops."""
     source = _read("install.py")
     block = source[source.index("def check_python("):source.index("def check_venv_module(")]
-    assert "FALLBACK_PYTHONS" in block, "it does not look for another interpreter"
+    assert "_candidates()" in block, "it does not look for another interpreter"
     assert "os.execv" in block, "it never actually starts again with one"
     assert "uv" in block, "the no-admin-rights route is not offered"
+    # And where there is a signed official installer to fetch -- Windows and
+    # macOS -- it hands back to the file that was double-clicked rather than
+    # printing instructions at somebody who is not reading the terminal.
+    assert "sys.exit(3)" in block, "there is no way to ask for Python to be fetched"
 
 
 # ── what the installer promises ─────────────────────────────────────────────
