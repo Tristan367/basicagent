@@ -52,12 +52,12 @@
   }
   .by p { margin: 0; color: var(--dim); font-size: 0.95rem; }
   .face {
-    flex: 0 0 auto; width: 60px; height: 60px;
+    flex: 0 0 auto; width: 76px; height: 76px;
     border-radius: 50%; object-fit: cover;
     border: 2px solid var(--edge);
   }
-  .who { display: flex; gap: 22px; align-items: flex-start; }
-  .who .face { width: 108px; height: 108px; }
+  .who { display: flex; gap: 26px; align-items: flex-start; }
+  .who .face { width: 168px; height: 168px; border-radius: 16px; }
   .who p:last-child { margin-bottom: 0; }
   @media (max-width: 30rem) {
     .who { display: block; }
@@ -103,9 +103,8 @@
 
 <div class="by">
   <img class="face" src="tristan.jpg" alt="Tristan Johnson">
-  <p>Made by <strong>Tristan Johnson</strong>. If I taught your child guitar,
-  this is the same me — I built it for the families I teach.
-  <a href="#who">More about that</a>.</p>
+  <p>Made by <strong>Tristan Johnson</strong>, one person, and given away.
+  <a href="#who">Why I built it</a>.</p>
 </div>
 
 <h2>What it does</h2>
@@ -222,18 +221,30 @@ offer in place of having paid for it to go away.</p>
   minutes before you hand this to a child.</p>
 </div>
 
-<h2 id="who">Who made this</h2>
+<h2 id="who">Who made this, and why</h2>
 <div class="card who">
   <img class="face" src="tristan.jpg" alt="Tristan Johnson">
   <div>
-    <p><strong>Tristan Johnson.</strong> I teach guitar, and a lot of the
-    people I teach are homeschooled. This started because one of them wanted to
-    make a game and there was nothing I could hand them that did not begin with
-    a wall of setup, an account, or a monthly bill.</p>
-    <p>So it is not a product and there is no company behind it. It is one
-    person's software, given away, and my name is on it on purpose: if this
-    turns out to be a nuisance on your computer, you know exactly whose fault
-    that is and where to find me.
+    <p><strong>Tristan Johnson.</strong> It started as one idea: you should not
+    have to be technical to use this. The tools that write software for you are
+    genuinely astonishing now, and almost all of them are still aimed at people
+    who already know what a terminal is. That is backwards. An ordinary person
+    ought to be able to describe a game, a website, a tool for sorting out their
+    photos — and get it.</p>
+    <p>Then it kept going. Once it worked by voice and read itself out loud, it
+    turned out to work for somebody who cannot see the screen, and for somebody
+    who cannot use a mouse, and for somebody who is eight, and for somebody who
+    is eighty. Those were not separate features; they were the same feature
+    finished properly.</p>
+    <p>And the moment it could do that, it was obviously a homeschooling tool.
+    So there is a child mode, a way for a parent to say in their own words how
+    it should talk to their child, and a project manager that handles the
+    technical decisions so nobody in the family has to. Both my parents teach.
+    The test I actually use is whether my mother could sit down with it and
+    build something without asking me a single question.</p>
+    <p>There is no company here and nothing to sign up for. My name is on it on
+    purpose: if it turns out to be a nuisance on your computer, you know exactly
+    whose fault that is and where to find me.
     <a href="https://github.com/Tristan367/basicagent/issues">Tell me here</a>,
     and I will fix it.</p>
   </div>
