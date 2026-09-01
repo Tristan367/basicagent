@@ -333,6 +333,25 @@ def test_what_a_stranger_unzips_is_built_and_checked_here(tmp_path):
         capture_output=True, text=True, cwd=str(APP))
     assert made.returncode == 0, made.stdout + made.stderr
 
+    # And into a folder inside the checkout, which is what the release does
+    # and what this failed on: copying the repository copied the folder being
+    # written into, which contained a copy of the repository, until Python ran
+    # out of stack. Building by hand puts the output elsewhere and never sees
+    # it.
+    inside = APP / ".build-test"
+    try:
+        again = subprocess.run(
+            [sys.executable, str(APP / "tools" / "make_download.py"), "9.9.9",
+             "--out", str(inside)],
+            capture_output=True, text=True, cwd=str(APP), timeout=300)
+        assert again.returncode == 0, again.stdout + again.stderr[-2000:]
+        import zipfile
+        names = zipfile.ZipFile(inside / "Assistant-Setup.zip").namelist()
+        assert not any(".build-test" in n for n in names), "it packaged itself"
+    finally:
+        import shutil
+        shutil.rmtree(inside, ignore_errors=True)
+
     for platform, launcher in (("Windows", "Install on Windows.bat"),
                                ("Mac", "Install on Mac.command"),
                                ("Linux", "Install on Linux.sh")):

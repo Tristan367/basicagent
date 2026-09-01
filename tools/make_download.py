@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -37,9 +38,31 @@ ROOT = Path(__file__).resolve().parent.parent
 # Kept out of the app folder: version control, the release machinery, the
 # built environment, and the download page, which is a website and not part of
 # the program.
-SKIP = shutil.ignore_patterns(
+_SKIP_NAMES = shutil.ignore_patterns(
     ".git", ".github", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache",
     "docs", "*.pyc", "staging", "Install on *", "Read me first.txt")
+
+
+def _skip(out: Path):
+    """Names to leave out, including wherever the build is being written.
+
+    That last part is not hypothetical. The release workflow builds into `dist`
+    inside the checkout, so copying the repository copied the folder being
+    written into, which contained a copy of the repository, and so on until
+    Python ran out of stack. It failed on the runner and not here, because by
+    hand the output goes somewhere else entirely.
+    """
+    out = out.resolve()
+
+    def ignore(directory, names):
+        ignored = set(_SKIP_NAMES(directory, names))
+        here = Path(directory).resolve()
+        for name in names:
+            if (here / name).resolve() == out:
+                ignored.add(name)
+        return ignored
+
+    return ignore
 
 PLATFORMS = {
     "Windows": ("Install on Windows.bat", """  Double-click  Install on Windows
@@ -114,16 +137,15 @@ WHAT IS IN THIS FOLDER
 
 def build(version: str, out: Path) -> list:
     out.mkdir(parents=True, exist_ok=True)
-    app = out / "_app"
-    if app.exists():
-        shutil.rmtree(app)
-    shutil.copytree(ROOT, app, ignore=SKIP)
+    work = Path(tempfile.mkdtemp(prefix="assistant-download-"))
+    app = work / "_app"
+    shutil.copytree(ROOT, app, ignore=_skip(out))
 
     made = []
     # The one that names no platform keeps every launcher, for a link made
     # before this existed and for anybody whose browser was guessed wrong.
     for platform in (*PLATFORMS, None):
-        stage = out / f"_stage-{platform or 'any'}"
+        stage = work / f"_stage-{platform or 'any'}"
         if stage.exists():
             shutil.rmtree(stage)
         (stage / "app").parent.mkdir(parents=True, exist_ok=True)
@@ -145,7 +167,7 @@ def build(version: str, out: Path) -> list:
         shutil.make_archive(str(out / name), "zip", str(stage))
         shutil.rmtree(stage)
         made.append(out / f"{name}.zip")
-    shutil.rmtree(app)
+    shutil.rmtree(work, ignore_errors=True)
     return made
 
 
