@@ -252,11 +252,16 @@ def test_the_step_shows_how_long_it_has_been_going(monkeypatch):
     and one of them is the moment somebody decides it has hung."""
     installer = _installer()
     monkeypatch.setattr(installer, "ANSI", True)
-    installer.screen.start("Installing the pieces", 40)
-    installer.screen.progress(0.4, "numpy")
     painted = []
-    monkeypatch.setattr(installer.sys.stdout, "write", painted.append)
-    installer.screen._paint()
+    try:
+        installer.screen.start("Installing the pieces", 40)
+        installer.screen.progress(0.4, "numpy")
+        monkeypatch.setattr(installer.sys.stdout, "write", painted.append)
+        installer.screen._paint()
+    finally:
+        # start() runs a thread that repaints until told to stop. Left going,
+        # it writes over whatever test happens to be running next.
+        installer.screen.close()
     shown = "".join(painted)
     assert "Installing the pieces" in shown
     assert "numpy" in shown

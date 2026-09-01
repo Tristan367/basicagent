@@ -92,14 +92,15 @@
   watch. No code, no jargon, nothing technical to learn first.</p>
 </header>
 
-<a class="get" href="https://github.com/Tristan367/basicagent/releases/latest/download/Assistant-Setup.zip">
+<a class="get" id="get" href="https://github.com/Tristan367/basicagent/releases/latest/download/Assistant-Setup.zip">
   Download it &nbsp;&rarr;
 </a>
+<p class="under" id="picked" hidden></p>
 <a class="also" href="https://github.com/Tristan367/basicagent">
   Read the code that does it
 </a>
-<p class="under">Free. Windows, Mac and Linux. About ten minutes to set up, once
-— nearly all of it downloading. <a href="#safe">Is it safe?</a></p>
+<p class="under" id="blurb">Free. Windows, Mac and Linux. About ten minutes to
+set up, once — nearly all of it downloading. <a href="#safe">Is it safe?</a></p>
 
 <div class="by">
   <img class="face" src="tristan.jpg" alt="Tristan Johnson">
@@ -131,7 +132,7 @@ download in your Downloads folder is fine — you can delete that folder
 afterwards. This matters more than it sounds: Windows can be set to clear out
 Downloads every month, and an app installed there would go with it.</p>
 
-<div class="card">
+<div class="card plat" id="card-Windows">
   <h3>Windows</h3>
   <ol>
     <li>Right-click the downloaded file, choose <em>Extract All</em>, and open
@@ -148,7 +149,7 @@ Downloads every month, and an app installed there would go with it.</p>
   never needs an administrator.</p>
 </div>
 
-<div class="card">
+<div class="card plat" id="card-Mac">
   <h3>Mac</h3>
   <ol>
     <li>Double-click the downloaded file, and open the folder it makes.</li>
@@ -165,7 +166,7 @@ Downloads every month, and an app installed there would go with it.</p>
   </ol>
 </div>
 
-<div class="card">
+<div class="card plat" id="card-Linux">
   <h3>Linux</h3>
   <ol>
     <li><code>unzip -d Assistant Assistant-Setup.zip &amp;&amp; cd Assistant</code></li>
@@ -174,6 +175,8 @@ Downloads every month, and an app installed there would go with it.</p>
       <code>basicagent</code>.</li>
   </ol>
 </div>
+
+<p class="under" id="others" hidden></p>
 
 <h2 id="safe">Is it safe?</h2>
 <p><strong>Your computer is going to warn you about this, and it is better to
@@ -206,7 +209,10 @@ offer in place of having paid for it to go away.</p>
 <div class="card">
   <h3>It stays in its own corner</h3>
   <p>It never asks for administrator or root. It installs into your own user
-  folder, and uninstalling is deleting that folder. It talks to three places
+  folder, and there is an <strong>Uninstall</strong> beside it — on Windows it
+  is in Settings under <em>Apps</em> like anything else — which removes the
+  program, the icons and the browser it downloaded, and asks separately before
+  touching anything you have made. It talks to three places
   and nowhere else: the AI company whose account you connect; GitHub, to check
   once a day for a new version and to fetch the voices during setup; and
   DuckDuckGo, when you ask it to look something up. There is no account with
@@ -289,5 +295,82 @@ separate and are never touched by an update.</p>
 </footer>
 
 </div>
+
+<script>
+/* Choosing for people who cannot be expected to choose.
+ *
+ * "Windows, Mac or Linux?" is a question a lot of the people this is built for
+ * genuinely cannot answer -- they have a computer, and that is as far as it
+ * goes. Three files to pick between is three chances to take the wrong one and
+ * conclude the thing is broken.
+ *
+ * So the browser is asked what it is running on and the page commits to an
+ * answer: one button, one set of instructions. Everything else is still here,
+ * one click away, because a guess can be wrong and a page that has hidden the
+ * thing you need is worse than one that asked.
+ *
+ * This is an enhancement and never a requirement. With no JavaScript the page
+ * is exactly what it was: every platform shown, and a download holding all
+ * three installers. */
+(function () {
+  var base = "https://github.com/Tristan367/basicagent/releases/latest/download/";
+  var names = { Windows: "Windows", Mac: "a Mac", Linux: "Linux" };
+
+  function guess() {
+    var data = navigator.userAgentData;
+    var hint = (data && data.platform) || navigator.platform || "";
+    var agent = navigator.userAgent || "";
+    var both = (hint + " " + agent).toLowerCase();
+    if (/iphone|ipad|ipod|android/.test(both)) return "phone";
+    if (/mac/.test(both)) return "Mac";
+    if (/win/.test(both)) return "Windows";
+    if (/linux|x11|cros/.test(both)) return "Linux";
+    return null;
+  }
+
+  var found = guess();
+  var button = document.getElementById("get");
+  var picked = document.getElementById("picked");
+  var blurb = document.getElementById("blurb");
+  var others = document.getElementById("others");
+
+  if (found === "phone") {
+    /* Worth saying plainly rather than letting somebody download 700 KB of
+       nothing onto a phone and wonder what they did wrong. */
+    button.textContent = "This needs a computer";
+    button.removeAttribute("href");
+    button.style.cursor = "default";
+    picked.textContent = "It builds software and runs it, which a phone or "
+      + "tablet will not do. Open this page on a Windows PC, a Mac or a Linux "
+      + "machine and the download will be here.";
+    picked.hidden = false;
+    return;
+  }
+  if (!found) return;
+
+  button.href = base + "Assistant-Setup-" + found + ".zip";
+  button.innerHTML = "Download it for " + names[found] + " &nbsp;&rarr;";
+  picked.textContent = "One file, one installer, nothing to choose between.";
+  picked.hidden = false;
+  blurb.innerHTML = "Free. About ten minutes to set up, once — nearly all of "
+    + "it downloading. <a href=\"#safe\">Is it safe?</a>";
+
+  var cards = document.querySelectorAll(".plat");
+  for (var i = 0; i < cards.length; i++) {
+    if (cards[i].id !== "card-" + found) cards[i].hidden = true;
+  }
+  others.innerHTML = "Not " + names[found] + "? "
+    + "<a href=\"#\" id=\"showall\">Show every computer</a>.";
+  others.hidden = false;
+  document.getElementById("showall").addEventListener("click", function (e) {
+    e.preventDefault();
+    for (var i = 0; i < cards.length; i++) cards[i].hidden = false;
+    button.href = base + "Assistant-Setup.zip";
+    button.innerHTML = "Download it &nbsp;&rarr;";
+    picked.textContent = "This one holds the installer for all three.";
+    others.hidden = true;
+  });
+})();
+</script>
 </body>
 </html>

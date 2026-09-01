@@ -66,7 +66,7 @@ def test_the_receipt_the_page_promises_is_actually_signed():
     assert "attestations: write" in WORKFLOW
     assert "id-token: write" in WORKFLOW
     # The signature covers the file people download, not something else.
-    assert "subject-path: Assistant-Setup.zip" in WORKFLOW
+    assert "subject-path: dist/*.zip" in WORKFLOW
     # And the release itself says how to check it.
     assert "gh attestation verify" in WORKFLOW
 
@@ -121,3 +121,35 @@ def test_it_still_installs_without_administrator():
 
     for elevation in ("ShellExecute", "geteuid", "IsUserAnAdmin", "pkexec"):
         assert elevation not in installer
+
+
+def test_the_page_picks_the_computer_so_nobody_has_to():
+    """"Windows, Mac or Linux?" is a question a lot of the people this is
+    built for genuinely cannot answer -- they have a computer, and that is as
+    far as it goes. Three files to choose between is three chances to take the
+    wrong one and conclude the thing is broken."""
+    assert "userAgentData" in PAGE and "navigator.platform" in PAGE
+    for platform in ("Windows", "Mac", "Linux"):
+        assert f'id="card-{platform}"' in PAGE, platform
+    assert 'Assistant-Setup-" + found + ".zip' in PAGE
+
+
+def test_the_guess_can_be_wrong_without_stranding_anybody():
+    """A page that has hidden the thing you need is worse than one that asked.
+    Everything stays one click away, and with no JavaScript at all the page is
+    what it was: every platform shown, one download holding all three."""
+    assert "Show every computer" in PAGE
+    # The default markup -- what a reader with no JavaScript gets -- names all
+    # three and links the download that contains all three.
+    before = PAGE.split("<script>")[0]
+    for platform in ("Windows", "Mac", "Linux"):
+        assert f"<h3>{platform}</h3>" in before, platform
+        assert f'id="card-{platform}" hidden' not in before, platform
+    assert 'href="https://github.com/Tristan367/basicagent/releases/latest/download/Assistant-Setup.zip"' in before
+
+
+def test_a_phone_is_told_rather_than_handed_a_zip():
+    """Downloading a folder of Python onto a phone and wondering what you did
+    wrong is a worse first minute than being told plainly."""
+    assert "iphone|ipad|ipod|android" in PAGE
+    assert "This needs a computer" in PAGE

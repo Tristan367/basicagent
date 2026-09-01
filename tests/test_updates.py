@@ -307,60 +307,62 @@ def test_settings_says_nothing_when_there_is_nothing_to_say():
     assert "hidden" in body[at:at + 200]
 
 
-def test_the_download_unzips_to_one_folder_and_not_two():
-    """Windows Explorer and macOS both make a folder named after the archive.
+def test_what_a_stranger_unzips_is_built_and_checked_here(tmp_path):
+    """The download is built by a script rather than by shell in a workflow,
+    so that what somebody receives can be produced on a laptop and looked at.
 
-    A zip that contains a folder of its own therefore lands as a folder inside
-    an identically named folder, which is what somebody unzipping this actually
-    got and reported. The fix is to zip the contents rather than the directory
-    -- `cd staging && zip ..` and not `zip staging` -- so this pins the shape
-    of that command rather than trusting the comment above it.
+    Three things are pinned, and every one of them is a mistake that was
+    actually shipped:
+
+    * no folder inside the zip, because Explorer and macOS both make one from
+      the archive name and two of them is a folder inside its own twin;
+    * nothing at the top but the file to click, because install.py beside
+      install.sh beside pyproject.toml is a dozen wrong answers around the
+      right one;
+    * one installer per download, because "Windows, Mac or Linux?" is a
+      question a lot of the people this is for cannot answer.
     """
+    import subprocess
+    import sys
+    import zipfile
+
+    out = tmp_path / "dist"
+    made = subprocess.run(
+        [sys.executable, str(APP / "tools" / "make_download.py"), "9.9.9",
+         "--out", str(out)],
+        capture_output=True, text=True, cwd=str(APP))
+    assert made.returncode == 0, made.stdout + made.stderr
+
+    for platform, launcher in (("Windows", "Install on Windows.bat"),
+                               ("Mac", "Install on Mac.command"),
+                               ("Linux", "Install on Linux.sh")):
+        zip_path = out / f"Assistant-Setup-{platform}.zip"
+        assert zip_path.is_file(), platform
+        names = zipfile.ZipFile(zip_path).namelist()
+        tops = {n.split("/")[0] for n in names}
+        assert tops == {"app", launcher, "Read me first.txt"}, (platform, tops)
+        assert "app/install.py" in names and "app/uninstall.py" in names
+        assert not any(n.startswith("app/app/") for n in names)
+        readme = zipfile.ZipFile(zip_path).read("Read me first.txt").decode()
+        assert readme.startswith("Assistant 9.9.9")
+        assert launcher.rsplit(".", 1)[0] in readme
+
+    # And the one that names no platform still works, for a link somebody
+    # already has and for a browser that was guessed wrong.
+    every = zipfile.ZipFile(out / "Assistant-Setup.zip").namelist()
+    assert sum(1 for n in every if n.startswith("Install on ")) == 3
+
+
+def test_the_release_publishes_a_download_for_each_computer():
+    """A page that picks Windows for somebody and a release with no Windows
+    file is worse than making them choose."""
     flow = (APP / ".github" / "workflows" / "release.yml").read_text()
-    assert "( cd staging && zip -qr ../Assistant-Setup.zip . )" in flow
-    assert "zip -qr Assistant-Setup.zip staging" not in flow
-    assert "--exclude '/staging'" in flow
-    assert "test ! -e staging/app/app" in flow
-
-
-def test_the_top_of_the_download_holds_only_what_is_meant_to_be_clicked():
-    """The complaint was that finding the file you want means reading twenty.
-
-    install.py beside install.sh beside install.bat beside pyproject.toml is a
-    dozen wrong answers surrounding the right one, for somebody who was
-    promised this was not technical. Everything the app is made of goes one
-    level down, and the check that it stayed there lives with the build.
-    """
-    flow = (APP / ".github" / "workflows" / "release.yml").read_text()
-    assert 'test ! -e "staging/install.py"' in flow
-    assert "app internals leaked to the top" in flow
-
-
-def test_the_installers_work_in_both_layouts():
-    """One file, shipped inside the zip and tested here.
-
-    In the download the app sits in `app`; in this repository it sits beside
-    the launcher. A launcher written for only one of those is either untested
-    or broken, so each looks for `app/install.py` and works either way.
-    """
-    for named in ("Install on Windows.bat", "Install on Mac.command",
-                  "Install on Linux.sh"):
-        text = (APP / named).read_text()
-        assert "app" in text and "install.py" in text, named
-
-
-def test_the_workflow_checks_the_zip_before_publishing_it():
-    """A download page promising `Assistant.command` and a zip without one is
-    the first thing somebody meets and the last thing they try. Checked where
-    the zip is made, not only where the page is written."""
-    flow = (APP / ".github" / "workflows" / "release.yml").read_text()
-    for named in ("app/install.py", "app/basicagent.py", "app/VERSION",
-                  "app/requirements.txt", "app/Assistant.bat",
-                  "app/Assistant.command", "Install on Windows.bat",
-                  "Install on Mac.command", "Install on Linux.sh",
-                  "Read me first.txt"):
-        assert named in flow, named
-    assert "missing from the zip" in flow
+    assert "tools/make_download.py" in flow
+    assert "files: dist/*.zip" in flow
+    assert "subject-path: dist/*.zip" in flow, "not everything is signed"
+    # The version in the zip is the version being released, checked before
+    # anything is published rather than discovered by a person a week later.
+    assert 'unzip -p "$zip" "app/VERSION"' in flow
 
 
 def test_installing_the_dependencies_has_more_than_one_way_to_do_it():

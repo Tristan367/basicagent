@@ -1154,10 +1154,68 @@ def _shortcut_windows() -> str:
     return f'put "{APP_NAME}" on ' + " and ".join(made)
 
 
+def register_uninstall() -> str:
+    """Leave a way out, in the place each computer keeps them.
+
+    On Windows that is Settings -> Apps, which is where somebody who wants
+    this gone will go first and where they will conclude the app cannot be
+    removed if it is not listed. The key is under HKCU, so it needs no
+    administrator and appears only for this user.
+
+    Everywhere else it is a file called Uninstall beside the app, named at the
+    end of the install so it is not a thing to hunt for.
+    """
+    made = []
+    launcher = ROOT / ("Uninstall.bat" if IS_WIN else "Uninstall.command")
+    try:
+        if IS_WIN:
+            launcher.write_text(
+                "@echo off\r\n"
+                f'cd /d "{ROOT}"\r\n'
+                f'"{VENV_PY}" uninstall.py %*\r\n'
+                "pause\r\n", encoding="utf-8")
+        else:
+            launcher.write_text(
+                "#!/bin/bash\n"
+                f'cd "{ROOT}" || exit 1\n'
+                f'"{VENV_PY}" uninstall.py "$@"\n'
+                'read -r -p "Press return to close." _\n', encoding="utf-8")
+            launcher.chmod(0o755)
+        made.append(launcher.name)
+    except OSError:
+        pass
+
+    if IS_WIN:
+        key = (r"HKCU\Software\Microsoft\Windows\CurrentVersion"
+               r"\Uninstall\Assistant")
+        version = "1.0"
+        with contextlib.suppress(OSError):
+            version = (ROOT / "VERSION").read_text().strip()
+        entries = [
+            ("DisplayName", "REG_SZ", APP_NAME),
+            ("DisplayVersion", "REG_SZ", version),
+            ("Publisher", "REG_SZ", "Tristan Johnson"),
+            ("InstallLocation", "REG_SZ", str(ROOT)),
+            ("UninstallString", "REG_SZ", f'"{launcher}"'),
+            ("NoModify", "REG_DWORD", "1"),
+            ("NoRepair", "REG_DWORD", "1"),
+        ]
+        for name, kind, value in entries:
+            with contextlib.suppress(OSError):
+                subprocess.run(
+                    ["reg", "add", key, "/v", name, "/t", kind, "/d", value, "/f"],
+                    capture_output=True, check=False)
+        made.append("an entry in Settings under Apps")
+
+    if not made:
+        return ""
+    return " and ".join(made)
+
+
 # ── what to say at the end ──────────────────────────────────────────────────
 
 
-def finish(shortcut: str, moved_from: Path | None) -> None:
+def finish(shortcut: str, moved_from: Path | None, removal: str = "") -> None:
     screen.close()
     say()
     say("=" * 62)
@@ -1171,6 +1229,10 @@ def finish(shortcut: str, moved_from: Path | None) -> None:
         say("  It was copied there out of the folder you unzipped, so that a")
         say("  tidy-up of your Downloads can never delete it. You can throw")
         say("  that folder away whenever you like.")
+    if removal:
+        say()
+        say(f"  If you ever want it gone: {removal}.")
+        say("  It asks before it touches anything you have made.")
     say()
     say("  Your projects, settings and keys are kept separately again, in")
     say(f"  {_data_dir_hint()} -- updating or reinstalling never touches them.")
@@ -1266,7 +1328,8 @@ def main() -> None:
         step("Putting an icon where you can click it")
         shortcut = make_shortcut()
         screen.finish_step()
-    finish(shortcut, moved_from)
+    removal = register_uninstall()
+    finish(shortcut, moved_from, removal)
 
 
 if __name__ == "__main__":
