@@ -1,7 +1,10 @@
 """The home (manager) chat, project chats, and the settings page."""
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+import logging
+import urllib.parse
+
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from agent_server import database as db
 from agent_server import parental
@@ -9,6 +12,35 @@ from agent_server.routes.context import _chat_context, _settings_context
 from agent_server.templating import templates
 
 router = APIRouter()
+log = logging.getLogger(__name__)
+
+
+@router.post("/_open")
+async def open_outside(url: str = Form(...)):
+    """Open a link in the computer's own browser.
+
+    The app runs inside a Chromium window with no address bar and no tabs, so a
+    link that opens "in a new window" opens a second bare window of the app --
+    which then has to be closed again, and the whole thing flickers past while
+    the real browser starts. Somebody clicking "Open Google AI Studio" saw a
+    window appear, sit there and vanish, which reads as a fault.
+
+    So the page asks for the link to be opened out here instead, before any
+    window is made. Only http and https: this hands a string to the operating
+    system's "open this" handler, which will cheerfully act on `file:` and on
+    schemes registered by other programs, and nothing in the app needs that.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return JSONResponse({"ok": False, "reason": "not a web link"}, status_code=400)
+    import webbrowser
+
+    try:
+        opened = webbrowser.open(url)
+    except Exception:
+        log.warning("could not open %s outside the app", url, exc_info=True)
+        opened = False
+    return JSONResponse({"ok": bool(opened)})
 
 
 @router.get("/")

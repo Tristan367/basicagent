@@ -10,8 +10,10 @@ streamed one.
 """
 
 import asyncio
+import functools
 import io
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import soundfile as sf
@@ -94,6 +96,23 @@ _STATIC_VOICES = [
     "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
     "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
 ]
+
+
+# One synthesis at a time, in a thread of its own.
+#
+# Not for tidiness: phonemizer is not thread-safe. Its espeak backend keeps
+# per-call counters on a shared object, and two calls landing together corrupt
+# each other's -- which surfaces as "number of lines in input and output must
+# be equal" and a sentence that simply never gets spoken. The client fetches
+# the next sentence while the current one plays, so two calls overlapping is
+# not an edge case, it is the normal shape of reading a reply aloud. Caught by
+# running three at once; it failed, and then passed on a retry, which is the
+# worst way for a bug to behave.
+#
+# Serialising costs nothing real. ONNX Runtime already uses every core inside a
+# single call, so a second concurrent call was never buying throughput -- it
+# was only a race.
+_synth_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tts")
 
 
 async def _model():
@@ -521,8 +540,10 @@ async def synth(text: str, voice: str = "", speed: float = 1.0, sample_rate: int
     speed = min(max(float(speed), SPEED_RANGE[0]), SPEED_RANGE[1])
 
     try:
-        audio, rate = await asyncio.to_thread(
-            kokoro.create, text, voice=voice, speed=speed, lang="en-us"
+        audio, rate = await asyncio.get_running_loop().run_in_executor(
+            _synth_pool,
+            functools.partial(kokoro.create, text, voice=voice, speed=speed,
+                              lang="en-us"),
         )
     except Exception as e:
         raise TTSError(f"synthesis failed: {type(e).__name__}: {e}") from e

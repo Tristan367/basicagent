@@ -7,12 +7,55 @@ which is the signal the launcher uses to stop the server.
 """
 
 import asyncio
+import contextlib
 import subprocess
 import sys as _sys
 
 from agent_server.config import DATA_DIR, QUIT_SIGNAL
 
 APP_PROFILE_DIR = DATA_DIR / "app_profile"
+
+# What the window is, told to the page before any of its own script runs. Two
+# things depend on knowing: external links have to be handed to the real
+# browser rather than opened in here, and the app's own Quit button is a second
+# close button beside the one Windows draws on the frame.
+IN_APP = "window.__inApp = true; document.documentElement.classList.add('in-app');"
+
+
+def _settle_profile() -> None:
+    """Turn off Chromium's offers before it has a chance to make one.
+
+    Saving a Gemini key made Chromium offer to remember it as a password --
+    which is a browser asking to store an API key in a password manager the
+    user does not know they have, inside an app that is not supposed to look
+    like a browser at all. There is no launch flag that reliably stops it; the
+    setting lives in the profile, so the profile is written before Chromium
+    opens it.
+
+    Merged rather than overwritten: the file also holds window position, zoom
+    and everything else Chromium remembers between launches.
+    """
+    import json
+
+    prefs = APP_PROFILE_DIR / "Default" / "Preferences"
+    prefs.parent.mkdir(parents=True, exist_ok=True)
+    current = {}
+    if prefs.is_file():
+        try:
+            current = json.loads(prefs.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            current = {}
+    profile = current.setdefault("profile", {})
+    profile["password_manager_enabled"] = False
+    profile["password_manager_leak_detection"] = False
+    current["credentials_enable_service"] = False
+    autofill = current.setdefault("autofill", {})
+    autofill["credit_card_enabled"] = False
+    autofill["profile_enabled"] = False
+    try:
+        prefs.write_text(json.dumps(current), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def _open_external(url: str) -> None:
@@ -43,13 +86,21 @@ async def _open(url: str) -> None:
         pass
 
     APP_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    _settle_profile()
     async with async_playwright() as p:
         context = await p.chromium.launch_persistent_context(
             str(APP_PROFILE_DIR),
             headless=False,
+            # Dictation is the whole interface for somebody who cannot use a
+            # keyboard, and without this getUserMedia was refused before any
+            # prompt could be shown -- so pressing Talk did nothing at all, on
+            # every fresh install, with no error anywhere.
+            permissions=["microphone"],
             args=[
                 f"--app={url}",
-                "--disable-features=Translate",
+                "--disable-features=Translate,AutofillServerCommunication",
+                # Belt and braces with the profile written above.
+                "--disable-save-password-bubble",
                 # Publish the accessibility tree unconditionally, so a screen
                 # reader works the moment it is switched on. Chromium otherwise
                 # waits until it detects assistive technology, which is reliable
@@ -61,11 +112,23 @@ async def _open(url: str) -> None:
             ],
             no_viewport=True,
         )
+        await context.add_init_script(IN_APP)
         page = context.pages[0] if context.pages else await context.new_page()
+        # The page above already exists, so its init script has not run.
+        with contextlib.suppress(Exception):
+            await page.evaluate(IN_APP)
 
         # External links (target="_blank", markdown links, "get a key" links)
         # open a new page in the app window. Send them to the real browser and
         # close the empty tab instead.
+        #
+        # A fallback, not the mechanism. Opening a Chromium window and closing
+        # it again is visible -- somebody clicking "Open Google AI Studio" saw
+        # a second window appear, sit there, and vanish before their real
+        # browser opened, which looks like a fault. The page itself now hands
+        # these to the server before a window is ever made. This stays for
+        # anything that gets past it: a link inside a preview, a window.open
+        # from something the assistant built.
         open_tasks = set()
 
         def on_new_page(new_page):

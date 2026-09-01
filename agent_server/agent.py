@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -508,6 +509,49 @@ async def _refresh_preview(session_id: str):
         await preview.reload_window(session_id)
 
 
+# Something that reads as "I am about to do that", written by a model that then
+# stopped. Deliberately narrow: the phrases people actually get, and never a
+# question -- when the assistant needs something from the user it asks, and a
+# question is not an unkept promise.
+_PROMISE = re.compile(
+    r"\b("
+    r"give me (a|just a) (second|moment|sec|minute)"
+    r"|one (second|moment|sec)"
+    r"|hold on|hang on|bear with me"
+    r"|i'?ll (get|start|set|make|create|build|spin|put|do|have) "
+    r"|i(?: a|')m going to "
+    r"|i'?m (on it|starting|creating|making|building|setting)"
+    r"|let me (get|start|set|make|create|build|spin|put|do|have) "
+    r"|spinning (it|that|this) up|spin (it|that|this) up"
+    r"|coming right up|right away|on it"
+    r")", re.IGNORECASE)
+
+# Said to the model, never to the user, and only once per turn.
+_KEEP_YOUR_WORD = (
+    "You just told the user you were about to do something, and then stopped "
+    "without doing it. They are looking at a screen where nothing is "
+    "happening. Do it now, in this turn, using your tools. Do not reply with "
+    "words alone again."
+)
+
+
+def _promised_to_act(text: str) -> bool:
+    """Whether a reply with no tool calls in it was a promise to act.
+
+    Models do this, and this one does it often: "Right on, give me a second to
+    spin that up" -- and then the turn ends, because saying a thing and doing
+    it are separate acts and only the first one happened. From the user's side
+    the assistant agreed enthusiastically and then nothing occurred, for ever.
+    There is nothing to click, nothing to wait for and nothing to read.
+    """
+    said = (text or "").strip()
+    if not said or said.rstrip().endswith("?"):
+        return False
+    # Only the end of it. A long answer that mentions "let me know" in the
+    # middle and finishes with an actual answer is not a broken promise.
+    return bool(_PROMISE.search(said[-400:]))
+
+
 async def _loop(
     session: dict,
     provider: Provider,
@@ -531,6 +575,8 @@ async def _loop(
             return
 
     system_prompt = await session_system_prompt(session)
+    nudged = False
+    nudge_now = False
 
     while True:
         if abort.is_set():
@@ -582,6 +628,9 @@ async def _loop(
             system_prompt, await db.get_compactions(session_id), rows,
             sees_images, screen_reader, house_rules,
         )
+        if nudge_now:
+            messages.append({"role": "system", "content": _KEEP_YOUR_WORD})
+            nudge_now = False
         if rules_changed:
             # Last, so it is the freshest thing the model reads. The rules
             # themselves are already current -- this exists only so the shift in
@@ -734,6 +783,15 @@ async def _loop(
             # user gave up and sent something else, out of order behind it.
             # A dropped message is about the worst thing this app can do.
             if _queued.get(session_id) and not abort.is_set():
+                continue
+
+            # Said it would, did not. Once per turn, and only when it has not
+            # used a single tool -- so an assistant that did the work and then
+            # said "I'll let you know when it finishes" is left alone.
+            if (tools and not nudged and not abort.is_set()
+                    and _promised_to_act(content)):
+                nudged = nudge_now = True
+                log.info("nudging %s: promised to act and did not", session_id)
                 continue
 
             yield {

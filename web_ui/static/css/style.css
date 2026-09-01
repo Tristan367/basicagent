@@ -1,4 +1,13 @@
 :root {
+    /* A hundredth of the screen, corrected for zoom.
+     *
+     * `zoom` on <html> scales what is rendered but leaves `vh` measuring the
+     * unzoomed viewport, so `max-height: 90vh` renders at 90% of the screen
+     * times the zoom -- and at 150% a dialog stood half again taller than the
+     * window with its top and bottom unreachable however far you scrolled.
+     * Somebody who has zoomed in has done so because they cannot read it
+     * otherwise, so this is exactly the person it broke for. */
+    --vh: calc(1vh / var(--zoom, 1));
     --bg: #f5f6f8;
     --surface: #ffffff;
     --text: #1a1d21;
@@ -186,7 +195,7 @@ body {
 .remove-list {
     margin: 10px 0 4px;
     padding: 8px 10px 8px 26px;
-    max-height: 34vh;
+    max-height: calc(34 * var(--vh));
     overflow-y: auto;
     overscroll-behavior: contain;
     border: 1px solid var(--border);
@@ -312,6 +321,11 @@ body {
     color: var(--text-dim);
 }
 .quit-x:hover { color: var(--danger); background: var(--accent-dim); }
+/* Inside the app's own window, Windows and macOS already draw a close button
+   on the frame, an inch to the right of this one. Two crosses in the same
+   corner is a question nobody should have to answer. In an ordinary browser
+   tab there is no frame of ours to close, so it stays. */
+.in-app .quit-x { display: none; }
 
 /* Sessions dropdown, opened from the Projects button on the left. */
 .sessions-wrap { position: relative; display: flex; align-items: stretch; }
@@ -330,14 +344,23 @@ body {
    lines overlap, which is invisible, instead of opening a gap, which is not. */
 .sessions-menu {
     position: absolute;
-    /* Half a seam of deliberate overlap. `100%` on its own still left a gap of
-       up to half a pixel at some zooms -- the wrap's stretched height does not
-       round to exactly the bar's inner height -- and a gap is the one error
-       that shows. Biased into the border, it never can. */
-    top: calc(100% - var(--seam) / 2);
-    left: calc(-1 * var(--seam));
+    /* Square under the button and flush with its left edge.
+     *
+     * This used to be biased up by half a seam and left by a whole one, to
+     * close a sub-pixel gap that could open between the bar and the menu. It
+     * did close it, and it cost more than it bought: the menu sat visibly a
+     * pixel high and two pixels left of the button it belongs to -- the kind
+     * of wrongness you feel before you can name it, and somebody did.
+     *
+     * There is nothing to close. The button's wrap is stretched to the bar's
+     * *inner* height, so `100%` lands exactly on the top of the bar's bottom
+     * border and the menu's own top border covers it. Measured, not guessed:
+     * the wrap's bottom and the bar's bottom differ by precisely the bar's
+     * border width, which is one seam. */
+    top: 100%;
+    left: 0;
     min-width: 240px;
-    max-height: 60vh;
+    max-height: calc(60 * var(--vh));
     overflow-y: auto;
     background: var(--surface);
     border: var(--seam) solid var(--border);
@@ -571,7 +594,7 @@ html[data-theme="dark"] .setup-banner {
        without this it unrolled the lot: the reply that explained it went off
        the top of the screen, and getting back to the conversation meant
        scrolling past the whole file. */
-    max-height: 60vh;
+    max-height: calc(60 * var(--vh));
     overflow-y: auto;
 }
 
@@ -703,7 +726,7 @@ html[data-theme="dark"] .setup-banner {
        Reducing sudden movement is an accessibility matter, not a nicety. */
     width: 100%;
     aspect-ratio: 4 / 3;
-    max-height: 70vh;
+    max-height: calc(70 * var(--vh));
 }
 .camera-shot:hover, .camera-shot:focus-visible { border-color: var(--accent); }
 .camera-shot video {
@@ -1158,7 +1181,7 @@ input.tts-volume {
     bottom: calc(100% + 8px);
     left: 0;
     min-width: 280px;
-    max-height: 50vh;
+    max-height: calc(50 * var(--vh));
     overflow-y: auto;
     background: var(--surface);
     border-radius: 12px;
@@ -1199,7 +1222,7 @@ input.tts-volume {
 #settings-page {
     max-width: 960px;
     margin: 0 auto;
-    padding: 20px 16px 40vh;
+    padding: 20px 16px calc(40 * var(--vh));
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -1542,8 +1565,34 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
     max-width: 540px;
     width: 100%;
     padding: 24px 26px;
-    max-height: 90vh;
+    max-height: calc(90 * var(--vh));
     overflow-y: auto;
+    /* Room kept for the scrollbar whether or not it is there, so the text does
+       not shift sideways the moment the dialog grows past a screenful. */
+    scrollbar-gutter: stable;
+}
+.welcome-card:focus { outline: none; }
+
+/* A scrollbar in a rounded box runs into the corner and pokes out of the
+   curve, which looks like a mistake. It cannot be inset, but its track can be
+   kept clear of both ends -- so it stops short of the curve at the top and the
+   bottom and sits inside the shape instead of cutting across it. It stays a
+   real scrollbar, and a real width: a hairline is not something everybody can
+   see or hit. */
+.welcome-card::-webkit-scrollbar { width: 12px; }
+.welcome-card::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 14px 0;
+}
+.welcome-card::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--text-dim) 45%, transparent);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+}
+.welcome-card::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--text-dim) 70%, transparent);
+    background-clip: content-box;
 }
 .welcome-card h1 { margin: 0 0 12px; font-size: 1.5rem; }
 .welcome-card > p { margin: 0 0 12px; line-height: 1.5; }
@@ -2082,7 +2131,7 @@ a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visib
 .file-image img {
     display: block;
     max-width: 100%;
-    max-height: 60vh;
+    max-height: calc(60 * var(--vh));
     border-radius: 10px;
     border: 1px solid var(--border);
     cursor: zoom-in;
@@ -2394,7 +2443,7 @@ html[data-theme="dark"] {
     overflow-x: auto;
     /* Never taller than a screenful. A thousand-line diff should not push the
        rest of the conversation out of reach. */
-    max-height: 60vh;
+    max-height: calc(60 * var(--vh));
     overflow-y: auto;
 }
 /* No `overscroll-behavior: contain` on this or on the thinking text below.
@@ -2461,7 +2510,7 @@ html[data-theme="dark"] {
     line-height: 1.6;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    max-height: 50vh;
+    max-height: calc(50 * var(--vh));
     overflow-y: auto;
 }
 
@@ -2641,8 +2690,8 @@ html[data-theme="dark"] {
 .walkthrough-backdrop { padding: 0; }
 .walkthrough-card {
     width: min(940px, 100%);
-    max-height: 100vh;
-    height: min(880px, 100vh);
+    max-height: calc(100 * var(--vh));
+    height: min(880px, calc(100 * var(--vh)));
     display: flex;
     flex-direction: column;
     background: var(--surface);
@@ -2715,7 +2764,7 @@ html[data-theme="dark"] {
 .walkthrough-ask { margin: 28px 0 0; max-width: 70ch; }
 
 @media (max-width: 700px) {
-    .walkthrough-card { border: none; border-radius: 0; height: 100vh; }
+    .walkthrough-card { border: none; border-radius: 0; height: calc(100 * var(--vh)); }
     .walkthrough-bar { padding-left: 16px; }
     .walkthrough-body { padding: 16px 18px 28px; }
 }
@@ -2822,7 +2871,7 @@ body.settings-open .settings-scroll {
        Never taller than leaves room for the composer: on a short phone a fixed
        fraction of the screen pushed the Send button underneath it, and a panel
        you cannot talk past is just a page with extra steps. */
-    :root { --sheet-height: min(62vh, calc(100vh - 340px)); }
+    :root { --sheet-height: min(calc(62 * var(--vh)), calc(100 * var(--vh) - 340px)); }
     .settings-panel {
         top: auto;
         left: 0;
@@ -2844,7 +2893,7 @@ body.settings-open .settings-scroll {
        talk past is the entire idea; on a narrow screen the sheet would
        otherwise cover the one control that makes it true.
 
-       `62vh` and not `min(62vh, 100%)`: a percentage padding resolves against
+       a screen fraction and not `min(.., 100%)`: a percentage padding resolves against
        the containing block's WIDTH even when it is padding-bottom, so on a tall
        narrow phone the `100%` won and left the Send button under the sheet. */
     body.settings-open #chat-view { padding-bottom: var(--sheet-height); }

@@ -251,6 +251,39 @@
     if (fallback && fallback.focus) fallback.focus();
   }
 
+  /* Links out of the app, handed straight to the real browser.
+   *
+   * Inside the app's own window there are no tabs and no address bar, so a
+   * link that opens "in a new window" opens a second bare copy of the app --
+   * which then has to be found and closed again. The launcher used to do
+   * exactly that and tidy up afterwards, and you could see it happen:
+   * clicking "Open Google AI Studio" made a window appear, sit there for a
+   * moment and vanish, and then your real browser started. That reads as a
+   * fault, and it is the first link a new user ever clicks.
+   *
+   * So it never gets that far. In an ordinary browser tab this does nothing
+   * and links behave as links.
+   */
+  if (window.__inApp) {
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest && e.target.closest('a[href]');
+      if (!link || e.defaultPrevented || e.button !== 0) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      let url;
+      try { url = new URL(link.href, location.href); } catch (_) { return; }
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+      if (url.origin === location.origin) return;
+      e.preventDefault();
+      const body = new FormData();
+      body.append('url', url.href);
+      fetch('/_open', { method: 'POST', body }).catch(() => {
+        // If the server could not, let the browser have its go rather than
+        // swallowing the click entirely.
+        window.open(url.href, '_blank', 'noopener');
+      });
+    });
+  }
+
   window.__openModal = function (el, focusEl) {
     window.__modalEl = el;
     window.__modalReturn = document.activeElement;
@@ -260,7 +293,18 @@
     requestAnimationFrame(() => el.classList.add('shown'));
     setBackgroundInert(el, true);
     const target = focusEl || focusableIn(el)[0];
-    if (target) target.focus();
+    // `preventScroll`, and then the top. Focusing a control scrolls it into
+    // view, and the welcome dialog's first focusable happens to be the button
+    // at the very bottom -- so the first thing anybody ever saw of this app
+    // was its own dialog already scrolled past, with the greeting above the
+    // fold. What a dialog has to say starts at the top of it.
+    if (target) {
+      try { target.focus({ preventScroll: true }); } catch (_) { target.focus(); }
+    }
+    el.querySelectorAll('*').forEach((node) => {
+      if (node.scrollTop) node.scrollTop = 0;
+    });
+    if (el.scrollTop) el.scrollTop = 0;
   };
   window.__closeModal = function () {
     if (!window.__modalEl) return false;
@@ -2909,8 +2953,23 @@
 
       if (startIndex >= sentences.length) startIndex = 0;
 
-      // Prefetch the first chunk, then fetch the next while the current one is
-      // playing, so there is no synthesis round-trip pause between sentences.
+      /* Keep several sentences ahead, not one.
+       *
+       * One was enough on a fast machine and nowhere near enough on a laptop.
+       * Synthesis happens one sentence at a time on the server, and with a
+       * single sentence in flight the synthesiser sat idle for the whole of
+       * each sentence's playback and then had to start from cold on the next
+       * one -- so every full stop was a wait, and on a slow processor the
+       * waits were longer than the sentences. Asking for a few in advance
+       * means the queue is being filled while the user is listening, which is
+       * the only time there is to fill it.
+       *
+       * They are only ever queued, never overlapped: the server does one at a
+       * time on purpose, because the phonemiser underneath is not thread-safe. */
+      const AHEAD = 3;
+      for (let i = startIndex; i < sentences.length && i < startIndex + AHEAD; i++) {
+        synthCached(sentences, i, cache);
+      }
       let pending = synthCached(sentences, startIndex, cache);
       for (let i = startIndex; i < sentences.length; i++) {
         if (stopToken !== token) return;
@@ -2922,6 +2981,8 @@
 
         if (i + 1 < sentences.length) pending = synthCached(sentences, i + 1, cache);
         else pending = null;
+        // Top the queue back up to its depth as each one is taken off it.
+        if (i + AHEAD < sentences.length) synthCached(sentences, i + AHEAD, cache);
 
         if (!blob) continue;
         const audio = new Audio(URL.createObjectURL(blob));
@@ -2975,10 +3036,12 @@
   function handleEvent(ev) {
     switch (ev.type) {
       case 'reasoning':
+        clearWaiting();
         setWorkPhase('thinking');
         noteThinking(ev.text);
         break;
       case 'content':
+        clearWaiting();
         finishThinking();
         // A new stretch of words after some work means a new message, not more
         // of the last one. That is how it is stored, and how it reads back.
@@ -2996,6 +3059,7 @@
         setWorkPhase('writing');
         break;
       case 'tool_start':
+        clearWaiting();
         finishThinking();
         closeSegment();
         setLiveWork(statusForTool(ev.name, ev.args));
@@ -3355,6 +3419,7 @@
   }
 
   function endTurn() {
+    clearWaiting();
     removeEmptyAssistant();
     // A turn that was stopped or failed mid-thought still leaves the thought
     // where it got to, marked finished rather than left turning forever.
@@ -3378,8 +3443,45 @@
     if (did) announce(did);
   }
 
+  /* Something on the screen between pressing Send and the first word back.
+   *
+   * There was nothing. The thinking row only appears when a model streams its
+   * reasoning, and most do not -- so on Gemini the whole wait was a blank
+   * space under your own message. You could not tell a model taking eight
+   * seconds from a request that had failed silently, and the honest reading of
+   * a screen where nothing changes is that nothing is happening.
+   *
+   * It goes the moment anything real arrives: a thought, a word, a tool. */
+  let waitingRow = null;
+  let waitingSpin = 0;
+
+  function showWaiting() {
+    if (waitingRow || !messages) return;
+    waitingRow = document.createElement('div');
+    waitingRow.className = 'thinking thinking-shut thinking-live';
+    const mark = document.createElement('span');
+    mark.className = 'thinking-mark';
+    mark.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'thinking-label';
+    label.textContent = 'Working\u2026';
+    waitingRow.appendChild(mark);
+    waitingRow.appendChild(label);
+    messages.appendChild(waitingRow);
+    waitingSpin = startSpinner(mark);
+    scrollToBottom();
+  }
+
+  function clearWaiting() {
+    if (!waitingRow) return;
+    if (waitingSpin) { clearInterval(waitingSpin); waitingSpin = 0; }
+    waitingRow.remove();
+    waitingRow = null;
+  }
+
   function beginTurn() {
     running = true;
+    showWaiting();
     // Send stays. Pressing it now queues the message rather than starting a
     // second turn, which is what somebody who has not noticed the assistant is
     // busy actually wants -- and it means the button their thumb goes to is
@@ -4939,7 +5041,28 @@
         window.__sttRecorder = recorder;
       }
     } catch (e) {
+      // Silence here was the whole bug. Pressing Talk with the microphone
+      // refused did nothing whatsoever: no error, no message, no change to the
+      // button -- and dictation is the entire interface for somebody who
+      // cannot use a keyboard, so "nothing happens" is the end of the road.
       cancelDictation();
+      const name = (e && e.name) || '';
+      let said;
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        said = 'I am not allowed to use the microphone. Allow it for this app, '
+             + 'then press Talk again.';
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        said = 'I could not find that microphone. Pick a different one in '
+             + 'Settings, or plug one in and try again.';
+      } else if (name === 'NotReadableError') {
+        said = 'Something else on this computer is using the microphone. '
+             + 'Close it and press Talk again.';
+      } else {
+        said = 'I could not start listening' + (name ? ' (' + name + ')' : '') + '.';
+      }
+      if (typeof showToast === 'function') showToast(said);
+      announce(said);
+      console.warn('dictation could not start', e);
     }
   }
 
@@ -5649,7 +5772,11 @@
         startDictation();
       }
     });
-    if (go) window.__openModal(welcomeModal, go);
+    // The card itself, not the button at the bottom of it: a dialog should
+    // begin where it begins, and a screen reader should meet the greeting
+    // before the control that dismisses it.
+    const card = welcomeModal.querySelector('.welcome-card');
+    if (go) window.__openModal(welcomeModal, card || go);
   }
 
   // Remember the chat history and the input's own scroll, then position them.

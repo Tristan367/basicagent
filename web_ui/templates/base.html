@@ -4,7 +4,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Assistant{% endblock %}</title>
+    {# One title, on every page.
+       The app runs in its own window, and the frame that Windows and macOS
+       draw around it shows this. So changing it per page put the word
+       "Settings" in the title bar of what is supposed to look like an
+       application, next to the operating system's own close button -- a page
+       name where a program name belongs. #}
+    <title>Assistant</title>
+    {# The window and taskbar icon. Without these Chromium shows its own blank
+       document mark, which is the icon of "some web page" and not of a program
+       somebody installed. #}
+    <link rel="icon" href="/static/img/favicon.ico?v={{ version }}" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="/static/img/icon.svg?v={{ version }}">
+    <link rel="apple-touch-icon" href="/static/img/icon.png?v={{ version }}">
     <link rel="stylesheet" href="/static/vendor/highlight/github-dark.min.css?v={{ version }}">
     <link rel="stylesheet" href="/static/css/style.css?v={{ version }}">
     <script src="/static/vendor/highlight/highlight.min.js?v={{ version }}"></script>
