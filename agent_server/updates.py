@@ -26,6 +26,7 @@ replaces the program beside it without ever opening it.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -216,7 +217,26 @@ def _pull() -> str:
             "is rather than merged into. Sort the changes out and try again, "
             f"or reinstall. ({(pulled.stderr or '').strip()[:160]})")
 
-    return _refresh_dependencies() or "Updated."
+    outcome = _refresh_dependencies() or "Updated."
+    _relist_uninstall()
+    return outcome
+
+
+def _relist_uninstall() -> None:
+    """Point Windows' Apps list at the version that is now installed.
+
+    An update swaps the program's files and never re-runs the install, so the
+    uninstaller arrives in the folder while the entry that makes it findable
+    does not -- and a folder is not somewhere anybody was asked to look. Never
+    fatal: failing to register a way out is not a reason to fail an update
+    that has already worked.
+    """
+    installer = ROOT / "install.py"
+    if not installer.is_file():
+        return
+    with contextlib.suppress(Exception):
+        subprocess.run([str(_venv_python()), str(installer), "--register-only"],
+                       cwd=str(ROOT), capture_output=True, timeout=60, check=False)
 
 
 def _venv_python() -> Path:
@@ -309,7 +329,9 @@ async def _download_and_swap() -> str:
                     "changed.")
 
         await asyncio.to_thread(_swap_in, source)
-        return await asyncio.to_thread(_refresh_dependencies)
+        result = await asyncio.to_thread(_refresh_dependencies)
+        await asyncio.to_thread(_relist_uninstall)
+        return result
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 

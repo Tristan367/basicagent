@@ -9,6 +9,7 @@ an install that ends with "now type this" has not finished.
     python3 install.py --minimal    skip the big optional downloads (about 900 MB)
     python3 install.py --no-shortcut   do not add a desktop icon or a menu entry
     python3 install.py --here       install in this folder, do not move it
+    python3 install.py --register-only   only leave a way to uninstall it
 
 Standard library only. It runs before the virtual environment exists, so it
 cannot import anything the app depends on.
@@ -1257,6 +1258,16 @@ def main() -> None:
     no_shortcut = "--no-shortcut" in sys.argv
     if "-h" in sys.argv or "--help" in sys.argv:
         print(__doc__)
+        return
+
+    # Used by the in-app updater. An update replaces the program's files but
+    # never re-runs the install, so somebody who updated rather than
+    # reinstalled would have the uninstaller sitting in the folder and no
+    # entry in Settings pointing at it -- which is the same as not having one,
+    # since the folder is not somewhere they were ever asked to look.
+    if "--register-only" in sys.argv:
+        made = register_uninstall()
+        print(f"Uninstall: {made}" if made else "Could not register an uninstall.")
         return
 
     # Before the banner: this may replace the running process with a different

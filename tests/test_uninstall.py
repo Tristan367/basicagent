@@ -106,3 +106,22 @@ def test_the_installer_tells_people_it_exists():
     installer = (ROOT / "install.py").read_text()
     assert "register_uninstall" in installer
     assert "If you ever want it gone" in installer
+
+
+def test_an_update_relists_it_too():
+    """An update swaps the program's files and never re-runs the install, so
+    the uninstaller arrives in the folder while the entry that makes it
+    findable does not -- and a folder is not somewhere anybody was ever asked
+    to look. Both update routes have to do it, not just the one somebody
+    happened to test."""
+    import inspect
+
+    from agent_server import updates
+
+    assert "--register-only" in (ROOT / "install.py").read_text()
+    source = inspect.getsource(updates)
+    assert "_relist_uninstall" in source
+    for route in (updates._pull, updates._download_and_swap):
+        assert "_relist_uninstall" in inspect.getsource(route), route.__name__
+    # And it never fails an update that has already worked.
+    assert "contextlib.suppress" in inspect.getsource(updates._relist_uninstall)
